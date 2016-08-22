@@ -1,11 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using NUnit.Framework;
+﻿using NUnit.Framework;
 
-namespace ICSharpCode.Decompiler.Tests.CustomAttributes
-{
+namespace ICSharpCode.Decompiler.Tests.CustomAttributes {
 	[TestFixture]
 	public class CustomAttributeTests : DecompilerTestBase
 	{

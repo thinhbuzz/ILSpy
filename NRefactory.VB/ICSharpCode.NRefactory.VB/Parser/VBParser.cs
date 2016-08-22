@@ -8,10 +8,8 @@ using System.Linq;
 using System.Text;
 
 using ICSharpCode.NRefactory.VB.Ast;
-using ICSharpCode.NRefactory.VB.Visitors;
 
-namespace ICSharpCode.NRefactory.VB.Parser
-{
+namespace ICSharpCode.NRefactory.VB.Parser {
 	internal partial class VBParser : IDisposable
 	{
 		VBLexer lexer;

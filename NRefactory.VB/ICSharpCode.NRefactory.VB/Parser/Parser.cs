@@ -1,12 +1,7 @@
-﻿using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.Collections.Specialized;
-using System.Linq;
-using System.Text;
+﻿using System.Collections;
+using dnSpy.Contracts.Decompiler;
+using dnSpy.Contracts.Text;
 using ICSharpCode.NRefactory.VB.Ast;
-using ICSharpCode.NRefactory.VB.Parser;
-using ASTAttribute = ICSharpCode.NRefactory.VB.Ast.Attribute;
 using Roles = ICSharpCode.NRefactory.VB.AstNode.Roles;
 
 
@@ -15,11 +10,11 @@ using Roles = ICSharpCode.NRefactory.VB.AstNode.Roles;
 namespace ICSharpCode.NRefactory.VB.Parser {
 
 
-// ----------------------------------------------------------------------------
-// Parser
-// ----------------------------------------------------------------------------
-//! A Coco/R Parser
-partial class VBParser
+	// ----------------------------------------------------------------------------
+	// Parser
+	// ----------------------------------------------------------------------------
+	//! A Coco/R Parser
+	partial class VBParser
 {
 	public const int _EOF = 0;
 	public const int _EOL = 1;
@@ -398,11 +393,11 @@ partial class VBParser
 		} else if (StartOf(4)) {
 			Identifier();
 		} else SynErr(246);
-		type = new SimpleType(t.val, t.Location);
+		type = SimpleType.CreateWithColor(BoxedTextColor.Text, t.val, t.Location);
 		while (la.kind == 26) {
 			Get();
 			Identifier();
-			type = new QualifiedType(type, new Identifier (t.val, t.Location));
+			type = new QualifiedType(type, new Identifier (BoxedTextColor.Text, t.val, t.Location));
 		}
 	}
 
@@ -445,7 +440,7 @@ partial class VBParser
 		var result = new AliasImportsClause(); NodeStart(result);
 		AstType alias;
 		Identifier();
-		result.Name = new Identifier (t.val, t.Location);
+		result.Name = new Identifier (BoxedTextColor.Text, t.val, t.Location);
 		Expect(20);
 		TypeName(out alias);
 		result.Alias = alias;

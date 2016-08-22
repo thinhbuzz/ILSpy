@@ -16,22 +16,20 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using ICSharpCode.NRefactory.PatternMatching;
-using Mono.Cecil;
-using Ast = ICSharpCode.NRefactory.CSharp;
+using System.Text;
+using dnlib.DotNet;
+using dnSpy.Contracts.Text;
 using ICSharpCode.NRefactory.CSharp;
+using ICSharpCode.NRefactory.PatternMatching;
 
-namespace ICSharpCode.Decompiler.Ast.Transforms
-{
+namespace ICSharpCode.Decompiler.Ast.Transforms {
 	/// <summary>
 	/// Replaces method calls with the appropriate operator expressions.
 	/// Also simplifies "x = x op y" into "x op= y" where possible.
 	/// </summary>
-	public class ReplaceMethodCallsWithOperators : DepthFirstAstVisitor<object, object>, IAstTransform
+	public class ReplaceMethodCallsWithOperators : DepthFirstAstVisitor<object, object>, IAstTransformPoolObject
 	{
 		static readonly MemberReferenceExpression typeHandleOnTypeOfPattern = new MemberReferenceExpression {
 			Target = new Choice {
@@ -42,28 +40,51 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 		};
 		
 		DecompilerContext context;
-		
+		readonly StringBuilder stringBuilder;
+
 		public ReplaceMethodCallsWithOperators(DecompilerContext context)
+		{
+			this.stringBuilder = new StringBuilder();
+			Reset(context);
+		}
+
+		public void Reset(DecompilerContext context)
 		{
 			this.context = context;
 		}
-		
+
 		public override object VisitInvocationExpression(InvocationExpression invocationExpression, object data)
 		{
 			base.VisitInvocationExpression(invocationExpression, data);
-			ProcessInvocationExpression(invocationExpression);
+			ProcessInvocationExpression(invocationExpression, stringBuilder);
 			return null;
 		}
 
-		internal static void ProcessInvocationExpression(InvocationExpression invocationExpression)
+		static bool CheckType(ITypeDefOrRef tdr, UTF8String expNs, UTF8String expName)
 		{
-			MethodReference methodRef = invocationExpression.Annotation<MethodReference>();
+			// PERF: Don't allocate a System.String by calling FullName etc.
+			var tr = tdr as TypeRef;
+			if (tr != null)
+				return tr.Name == expName && tr.Namespace == expNs;
+			var td = tdr as TypeDef;
+			if (td != null)
+				return td.Name == expName && td.Namespace == expNs;
+			return false;
+		}
+		static readonly UTF8String systemString = new UTF8String("System");
+		static readonly UTF8String typeString = new UTF8String("Type");
+		static readonly UTF8String systemReflectionString = new UTF8String("System.Reflection");
+		static readonly UTF8String fieldInfoString = new UTF8String("FieldInfo");
+
+		internal static void ProcessInvocationExpression(InvocationExpression invocationExpression, StringBuilder sb)
+		{
+			IMethod methodRef = invocationExpression.Annotation<IMethod>();
 			if (methodRef == null)
 				return;
 			var arguments = invocationExpression.Arguments.ToArray();
 			
 			// Reduce "String.Concat(a, b)" to "a + b"
-			if (methodRef.Name == "Concat" && methodRef.DeclaringType.FullName == "System.String" && arguments.Length >= 2)
+			if (methodRef.Name == "Concat" && methodRef.DeclaringType != null && arguments.Length >= 2 && methodRef.DeclaringType.FullName == "System.String")
 			{
 				invocationExpression.Arguments.Clear(); // detach arguments from invocationExpression
 				Expression expr = arguments[0];
@@ -71,39 +92,43 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 					expr = new BinaryOperatorExpression(expr, BinaryOperatorType.Add, arguments[i]);
 				}
 				invocationExpression.ReplaceWith(expr);
+				expr.AddAnnotation(invocationExpression.GetAllRecursiveBinSpans());
 				return;
 			}
-			
-			switch (methodRef.FullName) {
-				case "System.Type System.Type::GetTypeFromHandle(System.RuntimeTypeHandle)":
-					if (arguments.Length == 1) {
+
+			bool isSupportedType = CheckType(methodRef.DeclaringType, systemString, typeString) ||
+									CheckType(methodRef.DeclaringType, systemReflectionString, fieldInfoString);
+			switch (isSupportedType ? methodRef.Name.String : string.Empty) {
+				case "GetTypeFromHandle":
+					if (arguments.Length == 1 && methodRef.FullName == "System.Type System.Type::GetTypeFromHandle(System.RuntimeTypeHandle)") {
 						if (typeHandleOnTypeOfPattern.IsMatch(arguments[0])) {
-							invocationExpression.ReplaceWith(((MemberReferenceExpression)arguments[0]).Target);
+							invocationExpression.ReplaceWith(((MemberReferenceExpression)arguments[0]).Target
+								.WithAnnotation(invocationExpression.GetAllRecursiveBinSpans()));
 							return;
 						}
 					}
 					break;
-				case "System.Reflection.FieldInfo System.Reflection.FieldInfo::GetFieldFromHandle(System.RuntimeFieldHandle)":
-					if (arguments.Length == 1) {
+				case "GetFieldFromHandle":
+					if (arguments.Length == 1 && methodRef.FullName == "System.Reflection.FieldInfo System.Reflection.FieldInfo::GetFieldFromHandle(System.RuntimeFieldHandle)") {
 						MemberReferenceExpression mre = arguments[0] as MemberReferenceExpression;
 						if (mre != null && mre.MemberName == "FieldHandle" && mre.Target.Annotation<LdTokenAnnotation>() != null) {
-							invocationExpression.ReplaceWith(mre.Target);
+							invocationExpression.ReplaceWith(mre.Target
+								.WithAnnotation(invocationExpression.GetAllRecursiveBinSpans()));
 							return;
 						}
 					}
-					break;
-				case "System.Reflection.FieldInfo System.Reflection.FieldInfo::GetFieldFromHandle(System.RuntimeFieldHandle,System.RuntimeTypeHandle)":
-					if (arguments.Length == 2) {
+					else if (arguments.Length == 2 && methodRef.FullName == "System.Reflection.FieldInfo System.Reflection.FieldInfo::GetFieldFromHandle(System.RuntimeFieldHandle,System.RuntimeTypeHandle)") {
 						MemberReferenceExpression mre1 = arguments[0] as MemberReferenceExpression;
 						MemberReferenceExpression mre2 = arguments[1] as MemberReferenceExpression;
 						if (mre1 != null && mre1.MemberName == "FieldHandle" && mre1.Target.Annotation<LdTokenAnnotation>() != null) {
 							if (mre2 != null && mre2.MemberName == "TypeHandle" && mre2.Target is TypeOfExpression) {
 								Expression oldArg = ((InvocationExpression)mre1.Target).Arguments.Single();
-								FieldReference field = oldArg.Annotation<FieldReference>();
+								IField field = oldArg.Annotation<IField>();
 								if (field != null) {
+									var binSpans = invocationExpression.GetAllRecursiveBinSpans();
 									AstType declaringType = ((TypeOfExpression)mre2.Target).Type.Detach();
-									oldArg.ReplaceWith(declaringType.Member(field.Name).WithAnnotation(field));
-									invocationExpression.ReplaceWith(mre1.Target);
+									oldArg.ReplaceWith(declaringType.Member(field.Name, field).WithAnnotation(field));
+									invocationExpression.ReplaceWith(mre1.Target.WithAnnotation(binSpans));
 									return;
 								}
 							}
@@ -117,6 +142,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 				invocationExpression.Arguments.Clear(); // detach arguments from invocationExpression
 				invocationExpression.ReplaceWith(
 					new BinaryOperatorExpression(arguments[0], bop.Value, arguments[1]).WithAnnotation(methodRef)
+							.WithAnnotation(invocationExpression.GetAllRecursiveBinSpans())
 				);
 				return;
 			}
@@ -125,23 +151,25 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 				arguments[0].Remove(); // detach argument
 				invocationExpression.ReplaceWith(
 					new UnaryOperatorExpression(uop.Value, arguments[0]).WithAnnotation(methodRef)
+							.WithAnnotation(invocationExpression.GetAllRecursiveBinSpans())
 				);
 				return;
 			}
 			if (methodRef.Name == "op_Explicit" && arguments.Length == 1) {
 				arguments[0].Remove(); // detach argument
 				invocationExpression.ReplaceWith(
-					arguments[0].CastTo(AstBuilder.ConvertType(methodRef.ReturnType, methodRef.MethodReturnType))
+					arguments[0].CastTo(AstBuilder.ConvertType(methodRef.MethodSig.GetRetType(), sb))
 					.WithAnnotation(methodRef)
+					.WithAnnotation(invocationExpression.GetAllRecursiveBinSpans())
 				);
 				return;
 			}
 			if (methodRef.Name == "op_Implicit" && arguments.Length == 1) {
-				invocationExpression.ReplaceWith(arguments[0]);
+				invocationExpression.ReplaceWith(arguments[0].WithAnnotation(invocationExpression.GetAllRecursiveBinSpans()));
 				return;
 			}
 			if (methodRef.Name == "op_True" && arguments.Length == 1 && invocationExpression.Role == Roles.Condition) {
-				invocationExpression.ReplaceWith(arguments[0]);
+				invocationExpression.ReplaceWith(arguments[0].WithAnnotation(invocationExpression.GetAllRecursiveBinSpans()));
 				return;
 			}
 			
@@ -224,6 +252,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 			
 			public AssignmentExpression Restore(Expression expression)
 			{
+				var binSpans = expression.GetAllRecursiveBinSpans();
 				expression.RemoveAnnotations<RestoreOriginalAssignOperatorAnnotation>();
 				AssignmentExpression assign = expression as AssignmentExpression;
 				if (assign == null) {
@@ -234,6 +263,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 				}
 				binaryOperatorExpression.Right = assign.Right.Detach();
 				assign.Right = binaryOperatorExpression;
+				assign.AddAnnotation(binSpans);
 				return assign;
 			}
 		}
@@ -249,7 +279,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 					if (assignment.Operator != AssignmentOperatorType.Assign) {
 						// If we found a shorter operator, get rid of the BinaryOperatorExpression:
 						assignment.CopyAnnotationsFrom(binary);
-						assignment.Right = binary.Right;
+						assignment.Right = binary.Right.WithAnnotation(assignment.Right.GetAllRecursiveBinSpans());
 						assignment.AddAnnotation(new RestoreOriginalAssignOperatorAnnotation(binary));
 					}
 				}
@@ -258,7 +288,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 				// detect increment/decrement
 				if (assignment.Right.IsMatch(new PrimitiveExpression(1))) {
 					// only if it's not a custom operator
-					if (assignment.Annotation<MethodReference>() == null) {
+					if (assignment.Annotation<IMethod>() == null) {
 						UnaryOperatorType type;
 						// When the parent is an expression statement, pre- or post-increment doesn't matter;
 						// so we can pick post-increment which is more commonly used (for (int i = 0; i < x; i++))
@@ -266,7 +296,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 							type = (assignment.Operator == AssignmentOperatorType.Add) ? UnaryOperatorType.PostIncrement : UnaryOperatorType.PostDecrement;
 						else
 							type = (assignment.Operator == AssignmentOperatorType.Add) ? UnaryOperatorType.Increment : UnaryOperatorType.Decrement;
-						assignment.ReplaceWith(new UnaryOperatorExpression(type, assignment.Left.Detach()).CopyAnnotationsFrom(assignment));
+						assignment.ReplaceWith(new UnaryOperatorExpression(type, assignment.Left.Detach()).CopyAnnotationsFrom(assignment).WithAnnotation(assignment.GetAllRecursiveBinSpans()));
 					}
 				}
 			}
@@ -321,10 +351,11 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 		}
 		
 		static readonly Expression getMethodOrConstructorFromHandlePattern =
-			new TypePattern(typeof(MethodBase)).ToType().Invoke(
+			new TypePattern(typeof(MethodBase)).ToType().Invoke2(
+				BoxedTextColor.StaticMethod,
 				"GetMethodFromHandle",
-				new NamedNode("ldtokenNode", new LdTokenPattern("method")).ToExpression().Member("MethodHandle"),
-				new OptionalNode(new TypeOfExpression(new AnyNode("declaringType")).Member("TypeHandle"))
+				new NamedNode("ldtokenNode", new LdTokenPattern("method")).ToExpression().Member("MethodHandle", BoxedTextColor.InstanceProperty),
+				new OptionalNode(new TypeOfExpression(new AnyNode("declaringType")).Member("TypeHandle", BoxedTextColor.InstanceProperty))
 			).CastTo(new Choice {
 		         	new TypePattern(typeof(MethodInfo)),
 		         	new TypePattern(typeof(ConstructorInfo))
@@ -336,14 +367,15 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 			// Handle methodof
 			Match m = getMethodOrConstructorFromHandlePattern.Match(castExpression);
 			if (m.Success) {
-				MethodReference method = m.Get<AstNode>("method").Single().Annotation<MethodReference>();
-				if (m.Has("declaringType")) {
-					Expression newNode = m.Get<AstType>("declaringType").Single().Detach().Member(method.Name);
-					newNode = newNode.Invoke(method.Parameters.Select(p => new TypeReferenceExpression(AstBuilder.ConvertType(p.ParameterType, p))));
+				var binSpans = castExpression.GetAllRecursiveBinSpans();
+				IMethod method = m.Get<AstNode>("method").Single().Annotation<IMethod>();
+				if (method != null && m.Has("declaringType")) {
+					Expression newNode = m.Get<AstType>("declaringType").Single().Detach().Member(method.Name, method);
+					newNode = newNode.Invoke(method.MethodSig.GetParameters().Select(p => new TypeReferenceExpression(AstBuilder.ConvertType(p, stringBuilder))));
 					newNode.AddAnnotation(method);
 					m.Get<AstNode>("method").Single().ReplaceWith(newNode);
 				}
-				castExpression.ReplaceWith(m.Get<AstNode>("ldtokenNode").Single());
+				castExpression.ReplaceWith(m.Get<AstNode>("ldtokenNode").Single().WithAnnotation(binSpans));
 			}
 			return null;
 		}

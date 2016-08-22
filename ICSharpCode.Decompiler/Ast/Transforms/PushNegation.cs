@@ -16,21 +16,22 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
-using System.Collections.Generic;
 using System.Linq;
 using ICSharpCode.NRefactory.CSharp;
 using ICSharpCode.NRefactory.PatternMatching;
 
-namespace ICSharpCode.Decompiler.Ast.Transforms
-{
-	public class PushNegation: DepthFirstAstVisitor<object, object>, IAstTransform
+namespace ICSharpCode.Decompiler.Ast.Transforms {
+	public class PushNegation: DepthFirstAstVisitor<object, object>, IAstTransformPoolObject
 	{
 		sealed class LiftedOperator { }
 		/// <summary>
 		/// Annotation for lifted operators that cannot be transformed by PushNegation
 		/// </summary>
 		public static readonly object LiftedOperatorAnnotation = new LiftedOperator();
+
+		public void Reset(DecompilerContext context)
+		{
+		}
 
 		public override object VisitUnaryOperatorExpression(UnaryOperatorExpression unary, object data)
 		{
@@ -45,7 +46,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 			    (unary.Expression as UnaryOperatorExpression).Operator == UnaryOperatorType.Not)
 			{
 				AstNode newNode = (unary.Expression as UnaryOperatorExpression).Expression;
-				unary.ReplaceWith(newNode);
+				unary.ReplaceWith(newNode.WithAnnotation(unary.GetAllBinSpans()));
 				return newNode.AcceptVisitor(this, data);
 			}
 			
@@ -78,7 +79,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 						break;
 				}
 				if (successful) {
-					unary.ReplaceWith(binaryOp);
+					unary.ReplaceWith(binaryOp.WithAnnotation(unary.GetAllBinSpans()));
 					return binaryOp.AcceptVisitor(this, data);
 				}
 				
@@ -97,7 +98,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 				if (successful) {
 					binaryOp.Left.ReplaceWith(e => new UnaryOperatorExpression(UnaryOperatorType.Not, e));
 					binaryOp.Right.ReplaceWith(e => new UnaryOperatorExpression(UnaryOperatorType.Not, e));
-					unary.ReplaceWith(binaryOp);
+					unary.ReplaceWith(binaryOp.WithAnnotation(unary.GetAllBinSpans()));
 					return binaryOp.AcceptVisitor(this, data);
 				}
 			}
@@ -128,15 +129,18 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 				rightOperand = ((PrimitiveExpression)binaryOperatorExpression.Right).Value as bool?;
 			if (op == BinaryOperatorType.Equality && rightOperand == true || op == BinaryOperatorType.InEquality && rightOperand == false) {
 				// 'b == true' or 'b != false' is useless
+				var binSpans = binaryOperatorExpression.GetAllRecursiveBinSpans();
 				binaryOperatorExpression.Left.AcceptVisitor(this, data);
-				binaryOperatorExpression.ReplaceWith(binaryOperatorExpression.Left);
+				binaryOperatorExpression.ReplaceWith(binaryOperatorExpression.Left.WithAnnotation(binSpans));
 				return null;
 			} else if (op == BinaryOperatorType.Equality && rightOperand == false || op == BinaryOperatorType.InEquality && rightOperand == true) {
 				// 'b == false' or 'b != true' is a negation:
 				Expression left = binaryOperatorExpression.Left;
 				left.Remove();
+				var binSpans = binaryOperatorExpression.GetAllRecursiveBinSpans();
 				UnaryOperatorExpression uoe = new UnaryOperatorExpression(UnaryOperatorType.Not, left);
 				binaryOperatorExpression.ReplaceWith(uoe);
+				uoe.AddAnnotation(binSpans);
 				return uoe.AcceptVisitor(this, data);
 			} else {
 				bool negate = false;
@@ -150,6 +154,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 					if (negate)
 						expr = new UnaryOperatorExpression(UnaryOperatorType.Not, expr);
 					binaryOperatorExpression.ReplaceWith(expr);
+					expr.AddAnnotation(binaryOperatorExpression.GetAllRecursiveBinSpans());
 					return expr.AcceptVisitor(this, data);
 				} else {
 					return base.VisitBinaryOperatorExpression(binaryOperatorExpression, data);

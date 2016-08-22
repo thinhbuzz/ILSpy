@@ -1,11 +1,8 @@
 ﻿// Copyright (c) AlphaSierraPapa for the SharpDevelop Team (for details please see \doc\copyright.txt)
 // This code is distributed under MIT X11 license (for details please see \doc\license.txt)
-using System;
-using System.Collections.Generic;
 using ICSharpCode.NRefactory.PatternMatching;
 
-namespace ICSharpCode.NRefactory.VB.Ast
-{
+namespace ICSharpCode.NRefactory.VB.Ast {
 	public class ImportsStatement : AstNode
 	{
 		public static readonly Role<ImportsClause> ImportsClauseRole = new Role<ImportsClause>("ImportsClause", ImportsClause.Null);

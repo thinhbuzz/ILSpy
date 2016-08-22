@@ -20,28 +20,39 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-using Mono.Cecil;
+using dnlib.DotNet;
 
 namespace ICSharpCode.Decompiler.ILAst
 {
 	partial class ILAstOptimizer
 	{
-		bool SimplifyLiftedOperators(List<ILNode> body, ILExpression expr, int pos)
+		bool SimplifyLiftedOperators(ILBlockBase block, List<ILNode> body, ILExpression expr, int pos)
 		{
-			if (!new PatternMatcher(typeSystem).SimplifyLiftedOperators(expr)) return false;
+			if (!GetPatternMatcher(corLib).SimplifyLiftedOperators(expr)) return false;
 
-			var inlining = new ILInlining(method);
-			while (--pos >= 0 && inlining.InlineIfPossible(body, ref pos)) ;
+			var inlining = GetILInlining(method);
+			while (--pos >= 0 && inlining.InlineIfPossible(block, body, ref pos)) ;
 
 			return true;
 		}
 
 		sealed class PatternMatcher
 		{
-			readonly TypeSystem typeSystem;
-			public PatternMatcher(TypeSystem typeSystem)
+			ICorLibTypes corLib;
+			ILVariable A, B;
+			ILExpression Operator, SimpleOperand;
+			bool SimpleLeftOperand;
+			readonly DecompilerContext context;
+			public PatternMatcher(DecompilerContext context, ICorLibTypes corLib)
 			{
-				this.typeSystem = typeSystem;
+				this.context = context;
+				this.corLib = corLib;
+			}
+
+			public void Initialize(ICorLibTypes corLib)
+			{
+				this.corLib = corLib;
+				Reset();
 			}
 
 			public bool SimplifyLiftedOperators(ILExpression expr)
@@ -111,11 +122,11 @@ namespace ICSharpCode.Decompiler.ILAst
 				{
 					var args = new ILExpression[this.Arguments.Length];
 					for (int i = 0; i < args.Length; i++) args[i] = this.Arguments[i].BuildNew(pm);
-					TypeReference t = null;
+					TypeSig t = null;
 					switch (code) {
 						case ILCode.Ceq:
 						case ILCode.Cne:
-							t = pm.typeSystem.Boolean;
+							t = pm.corLib.Boolean;
 							break;
 						case ILCode.NullCoalescing:
 							t = args[1].InferredType;
@@ -140,8 +151,8 @@ namespace ICSharpCode.Decompiler.ILAst
 				public override bool Match(PatternMatcher pm, ILExpression e)
 				{
 					if (e.Code != this.code) return false;
-					var m = (MethodReference)e.Operand;
-					return m.Name == this.method && TypeAnalysis.IsNullableType(m.DeclaringType) && base.Match(pm, e);
+					var m = (IMethod)e.Operand;
+					return m.Name == this.method && TypeAnalysis.IsNullableType(m.DeclaringType.ToTypeSig()) && base.Match(pm, e);
 				}
 			}
 
@@ -208,8 +219,8 @@ namespace ICSharpCode.Decompiler.ILAst
 							if (type != OperatorType.Other) return false;
 							break;
 						case ILCode.Call:
-							var m = e.Operand as MethodReference;
-							if (m == null || m.HasThis || !m.HasParameters || e.Arguments.Count > 2 || !IsCustomOperator(m.Name)) return false;
+							var m = e.Operand as IMethod;
+							if (m == null || m.MethodSig == null || m.MethodSig.HasThis || m.MethodSig.Params.Count == 0 || e.Arguments.Count > 2 || !IsCustomOperator(m.Name)) return false;
 							break;
 						default: return false;
 					}
@@ -325,11 +336,10 @@ namespace ICSharpCode.Decompiler.ILAst
 					return true;
 				}
 
-				static readonly ILExpression[] EmptyArguments = new ILExpression[0];
 				public override ILExpression BuildNew(PatternMatcher pm)
 				{
 					var v = this.b ? pm.B : pm.A;
-					var e = new ILExpression(ILCode.Ldloc, v, EmptyArguments);
+					var e = new ILExpression(ILCode.Ldloc, v);
 					if (TypeAnalysis.IsNullableType(v.Type)) e = new ILExpression(ILCode.ValueOf, null, e);
 					return e;
 				}
@@ -348,7 +358,7 @@ namespace ICSharpCode.Decompiler.ILAst
 
 				public override bool Match(PatternMatcher pm, ILExpression e)
 				{
-					return e.Code == ILCode.Ldc_I4 && TypeAnalysis.IsBoolean(e.InferredType) && object.Equals(e.Operand, value);
+					return e.Code == ILCode.Ldc_I4 && e.InferredType.GetElementType() == ElementType.Boolean && object.Equals(e.Operand, value);
 				}
 
 				public override ILExpression BuildNew(PatternMatcher pm)
@@ -463,10 +473,6 @@ namespace ICSharpCode.Decompiler.ILAst
 				OperatorVariableAB,
 			};
 
-			ILVariable A, B;
-			ILExpression Operator, SimpleOperand;
-			bool SimpleLeftOperand;
-
 			void Reset()
 			{
 				this.A = null;
@@ -498,7 +504,11 @@ namespace ICSharpCode.Decompiler.ILAst
 						if (n.Code == ILCode.NullCoalescing) {
 							// if both operands are nullable then the result is also nullable
 							if (n.Arguments[1].Code == ILCode.ValueOf) {
+								if (context.CalculateBinSpans)
+									n.Arguments[0].Arguments[0].BinSpans.AddRange(n.Arguments[0].BinSpans);
 								n.Arguments[0] = n.Arguments[0].Arguments[0];
+								if (context.CalculateBinSpans)
+									n.Arguments[1].Arguments[0].BinSpans.AddRange(n.Arguments[1].BinSpans);
 								n.Arguments[1] = n.Arguments[1].Arguments[0];
 							}
 						} else if (n.Code != ILCode.Ceq && n.Code != ILCode.Cne) {
@@ -511,16 +521,18 @@ namespace ICSharpCode.Decompiler.ILAst
 				return false;
 			}
 
-			static void SetResult(ILExpression expr, ILExpression n)
+			void SetResult(ILExpression expr, ILExpression n)
 			{
 				// IL ranges from removed nodes are assigned to the new operator expression
 				var removednodes = expr.GetSelfAndChildrenRecursive<ILExpression>().Except(n.GetSelfAndChildrenRecursive<ILExpression>());
-				n.ILRanges.AddRange(removednodes.SelectMany(el => el.ILRanges));
+				if (context.CalculateBinSpans)
+					n.BinSpans.AddRange(removednodes.SelectMany(el => el.BinSpans));
 				// the new expression is wrapped in a container so that negations aren't pushed through lifted comparison operations
 				expr.Code = ILCode.Wrap;
 				expr.Arguments.Clear();
 				expr.Arguments.Add(n);
-				expr.ILRanges.Clear();
+				if (context.CalculateBinSpans)
+					expr.BinSpans.Clear();
 				expr.InferredType = n.InferredType;
 			}
 		}

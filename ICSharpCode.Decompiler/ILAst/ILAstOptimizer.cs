@@ -18,15 +18,12 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
-using ICSharpCode.Decompiler.FlowAnalysis;
 using ICSharpCode.NRefactory.Utils;
-using Mono.Cecil;
-using Mono.Cecil.Cil;
+using dnlib.DotNet;
+using dnlib.DotNet.Emit;
 
-namespace ICSharpCode.Decompiler.ILAst
-{
+namespace ICSharpCode.Decompiler.ILAst {
 	public enum ILAstOptimizationStep
 	{
 		RemoveRedundantCode,
@@ -79,190 +76,291 @@ namespace ICSharpCode.Decompiler.ILAst
 		int nextLabelIndex = 0;
 		
 		DecompilerContext context;
-		TypeSystem typeSystem;
+		ICorLibTypes corLib;
 		ILBlock method;
-		
+
+		// PERF: Cache used lists used in Optimize() instead of creating new ones all the time
+		readonly List<ILBlock> Optimize_List_ILBlock;
+		readonly List<ILNode> Optimize_List_ILNode;
+		readonly List<ILExpression> Optimize_List_ILExpression;
+		readonly List<ILExpression> Optimize_List_ILExpression2;
+		readonly Dictionary<ILLabel, int> Optimize_Dict_ILLabel_Int32;
+		readonly Dictionary<Local, ILVariable> Optimize_Dict_Local_ILVariable;
+		readonly Dictionary<ILLabel, ILNode> Optimize_Dict_ILLabel_ILNode;
+
+		public ILAstOptimizer()
+		{
+			this.del_getILInlining = GetILInlining;
+			this.Optimize_List_ILBlock = new List<ILBlock>();
+			this.Optimize_List_ILNode = new List<ILNode>();
+			this.Optimize_List_ILExpression = new List<ILExpression>();
+			this.Optimize_List_ILExpression2 = new List<ILExpression>();
+			this.Optimize_Dict_ILLabel_Int32 = new Dictionary<ILLabel, int>();
+			this.Optimize_Dict_Local_ILVariable = new Dictionary<Local, ILVariable>();
+			this.Optimize_Dict_ILLabel_ILNode = new Dictionary<ILLabel, ILNode>();
+		}
+
+		public void Reset()
+		{
+			this.context = null;
+			this.corLib = null;
+			this.method = null;
+			this.nextLabelIndex = 0;
+			this.Optimize_List_ILBlock.Clear();
+			this.Optimize_List_ILNode.Clear();
+			this.Optimize_List_ILExpression.Clear();
+			this.Optimize_List_ILExpression2.Clear();
+			this.Optimize_Dict_ILLabel_Int32.Clear();
+			this.Optimize_Dict_Local_ILVariable.Clear();
+			this.Optimize_Dict_ILLabel_ILNode.Clear();
+		}
+
+		SimpleControlFlow GetSimpleControlFlow(DecompilerContext context, ILBlock method)
+		{
+			if (cached_SimpleControlFlow == null)
+				cached_SimpleControlFlow = new SimpleControlFlow(context, method);
+			else
+				cached_SimpleControlFlow.Initialize(context, method);
+			return cached_SimpleControlFlow;
+		}
+		SimpleControlFlow cached_SimpleControlFlow;
+
+		ILInlining GetILInlining(ILBlock method)
+		{
+			if (cached_ILInlining == null)
+				cached_ILInlining = new ILInlining(context, method);
+			else
+				cached_ILInlining.Initialize(method);
+			return cached_ILInlining;
+		}
+		ILInlining cached_ILInlining;
+
+		PatternMatcher GetPatternMatcher(ICorLibTypes corLib)
+		{
+			if (cached_PatternMatcher == null)
+				cached_PatternMatcher = new PatternMatcher(context, corLib);
+			else
+				cached_PatternMatcher.Initialize(corLib);
+			return cached_PatternMatcher;
+		}
+		PatternMatcher cached_PatternMatcher;
+
+		LoopsAndConditions GetLoopsAndConditions(DecompilerContext context)
+		{
+			if (cached_LoopsAndConditions == null)
+				cached_LoopsAndConditions = new LoopsAndConditions(context);
+			else
+				cached_LoopsAndConditions.Initialize(context);
+			return cached_LoopsAndConditions;
+		}
+		LoopsAndConditions cached_LoopsAndConditions;
+
+		readonly Func<ILBlock, ILInlining> del_getILInlining;
 		public void Optimize(DecompilerContext context, ILBlock method, ILAstOptimizationStep abortBeforeStep = ILAstOptimizationStep.None)
 		{
 			this.context = context;
-			this.typeSystem = context.CurrentMethod.Module.TypeSystem;
+			this.corLib = context.CurrentMethod.Module.CorLibTypes;
 			this.method = method;
-			
-			if (abortBeforeStep == ILAstOptimizationStep.RemoveRedundantCode) return;
-			RemoveRedundantCode(method);
-			
-			if (abortBeforeStep == ILAstOptimizationStep.ReduceBranchInstructionSet) return;
-			foreach(ILBlock block in method.GetSelfAndChildrenRecursive<ILBlock>()) {
-				ReduceBranchInstructionSet(block);
-			}
-			// ReduceBranchInstructionSet runs before inlining because the non-aggressive inlining heuristic
-			// looks at which type of instruction consumes the inlined variable.
-			
-			if (abortBeforeStep == ILAstOptimizationStep.InlineVariables) return;
-			// Works better after simple goto removal because of the following debug pattern: stloc X; br Next; Next:; ldloc X
-			ILInlining inlining1 = new ILInlining(method);
-			inlining1.InlineAllVariables();
-			
-			if (abortBeforeStep == ILAstOptimizationStep.CopyPropagation) return;
-			inlining1.CopyPropagation();
-			
-			if (abortBeforeStep == ILAstOptimizationStep.YieldReturn) return;
-			YieldReturnDecompiler.Run(context, method);
-			AsyncDecompiler.RunStep1(context, method);
-			
-			if (abortBeforeStep == ILAstOptimizationStep.AsyncAwait) return;
-			AsyncDecompiler.RunStep2(context, method);
-			
-			if (abortBeforeStep == ILAstOptimizationStep.PropertyAccessInstructions) return;
-			IntroducePropertyAccessInstructions(method);
-			
-			if (abortBeforeStep == ILAstOptimizationStep.SplitToMovableBlocks) return;
-			foreach(ILBlock block in method.GetSelfAndChildrenRecursive<ILBlock>()) {
-				SplitToBasicBlocks(block);
-			}
-			
-			if (abortBeforeStep == ILAstOptimizationStep.TypeInference) return;
-			// Types are needed for the ternary operator optimization
-			TypeAnalysis.Run(context, method);
-			
-			if (abortBeforeStep == ILAstOptimizationStep.HandlePointerArithmetic) return;
-			HandlePointerArithmetic(method);
 
-			foreach(ILBlock block in method.GetSelfAndChildrenRecursive<ILBlock>()) {
-				bool modified;
-				do {
-					modified = false;
-					
-					if (abortBeforeStep == ILAstOptimizationStep.SimplifyShortCircuit) return;
-					modified |= block.RunOptimization(new SimpleControlFlow(context, method).SimplifyShortCircuit);
-					
-					if (abortBeforeStep == ILAstOptimizationStep.SimplifyTernaryOperator) return;
-					modified |= block.RunOptimization(new SimpleControlFlow(context, method).SimplifyTernaryOperator);
-					
-					if (abortBeforeStep == ILAstOptimizationStep.SimplifyNullCoalescing) return;
-					modified |= block.RunOptimization(new SimpleControlFlow(context, method).SimplifyNullCoalescing);
-					
-					if (abortBeforeStep == ILAstOptimizationStep.JoinBasicBlocks) return;
-					modified |= block.RunOptimization(new SimpleControlFlow(context, method).JoinBasicBlocks);
+			try {
 
-					if (abortBeforeStep == ILAstOptimizationStep.SimplifyLogicNot) return;
-					modified |= block.RunOptimization(SimplifyLogicNot);
+				if (abortBeforeStep == ILAstOptimizationStep.RemoveRedundantCode) return;
+				RemoveRedundantCode(context, method, Optimize_List_ILExpression, Optimize_List_ILBlock, Optimize_Dict_ILLabel_Int32);
 
-					if (abortBeforeStep == ILAstOptimizationStep.SimplifyShiftOperators) return;
-					modified |= block.RunOptimization(SimplifyShiftOperators);
+				if (abortBeforeStep == ILAstOptimizationStep.ReduceBranchInstructionSet) return;
+				foreach (ILBlock block in method.GetSelfAndChildrenRecursive<ILBlock>(Optimize_List_ILBlock)) {
+					ReduceBranchInstructionSet(block);
+				}
+				// ReduceBranchInstructionSet runs before inlining because the non-aggressive inlining heuristic
+				// looks at which type of instruction consumes the inlined variable.
 
-					if (abortBeforeStep == ILAstOptimizationStep.TypeConversionSimplifications) return;
-					modified |= block.RunOptimization(TypeConversionSimplifications);
-					
-					if (abortBeforeStep == ILAstOptimizationStep.SimplifyLdObjAndStObj) return;
-					modified |= block.RunOptimization(SimplifyLdObjAndStObj);
-					
-					if (abortBeforeStep == ILAstOptimizationStep.SimplifyCustomShortCircuit) return;
-					modified |= block.RunOptimization(new SimpleControlFlow(context, method).SimplifyCustomShortCircuit);
+				if (abortBeforeStep == ILAstOptimizationStep.InlineVariables) return;
+				// Works better after simple goto removal because of the following debug pattern: stloc X; br Next; Next:; ldloc X
+				ILInlining inlining1 = GetILInlining(method);
+				inlining1.InlineAllVariables();
 
-					if (abortBeforeStep == ILAstOptimizationStep.SimplifyLiftedOperators) return;
-					modified |= block.RunOptimization(SimplifyLiftedOperators);
-					
-					if (abortBeforeStep == ILAstOptimizationStep.TransformArrayInitializers) return;
-					modified |= block.RunOptimization(TransformArrayInitializers);
+				if (abortBeforeStep == ILAstOptimizationStep.CopyPropagation) return;
+				inlining1.CopyPropagation(Optimize_List_ILNode);
 
-					if (abortBeforeStep == ILAstOptimizationStep.TransformMultidimensionalArrayInitializers) return;
-					modified |= block.RunOptimization(TransformMultidimensionalArrayInitializers);
-					
-					if (abortBeforeStep == ILAstOptimizationStep.TransformObjectInitializers) return;
-					modified |= block.RunOptimization(TransformObjectInitializers);
-					
-					if (abortBeforeStep == ILAstOptimizationStep.MakeAssignmentExpression) return;
-					if (context.Settings.MakeAssignmentExpressions) {
-						modified |= block.RunOptimization(MakeAssignmentExpression);
+				if (abortBeforeStep == ILAstOptimizationStep.YieldReturn) return;
+				YieldReturnDecompiler.Run(context, method, Optimize_List_ILNode, del_getILInlining);
+				AsyncDecompiler.RunStep1(context, method, Optimize_List_ILExpression, Optimize_List_ILBlock, Optimize_Dict_ILLabel_Int32);
+
+				if (abortBeforeStep == ILAstOptimizationStep.AsyncAwait) return;
+				AsyncDecompiler.RunStep2(context, method, Optimize_List_ILExpression, Optimize_List_ILBlock, Optimize_Dict_ILLabel_Int32, Optimize_List_ILNode, del_getILInlining);
+
+				if (abortBeforeStep == ILAstOptimizationStep.PropertyAccessInstructions) return;
+				IntroducePropertyAccessInstructions(method);
+
+				if (abortBeforeStep == ILAstOptimizationStep.SplitToMovableBlocks) return;
+				foreach (ILBlock block in method.GetSelfAndChildrenRecursive<ILBlock>(Optimize_List_ILBlock)) {
+					SplitToBasicBlocks(block);
+				}
+
+				if (abortBeforeStep == ILAstOptimizationStep.TypeInference) return;
+				// Types are needed for the ternary operator optimization
+				TypeAnalysis.Run(context, method);
+
+				if (abortBeforeStep == ILAstOptimizationStep.HandlePointerArithmetic) return;
+				HandlePointerArithmetic(method);
+
+				foreach (ILBlock block in method.GetSelfAndChildrenRecursive<ILBlock>(Optimize_List_ILBlock)) {
+					bool modified;
+					do {
+						modified = false;
+
+						if (abortBeforeStep == ILAstOptimizationStep.SimplifyShortCircuit) return;
+						modified |= block.RunOptimization(GetSimpleControlFlow(context, method).SimplifyShortCircuit);
+
+						if (abortBeforeStep == ILAstOptimizationStep.SimplifyTernaryOperator) return;
+						modified |= block.RunOptimization(GetSimpleControlFlow(context, method).SimplifyTernaryOperator);
+
+						if (abortBeforeStep == ILAstOptimizationStep.SimplifyNullCoalescing) return;
+						modified |= block.RunOptimization(GetSimpleControlFlow(context, method).SimplifyNullCoalescing);
+
+						if (abortBeforeStep == ILAstOptimizationStep.JoinBasicBlocks) return;
+						modified |= block.RunOptimization(GetSimpleControlFlow(context, method).JoinBasicBlocks);
+
+						if (abortBeforeStep == ILAstOptimizationStep.SimplifyLogicNot) return;
+						modified |= block.RunOptimization(SimplifyLogicNot);
+
+						if (abortBeforeStep == ILAstOptimizationStep.SimplifyShiftOperators) return;
+						modified |= block.RunOptimization(SimplifyShiftOperators);
+
+						if (abortBeforeStep == ILAstOptimizationStep.TypeConversionSimplifications) return;
+						modified |= block.RunOptimization(TypeConversionSimplifications);
+
+						if (abortBeforeStep == ILAstOptimizationStep.SimplifyLdObjAndStObj) return;
+						modified |= block.RunOptimization(SimplifyLdObjAndStObj);
+
+						if (abortBeforeStep == ILAstOptimizationStep.SimplifyCustomShortCircuit) return;
+						modified |= block.RunOptimization(GetSimpleControlFlow(context, method).SimplifyCustomShortCircuit);
+
+						if (abortBeforeStep == ILAstOptimizationStep.SimplifyLiftedOperators) return;
+						modified |= block.RunOptimization(SimplifyLiftedOperators);
+
+						if (abortBeforeStep == ILAstOptimizationStep.TransformArrayInitializers) return;
+						modified |= block.RunOptimization(TransformArrayInitializers);
+
+						if (abortBeforeStep == ILAstOptimizationStep.TransformMultidimensionalArrayInitializers) return;
+						modified |= block.RunOptimization(TransformMultidimensionalArrayInitializers);
+
+						if (abortBeforeStep == ILAstOptimizationStep.TransformObjectInitializers) return;
+						modified |= block.RunOptimization(TransformObjectInitializers);
+
+						if (abortBeforeStep == ILAstOptimizationStep.MakeAssignmentExpression) return;
+						if (context.Settings.MakeAssignmentExpressions) {
+							modified |= block.RunOptimization(MakeAssignmentExpression);
+						}
+						modified |= block.RunOptimization(MakeCompoundAssignments);
+
+						if (abortBeforeStep == ILAstOptimizationStep.IntroducePostIncrement) return;
+						if (context.Settings.IntroduceIncrementAndDecrement) {
+							modified |= block.RunOptimization(IntroducePostIncrement);
+						}
+
+						if (abortBeforeStep == ILAstOptimizationStep.InlineExpressionTreeParameterDeclarations) return;
+						if (context.Settings.ExpressionTrees) {
+							modified |= block.RunOptimization(InlineExpressionTreeParameterDeclarations);
+						}
+
+						if (abortBeforeStep == ILAstOptimizationStep.InlineVariables2) return;
+						modified |= GetILInlining(method).InlineAllInBlock(block);
+						GetILInlining(method).CopyPropagation(Optimize_List_ILNode);
+
+					} while (modified);
+				}
+
+				if (abortBeforeStep == ILAstOptimizationStep.FindLoops) return;
+				foreach (ILBlock block in method.GetSelfAndChildrenRecursive<ILBlock>(Optimize_List_ILBlock)) {
+					GetLoopsAndConditions(context).FindLoops(block);
+				}
+
+				if (abortBeforeStep == ILAstOptimizationStep.FindConditions) return;
+				foreach (ILBlock block in method.GetSelfAndChildrenRecursive<ILBlock>(Optimize_List_ILBlock)) {
+					GetLoopsAndConditions(context).FindConditions(block);
+				}
+
+				if (abortBeforeStep == ILAstOptimizationStep.FlattenNestedMovableBlocks) return;
+				FlattenBasicBlocks(method);
+
+				if (abortBeforeStep == ILAstOptimizationStep.RemoveEndFinally) return;
+				RemoveEndFinally(method);
+
+				if (abortBeforeStep == ILAstOptimizationStep.RemoveRedundantCode2) return;
+				RemoveRedundantCode(context, method, Optimize_List_ILExpression, Optimize_List_ILBlock, Optimize_Dict_ILLabel_Int32);
+
+				if (abortBeforeStep == ILAstOptimizationStep.GotoRemoval) return;
+				var gr = context.Cache.GetGotoRemoval();
+				try {
+					gr.RemoveGotos(method);
+				}
+				finally {
+					context.Cache.Return(gr);
+				}
+
+				if (abortBeforeStep == ILAstOptimizationStep.DuplicateReturns) return;
+				DuplicateReturnStatements(method);
+
+				if (abortBeforeStep == ILAstOptimizationStep.GotoRemoval2) return;
+				gr = context.Cache.GetGotoRemoval();
+				try {
+					gr.RemoveGotos(method);
+				}
+				finally {
+					context.Cache.Return(gr);
+				}
+
+				if (abortBeforeStep == ILAstOptimizationStep.ReduceIfNesting) return;
+				ReduceIfNesting(method);
+
+				if (abortBeforeStep == ILAstOptimizationStep.InlineVariables3) return;
+				// The 2nd inlining pass is necessary because DuplicateReturns and the introduction of ternary operators
+				// open up additional inlining possibilities.
+				GetILInlining(method).InlineAllVariables();
+
+				if (abortBeforeStep == ILAstOptimizationStep.CachedDelegateInitialization) return;
+				if (context.Settings.AnonymousMethods) {
+					foreach (ILBlock block in method.GetSelfAndChildrenRecursive<ILBlock>(Optimize_List_ILBlock)) {
+						for (int i = 0; i < block.Body.Count; i++) {
+							// TODO: Move before loops
+							CachedDelegateInitializationWithField(block, ref i);
+							CachedDelegateInitializationWithLocal(block, ref i);
+						}
 					}
-					modified |= block.RunOptimization(MakeCompoundAssignments);
-					
-					if (abortBeforeStep == ILAstOptimizationStep.IntroducePostIncrement) return;
-					if (context.Settings.IntroduceIncrementAndDecrement) {
-						modified |= block.RunOptimization(IntroducePostIncrement);
-					}
-					
-					if (abortBeforeStep == ILAstOptimizationStep.InlineExpressionTreeParameterDeclarations) return;
-					if (context.Settings.ExpressionTrees) {
-						modified |= block.RunOptimization(InlineExpressionTreeParameterDeclarations);
-					}
-					
-					if (abortBeforeStep == ILAstOptimizationStep.InlineVariables2) return;
-					modified |= new ILInlining(method).InlineAllInBlock(block);
-					new ILInlining(method).CopyPropagation();
-					
-				} while(modified);
-			}
-			
-			if (abortBeforeStep == ILAstOptimizationStep.FindLoops) return;
-			foreach(ILBlock block in method.GetSelfAndChildrenRecursive<ILBlock>()) {
-				new LoopsAndConditions(context).FindLoops(block);
-			}
-			
-			if (abortBeforeStep == ILAstOptimizationStep.FindConditions) return;
-			foreach(ILBlock block in method.GetSelfAndChildrenRecursive<ILBlock>()) {
-				new LoopsAndConditions(context).FindConditions(block);
-			}
-			
-			if (abortBeforeStep == ILAstOptimizationStep.FlattenNestedMovableBlocks) return;
-			FlattenBasicBlocks(method);
-			
-			if (abortBeforeStep == ILAstOptimizationStep.RemoveEndFinally) return;
-			RemoveEndFinally(method);
-			
-			if (abortBeforeStep == ILAstOptimizationStep.RemoveRedundantCode2) return;
-			RemoveRedundantCode(method);
-			
-			if (abortBeforeStep == ILAstOptimizationStep.GotoRemoval) return;
-			new GotoRemoval().RemoveGotos(method);
-			
-			if (abortBeforeStep == ILAstOptimizationStep.DuplicateReturns) return;
-			DuplicateReturnStatements(method);
-			
-			if (abortBeforeStep == ILAstOptimizationStep.GotoRemoval2) return;
-			new GotoRemoval().RemoveGotos(method);
-			
-			if (abortBeforeStep == ILAstOptimizationStep.ReduceIfNesting) return;
-			ReduceIfNesting(method);
-			
-			if (abortBeforeStep == ILAstOptimizationStep.InlineVariables3) return;
-			// The 2nd inlining pass is necessary because DuplicateReturns and the introduction of ternary operators
-			// open up additional inlining possibilities.
-			new ILInlining(method).InlineAllVariables();
-			
-			if (abortBeforeStep == ILAstOptimizationStep.CachedDelegateInitialization) return;
-			if (context.Settings.AnonymousMethods) {
-				foreach(ILBlock block in method.GetSelfAndChildrenRecursive<ILBlock>()) {
-					for (int i = 0; i < block.Body.Count; i++) {
+				}
+
+				if (abortBeforeStep == ILAstOptimizationStep.IntroduceFixedStatements) return;
+				// we need post-order traversal, not pre-order, for "fixed" to work correctly
+				foreach (ILBlock block in TreeTraversal.PostOrder<ILNode>(method, n => n.GetChildren()).OfType<ILBlock>()) {
+					for (int i = block.Body.Count - 1; i >= 0; i--) {
 						// TODO: Move before loops
-						CachedDelegateInitializationWithField(block, ref i);
-						CachedDelegateInitializationWithLocal(block, ref i);
+						if (i < block.Body.Count)
+							IntroduceFixedStatements(block, block.Body, i);
 					}
 				}
+
+				if (abortBeforeStep == ILAstOptimizationStep.RecombineVariables) return;
+				RecombineVariables(method);
+
+				if (abortBeforeStep == ILAstOptimizationStep.TypeInference2) return;
+				TypeAnalysis.Reset(method, this.Optimize_List_ILExpression);
+				TypeAnalysis.Run(context, method);
+
+				if (abortBeforeStep == ILAstOptimizationStep.RemoveRedundantCode3) return;
+				GotoRemoval.RemoveRedundantCode(method, context);
+
+				// ReportUnassignedBinSpans(method);
 			}
-			
-			if (abortBeforeStep == ILAstOptimizationStep.IntroduceFixedStatements) return;
-			// we need post-order traversal, not pre-order, for "fixed" to work correctly
-			foreach (ILBlock block in TreeTraversal.PostOrder<ILNode>(method, n => n.GetChildren()).OfType<ILBlock>()) {
-				for (int i = block.Body.Count - 1; i >= 0; i--) {
-					// TODO: Move before loops
-					if (i < block.Body.Count)
-						IntroduceFixedStatements(block.Body, i);
-				}
+			finally {
+				this.Optimize_List_ILBlock.Clear();
+				this.Optimize_List_ILNode.Clear();
+				this.Optimize_List_ILExpression.Clear();
+				this.Optimize_List_ILExpression2.Clear();
+				this.Optimize_Dict_ILLabel_Int32.Clear();
+				this.Optimize_Dict_Local_ILVariable.Clear();
+				this.Optimize_Dict_ILLabel_ILNode.Clear();
 			}
-			
-			if (abortBeforeStep == ILAstOptimizationStep.RecombineVariables) return;
-			RecombineVariables(method);
-			
-			if (abortBeforeStep == ILAstOptimizationStep.TypeInference2) return;
-			TypeAnalysis.Reset(method);
-			TypeAnalysis.Run(context, method);
-			
-			if (abortBeforeStep == ILAstOptimizationStep.RemoveRedundantCode3) return;
-			GotoRemoval.RemoveRedundantCode(method);
-			
-			// ReportUnassignedILRanges(method);
 		}
 		
 		/// <summary>
@@ -270,40 +368,60 @@ namespace ICSharpCode.Decompiler.ILAst
 		/// Ignore arguments of 'leave'
 		/// </summary>
 		/// <param name="method"></param>
-		internal static void RemoveRedundantCode(ILBlock method)
+		internal static void RemoveRedundantCode(DecompilerContext context, ILBlock method, List<ILExpression> listExpr, List<ILBlock> listBlock, Dictionary<ILLabel, int> labelRefCount)
 		{
-			Dictionary<ILLabel, int> labelRefCount = new Dictionary<ILLabel, int>();
-			foreach (ILLabel target in method.GetSelfAndChildrenRecursive<ILExpression>(e => e.IsBranch()).SelectMany(e => e.GetBranchTargets())) {
-				labelRefCount[target] = labelRefCount.GetOrDefault(target) + 1;
+			labelRefCount.Clear();
+			foreach (var e in method.GetSelfAndChildrenRecursive<ILExpression>(listExpr, e => e.IsBranch())) {
+				foreach (var target in e.GetBranchTargets())
+					labelRefCount[target] = labelRefCount.GetOrDefault(target) + 1;
 			}
 			
-			foreach(ILBlock block in method.GetSelfAndChildrenRecursive<ILBlock>()) {
+			foreach(ILBlock block in method.GetSelfAndChildrenRecursive<ILBlock>(listBlock)) {
 				List<ILNode> body = block.Body;
 				List<ILNode> newBody = new List<ILNode>(body.Count);
 				for (int i = 0; i < body.Count; i++) {
 					ILLabel target;
 					ILExpression popExpr;
 					if (body[i].Match(ILCode.Br, out target) && i+1 < body.Count && body[i+1] == target) {
+						ILNode prev = newBody.Count > 0 ? newBody[newBody.Count - 1] : null;
+						ILNode label = null;
+						ILNode br = body[i];
 						// Ignore the branch
-						if (labelRefCount[target] == 1)
+						if (labelRefCount[target] == 1) {
+							label = body[i + 1];
 							i++;  // Ignore the label as well
+						}
+						if (context.CalculateBinSpans) {
+							ILNode next = i + 1 < body.Count ? body[i + 1] : null;
+							Utils.AddBinSpansTryPreviousFirst(br, prev, next, block);
+							if (label != null)
+								Utils.AddBinSpansTryPreviousFirst(label, prev, next, block);
+						}
 					} else if (body[i].Match(ILCode.Nop)){
 						// Ignore nop
+						if (context.CalculateBinSpans)
+							Utils.NopMergeBinSpans(block, newBody, i);
 					} else if (body[i].Match(ILCode.Pop, out popExpr)) {
 						ILVariable v;
 						if (!popExpr.Match(ILCode.Ldloc, out v))
 							throw new Exception("Pop should have just ldloc at this stage");
-						// Best effort to move the ILRange to previous statement
-						ILVariable prevVar;
-						ILExpression prevExpr;
-						if (i - 1 >= 0 && body[i - 1].Match(ILCode.Stloc, out prevVar, out prevExpr) && prevVar == v)
-							prevExpr.ILRanges.AddRange(((ILExpression)body[i]).ILRanges);
+						if (context.CalculateBinSpans) {
+							// Best effort to move the BinSpan to previous statement
+							ILVariable prevVar;
+							ILExpression prevExpr;
+							if (i - 1 >= 0 && body[i - 1].Match(ILCode.Stloc, out prevVar, out prevExpr) && prevVar == v)
+								prevExpr.BinSpans.AddRange(((ILExpression)body[i]).BinSpans);
+							else
+								Utils.AddBinSpansTryPreviousFirst(newBody, body, i, block);
+						}
 						// Ignore pop
 					} else {
 						ILLabel label = body[i] as ILLabel;
 						if (label != null) {
 							if (labelRefCount.GetOrDefault(label) > 0)
 								newBody.Add(label);
+							else if (context.CalculateBinSpans)
+								Utils.LabelMergeBinSpans(block, newBody, i);
 						} else {
 							newBody.Add(body[i]);
 						}
@@ -313,18 +431,32 @@ namespace ICSharpCode.Decompiler.ILAst
 			}
 			
 			// Ignore arguments of 'leave'
-			foreach (ILExpression expr in method.GetSelfAndChildrenRecursive<ILExpression>(e => e.Code == ILCode.Leave)) {
+			foreach (ILExpression expr in method.GetSelfAndChildrenRecursive<ILExpression>(listExpr, e => e.Code == ILCode.Leave)) {
 				if (expr.Arguments.Any(arg => !arg.Match(ILCode.Ldloc)))
 					throw new Exception("Leave should have just ldloc at this stage");
+				if (context.CalculateBinSpans) {
+					foreach (var arg in expr.Arguments)
+						arg.AddSelfAndChildrenRecursiveBinSpans(expr.BinSpans);
+				}
 				expr.Arguments.Clear();
 			}
 			
 			// 'dup' removal
-			foreach (ILExpression expr in method.GetSelfAndChildrenRecursive<ILExpression>()) {
+			foreach (ILExpression expr in method.GetSelfAndChildrenRecursive<ILExpression>(listExpr)) {
 				for (int i = 0; i < expr.Arguments.Count; i++) {
 					ILExpression child;
 					if (expr.Arguments[i].Match(ILCode.Dup, out child)) {
-						child.ILRanges.AddRange(expr.Arguments[i].ILRanges);
+						if (context.CalculateBinSpans) {
+							long index = 0;
+							bool done = false;
+							var argTmp = expr.Arguments[i];
+							for (;;) {
+								var b = argTmp.GetAllBinSpans(ref index, ref done);
+								if (done)
+									break;
+								child.BinSpans.Add(b);
+							}
+						}
 						expr.Arguments[i] = child;
 					}
 				}
@@ -333,7 +465,7 @@ namespace ICSharpCode.Decompiler.ILAst
 		
 		/// <summary>
 		/// Reduces the branch codes to just br and brtrue.
-		/// Moves ILRanges to the branch argument
+		/// Moves BinSpans to the branch argument
 		/// </summary>
 		void ReduceBranchInstructionSet(ILBlock block)
 		{
@@ -344,26 +476,29 @@ namespace ICSharpCode.Decompiler.ILAst
 					switch(expr.Code) {
 						case ILCode.Switch:
 						case ILCode.Brtrue:
-							expr.Arguments.Single().ILRanges.AddRange(expr.ILRanges);
-							expr.ILRanges.Clear();
+							if (context.CalculateBinSpans) {
+								expr.Arguments.Single().BinSpans.AddRange(expr.BinSpans);
+								expr.BinSpans.Clear();
+							}
 							continue;
-							case ILCode.__Brfalse:  op = ILCode.LogicNot; break;
-							case ILCode.__Beq:	  op = ILCode.Ceq; break;
-							case ILCode.__Bne_Un:   op = ILCode.Cne; break;
-							case ILCode.__Bgt:	  op = ILCode.Cgt; break;
-							case ILCode.__Bgt_Un:   op = ILCode.Cgt_Un; break;
-							case ILCode.__Ble:	  op = ILCode.Cle; break;
-							case ILCode.__Ble_Un:   op = ILCode.Cle_Un; break;
-							case ILCode.__Blt:	  op = ILCode.Clt; break;
-							case ILCode.__Blt_Un:   op = ILCode.Clt_Un; break;
-							case ILCode.__Bge:		op = ILCode.Cge; break;
-							case ILCode.__Bge_Un:   op = ILCode.Cge_Un; break;
+							case ILCode.Brfalse:  op = ILCode.LogicNot; break;
+							case ILCode.Beq:      op = ILCode.Ceq; break;
+							case ILCode.Bne_Un:   op = ILCode.Cne; break;
+							case ILCode.Bgt:      op = ILCode.Cgt; break;
+							case ILCode.Bgt_Un:   op = ILCode.Cgt_Un; break;
+							case ILCode.Ble:      op = ILCode.Cle; break;
+							case ILCode.Ble_Un:   op = ILCode.Cle_Un; break;
+							case ILCode.Blt:      op = ILCode.Clt; break;
+							case ILCode.Blt_Un:   op = ILCode.Clt_Un; break;
+							case ILCode.Bge:	  op = ILCode.Cge; break;
+							case ILCode.Bge_Un:   op = ILCode.Cge_Un; break;
 						default:
 							continue;
 					}
 					var newExpr = new ILExpression(op, null, expr.Arguments);
 					block.Body[i] = new ILExpression(ILCode.Brtrue, expr.Operand, newExpr);
-					newExpr.ILRanges = expr.ILRanges;
+					if (context.CalculateBinSpans)
+						newExpr.BinSpans.AddRange(expr.BinSpans);
 				}
 			}
 		}
@@ -398,9 +533,11 @@ namespace ICSharpCode.Decompiler.ILAst
 		void IntroducePropertyAccessInstructions(ILExpression expr, ILExpression parentExpr, int posInParent)
 		{
 			if (expr.Code == ILCode.Call || expr.Code == ILCode.Callvirt) {
-				MethodReference cecilMethod = (MethodReference)expr.Operand;
-				if (cecilMethod.DeclaringType is ArrayType) {
-					switch (cecilMethod.Name) {
+				IMethod method = (IMethod)expr.Operand;
+				var declType = method.DeclaringType as dnlib.DotNet.TypeSpec;
+				var declArrayType = declType == null ? null : declType.TypeSig.RemovePinnedAndModifiers() as ArraySigBase;
+				if (declArrayType != null) {
+					switch (method.Name) {
 						case "Get":
 							expr.Code = ILCode.CallGetter;
 							break;
@@ -408,12 +545,11 @@ namespace ICSharpCode.Decompiler.ILAst
 							expr.Code = ILCode.CallSetter;
 							break;
 						case "Address":
-							ByReferenceType brt = cecilMethod.ReturnType as ByReferenceType;
+							ByRefSig brt = method.MethodSig.GetRetType() as ByRefSig;
 							if (brt != null) {
-								MethodReference getMethod = new MethodReference("Get", brt.ElementType, cecilMethod.DeclaringType);
-								foreach (var p in cecilMethod.Parameters)
-									getMethod.Parameters.Add(p);
-								getMethod.HasThis = cecilMethod.HasThis;
+								IMethod getMethod = new MemberRefUser(method.Module, "Get", method.MethodSig == null ? null : method.MethodSig.Clone(), declArrayType.ToTypeDefOrRef());
+								if (getMethod.MethodSig != null)
+									getMethod.MethodSig.RetType = declArrayType.Next;
 								expr.Operand = getMethod;
 							}
 							expr.Code = ILCode.CallGetter;
@@ -423,11 +559,11 @@ namespace ICSharpCode.Decompiler.ILAst
 							break;
 					}
 				} else {
-					MethodDefinition cecilMethodDef = cecilMethod.Resolve();
-					if (cecilMethodDef != null) {
-						if (cecilMethodDef.IsGetter)
+					MethodDef methodDef = method.Resolve();
+					if (methodDef != null) {
+						if (methodDef.IsGetter)
 							expr.Code = (expr.Code == ILCode.Call) ? ILCode.CallGetter : ILCode.CallvirtGetter;
-						else if (cecilMethodDef.IsSetter)
+						else if (methodDef.IsSetter)
 							expr.Code = (expr.Code == ILCode.Call) ? ILCode.CallSetter : ILCode.CallvirtSetter;
 					}
 				}
@@ -442,6 +578,8 @@ namespace ICSharpCode.Decompiler.ILAst
 					// Remove the 'target' argument from the ldvirtftn instruction.
 					// It's not needed in the translation to C#, and needs to be eliminated so that the target expression
 					// can be inlined.
+					if (context.CalculateBinSpans)
+						expr.Arguments[1].Arguments[0].AddSelfAndChildrenRecursiveBinSpans(expr.Arguments[1].BinSpans);
 					expr.Arguments[1].Arguments.Clear();
 				}
 			}
@@ -456,7 +594,7 @@ namespace ICSharpCode.Decompiler.ILAst
 		{
 			List<ILNode> basicBlocks = new List<ILNode>();
 			
-			ILLabel entryLabel = block.Body.FirstOrDefault() as ILLabel ?? new ILLabel() { Name = "Block_" + (nextLabelIndex++) };
+			ILLabel entryLabel = block.Body.FirstOrDefault() as ILLabel ?? new ILLabel() { Name = "Block_" + (nextLabelIndex++).ToString() };
 			ILBasicBlock basicBlock = new ILBasicBlock();
 			basicBlocks.Add(basicBlock);
 			basicBlock.Body.Add(entryLabel);
@@ -505,47 +643,47 @@ namespace ICSharpCode.Decompiler.ILAst
 		
 		void DuplicateReturnStatements(ILBlock method)
 		{
-			Dictionary<ILLabel, ILNode> nextSibling = new Dictionary<ILLabel, ILNode>();
-			
+			this.Optimize_Dict_ILLabel_ILNode.Clear();
+
 			// Build navigation data
-			foreach(ILBlock block in method.GetSelfAndChildrenRecursive<ILBlock>()) {
+			foreach(ILBlock block in method.GetSelfAndChildrenRecursive<ILBlock>(Optimize_List_ILBlock)) {
 				for (int i = 0; i < block.Body.Count - 1; i++) {
 					ILLabel curr = block.Body[i] as ILLabel;
 					if (curr != null) {
-						nextSibling[curr] = block.Body[i + 1];
+						Optimize_Dict_ILLabel_ILNode[curr] = block.Body[i + 1];
 					}
 				}
 			}
 			
 			// Duplicate returns
-			foreach(ILBlock block in method.GetSelfAndChildrenRecursive<ILBlock>()) {
+			foreach(ILBlock block in method.GetSelfAndChildrenRecursive<ILBlock>(Optimize_List_ILBlock)) {
 				for (int i = 0; i < block.Body.Count; i++) {
 					ILLabel targetLabel;
 					if (block.Body[i].Match(ILCode.Br, out targetLabel) || block.Body[i].Match(ILCode.Leave, out targetLabel)) {
 						// Skip extra labels
-						while(nextSibling.ContainsKey(targetLabel) && nextSibling[targetLabel] is ILLabel) {
-							targetLabel = (ILLabel)nextSibling[targetLabel];
+						while(Optimize_Dict_ILLabel_ILNode.ContainsKey(targetLabel) && Optimize_Dict_ILLabel_ILNode[targetLabel] is ILLabel) {
+							targetLabel = (ILLabel)Optimize_Dict_ILLabel_ILNode[targetLabel];
 						}
 						
 						// Inline return statement
 						ILNode target;
 						List<ILExpression> retArgs;
-						if (nextSibling.TryGetValue(targetLabel, out target)) {
+						if (Optimize_Dict_ILLabel_ILNode.TryGetValue(targetLabel, out target)) {
 							if (target.Match(ILCode.Ret, out retArgs)) {
 								ILVariable locVar;
 								object constValue;
 								if (retArgs.Count == 0) {
-									block.Body[i] = new ILExpression(ILCode.Ret, null);
+									block.Body[i] = new ILExpression(ILCode.Ret, null).WithBinSpansFrom(context.CalculateBinSpans, block.Body[i]);
 								} else if (retArgs.Single().Match(ILCode.Ldloc, out locVar)) {
-									block.Body[i] = new ILExpression(ILCode.Ret, null, new ILExpression(ILCode.Ldloc, locVar));
+									block.Body[i] = new ILExpression(ILCode.Ret, null, new ILExpression(ILCode.Ldloc, locVar)).WithBinSpansFrom(context.CalculateBinSpans, block.Body[i]);
 								} else if (retArgs.Single().Match(ILCode.Ldc_I4, out constValue)) {
-									block.Body[i] = new ILExpression(ILCode.Ret, null, new ILExpression(ILCode.Ldc_I4, constValue));
+									block.Body[i] = new ILExpression(ILCode.Ret, null, new ILExpression(ILCode.Ldc_I4, constValue)).WithBinSpansFrom(context.CalculateBinSpans, block.Body[i]);
 								}
 							}
 						} else {
 							if (method.Body.Count > 0 && method.Body.Last() == targetLabel) {
 								// It exits the main method - so it is same as return;
-								block.Body[i] = new ILExpression(ILCode.Ret, null);
+								block.Body[i] = new ILExpression(ILCode.Ret, null).WithBinSpansFrom(context.CalculateBinSpans, block.Body[i]);
 							}
 						}
 					}
@@ -560,6 +698,7 @@ namespace ICSharpCode.Decompiler.ILAst
 		{
 			ILBlock block = node as ILBlock;
 			if (block != null) {
+				ILBasicBlock prevChildAsBB = null;
 				List<ILNode> flatBody = new List<ILNode>();
 				foreach (ILNode child in block.GetChildren()) {
 					FlattenBasicBlocks(child);
@@ -569,13 +708,25 @@ namespace ICSharpCode.Decompiler.ILAst
 							throw new Exception("Basic block has to start with a label. \n" + childAsBB.ToString());
 						if (childAsBB.Body.LastOrDefault() is ILExpression && !childAsBB.Body.LastOrDefault().IsUnconditionalControlFlow())
 							throw new Exception("Basci block has to end with unconditional control flow. \n" + childAsBB.ToString());
+						if (context.CalculateBinSpans) {
+							if (flatBody.Count > 0)
+								flatBody[flatBody.Count - 1].EndBinSpans.AddRange(childAsBB.BinSpans);
+							else
+								block.BinSpans.AddRange(childAsBB.BinSpans);
+						}
 						flatBody.AddRange(childAsBB.GetChildren());
+						prevChildAsBB = childAsBB;
 					} else {
 						flatBody.Add(child);
+						if (context.CalculateBinSpans && prevChildAsBB != null)
+							child.BinSpans.AddRange(prevChildAsBB.EndBinSpans);
+						prevChildAsBB = null;
 					}
 				}
 				block.EntryGoto = null;
 				block.Body = flatBody;
+				if (context.CalculateBinSpans && prevChildAsBB != null)
+					block.EndBinSpans.AddRange(prevChildAsBB.EndBinSpans);
 			} else if (node is ILExpression) {
 				// Optimization - no need to check expressions
 			} else if (node != null) {
@@ -592,13 +743,15 @@ namespace ICSharpCode.Decompiler.ILAst
 		void RemoveEndFinally(ILBlock method)
 		{
 			// Go thought the list in reverse so that we do the nested blocks first
-			foreach(var tryCatch in method.GetSelfAndChildrenRecursive<ILTryCatchBlock>(tc => tc.FinallyBlock != null).Reverse()) {
-				ILLabel label = new ILLabel() { Name = "EndFinally_" + nextLabelIndex++ };
+			var list = method.GetSelfAndChildrenRecursive<ILTryCatchBlock>(tc => tc.FinallyBlock != null);
+			for (int j = list.Count - 1; j >= 0; j--) {
+				var tryCatch = list[j];
+				ILLabel label = new ILLabel() { Name = "EndFinally_" + (nextLabelIndex++).ToString() };
 				tryCatch.FinallyBlock.Body.Add(label);
-				foreach(var block in tryCatch.FinallyBlock.GetSelfAndChildrenRecursive<ILBlock>()) {
+				foreach(var block in tryCatch.FinallyBlock.GetSelfAndChildrenRecursive<ILBlock>(Optimize_List_ILBlock)) {
 					for (int i = 0; i < block.Body.Count; i++) {
 						if (block.Body[i].Match(ILCode.Endfinally)) {
-							block.Body[i] = new ILExpression(ILCode.Br, label).WithILRanges(((ILExpression)block.Body[i]).ILRanges);
+							block.Body[i] = new ILExpression(ILCode.Br, label).WithBinSpansFrom(context.CalculateBinSpans, block.Body[i]);
 						}
 					}
 				}
@@ -653,15 +806,15 @@ namespace ICSharpCode.Decompiler.ILAst
 			// Recombine variables that were split when the ILAst was created
 			// This ensures that a single IL variable is a single C# variable (gets assigned only one name)
 			// The DeclareVariables transformation might then split up the C# variable again if it is used indendently in two separate scopes.
-			Dictionary<VariableDefinition, ILVariable> dict = new Dictionary<VariableDefinition, ILVariable>();
+			Optimize_Dict_Local_ILVariable.Clear();
 			ReplaceVariables(
 				method,
 				delegate(ILVariable v) {
 					if (v.OriginalVariable == null)
 						return v;
 					ILVariable combinedVariable;
-					if (!dict.TryGetValue(v.OriginalVariable, out combinedVariable)) {
-						dict.Add(v.OriginalVariable, v);
+					if (!Optimize_Dict_Local_ILVariable.TryGetValue(v.OriginalVariable, out combinedVariable)) {
+						Optimize_Dict_Local_ILVariable.Add(v.OriginalVariable, v);
 						combinedVariable = v;
 					}
 					return combinedVariable;
@@ -670,21 +823,25 @@ namespace ICSharpCode.Decompiler.ILAst
 
 		void HandlePointerArithmetic(ILNode method)
 		{
-			foreach (ILExpression expr in method.GetSelfAndChildrenRecursive<ILExpression>()) {
+			foreach (ILExpression expr in method.GetSelfAndChildrenRecursive<ILExpression>(this.Optimize_List_ILExpression2)) {
 				List<ILExpression> args = expr.Arguments;
 				switch (expr.Code) {
 					case ILCode.Localloc:
 					{
-						PointerType type = expr.InferredType as PointerType;
+						// Disable unstable code. Will throw when type is void* because it gets
+						// changed to a byte*.
+#if false
+						PtrSig type = expr.InferredType as PtrSig;
 						if (type != null) {
 							ILExpression arg0 = args[0];
 							ILExpression expr2 = expr;
-							DivideOrMultiplyBySize(ref expr2, ref arg0, type.ElementType, true);
+							DivideOrMultiplyBySize(ref expr2, ref arg0, type.Next, true);
 							// expr shouldn't change
 							if (expr2 != expr)
 								throw new InvalidOperationException();
 							args[0] = arg0;
 						}
+#endif
 						break;
 					}
 					case ILCode.Add:
@@ -693,11 +850,11 @@ namespace ICSharpCode.Decompiler.ILAst
 					{
 						ILExpression arg0 = args[0];
 						ILExpression arg1 = args[1];
-						if (expr.InferredType is PointerType) {
-							if (arg0.ExpectedType is PointerType) {
-								DivideOrMultiplyBySize(ref arg0, ref arg1, ((PointerType)expr.InferredType).ElementType, true);
-							} else if (arg1.ExpectedType is PointerType)
-								DivideOrMultiplyBySize(ref arg1, ref arg0, ((PointerType)expr.InferredType).ElementType, true);
+						if (expr.InferredType is PtrSig) {
+							if (arg0.ExpectedType is PtrSig) {
+								DivideOrMultiplyBySize(ref arg0, ref arg1, ((PtrSig)expr.InferredType).Next, true);
+							} else if (arg1.ExpectedType is PtrSig)
+								DivideOrMultiplyBySize(ref arg1, ref arg0, ((PtrSig)expr.InferredType).Next, true);
 						}
 						args[0] = arg0;
 						args[1] = arg1;
@@ -709,9 +866,9 @@ namespace ICSharpCode.Decompiler.ILAst
 					{
 						ILExpression arg0 = args[0];
 						ILExpression arg1 = args[1];
-						if (expr.InferredType is PointerType) {
-							if (arg0.ExpectedType is PointerType && !(arg1.InferredType is PointerType))
-								DivideOrMultiplyBySize(ref arg0, ref arg1, ((PointerType)expr.InferredType).ElementType, true);
+						if (expr.InferredType is PtrSig) {
+							if (arg0.ExpectedType is PtrSig && !(arg1.InferredType is PtrSig))
+								DivideOrMultiplyBySize(ref arg0, ref arg1, ((PtrSig)expr.InferredType).Next, true);
 						}
 						args[0] = arg0;
 						args[1] = arg1;
@@ -721,24 +878,24 @@ namespace ICSharpCode.Decompiler.ILAst
 					{
 						ILExpression arg0 = args[0];
 						// conv.i8(div:intptr(p0 - p1))
-						if (arg0.Code == ILCode.Div && arg0.InferredType.FullName == "System.IntPtr")
+						if (arg0.Code == ILCode.Div && arg0.InferredType.RemovePinnedAndModifiers().GetElementType() == ElementType.I)
 						{
 							ILExpression dividend = arg0.Arguments[0];
-							if (dividend.InferredType.FullName == "System.IntPtr" &&
+							if (dividend.InferredType.RemovePinnedAndModifiers().GetElementType() == ElementType.I &&
 								(dividend.Code == ILCode.Sub || dividend.Code == ILCode.Sub_Ovf || dividend.Code == ILCode.Sub_Ovf_Un))
 							{
-								PointerType pointerType0 = dividend.Arguments[0].InferredType as PointerType;
-								PointerType pointerType1 = dividend.Arguments[1].InferredType as PointerType;
+								PtrSig pointerType0 = dividend.Arguments[0].InferredType as PtrSig;
+								PtrSig pointerType1 = dividend.Arguments[1].InferredType as PtrSig;
 
 								if (pointerType0 != null && pointerType1 != null) {
-									if (pointerType0.ElementType.FullName == "System.Void" ||
-										pointerType0.ElementType.FullName != pointerType1.ElementType.FullName) {
-										pointerType0 = pointerType1 = new PointerType(typeSystem.Byte);
+									if (pointerType0.Next.RemovePinnedAndModifiers().GetElementType() == ElementType.Void ||
+										!new SigComparer().Equals(pointerType0.Next, pointerType1.Next)) {
+										pointerType0 = pointerType1 = new PtrSig(corLib.Byte);
 										dividend.Arguments[0] = Cast(dividend.Arguments[0], pointerType0);
 										dividend.Arguments[1] = Cast(dividend.Arguments[1], pointerType1);
 									}
 
-									DivideOrMultiplyBySize(ref dividend, ref arg0, pointerType0.ElementType, false);
+									DivideOrMultiplyBySize(ref dividend, ref arg0, pointerType0.Next, false);
 									// dividend shouldn't change
 									if (args[0].Arguments[0] != dividend)
 										throw new InvalidOperationException();
@@ -752,44 +909,46 @@ namespace ICSharpCode.Decompiler.ILAst
 			}
 		}
 
-		static ILExpression UnwrapIntPtrCast(ILExpression expr)
+		ILExpression UnwrapIntPtrCast(ILExpression expr)
 		{
 			if (expr.Code != ILCode.Conv_I && expr.Code != ILCode.Conv_U)
 				return expr;
 
 			ILExpression arg = expr.Arguments[0];
-			switch (arg.InferredType.MetadataType) {
-				case MetadataType.Byte:
-				case MetadataType.SByte:
-				case MetadataType.UInt16:
-				case MetadataType.Int16:
-				case MetadataType.UInt32:
-				case MetadataType.Int32:
-				case MetadataType.UInt64:
-				case MetadataType.Int64:
+			switch (arg.InferredType.GetElementType()) {
+				case ElementType.U1:
+				case ElementType.I1:
+				case ElementType.U2:
+				case ElementType.I2:
+				case ElementType.U4:
+				case ElementType.I4:
+				case ElementType.U8:
+				case ElementType.I8:
+					if (context.CalculateBinSpans)
+						arg.BinSpans.AddRange(expr.BinSpans);
 					return arg;
 			}
 
 			return expr;
 		}
 
-		static ILExpression Cast(ILExpression expr, TypeReference type)
+		static ILExpression Cast(ILExpression expr, TypeSig type)
 		{
-			return new ILExpression(ILCode.Castclass, type, expr)
+			return new ILExpression(ILCode.Castclass, type.ToTypeDefOrRef(), expr)
 			{
 				InferredType = type,
 				ExpectedType = type
 			};
 		}
 
-		void DivideOrMultiplyBySize(ref ILExpression pointerExpr, ref ILExpression adjustmentExpr, TypeReference elementType, bool divide)
+		void DivideOrMultiplyBySize(ref ILExpression pointerExpr, ref ILExpression adjustmentExpr, TypeSig elementType, bool divide)
 		{
 			adjustmentExpr = UnwrapIntPtrCast(adjustmentExpr);
 
 			ILExpression sizeOfExpression;
 			switch (TypeAnalysis.GetInformationAmount(elementType)) {
 				case 0: // System.Void
-					pointerExpr = Cast(pointerExpr, new PointerType(typeSystem.Byte));
+					pointerExpr = Cast(pointerExpr, new PtrSig(corLib.Byte));
 					goto case 1;
 				case 1:
 				case 8:
@@ -805,7 +964,7 @@ namespace ICSharpCode.Decompiler.ILAst
 					sizeOfExpression = new ILExpression(ILCode.Ldc_I4, 8);
 					break;
 				default:
-					sizeOfExpression = new ILExpression(ILCode.Sizeof, elementType);
+					sizeOfExpression = new ILExpression(ILCode.Sizeof, elementType.ToTypeDefOrRef());
 					break;
 			}
 
@@ -813,14 +972,19 @@ namespace ICSharpCode.Decompiler.ILAst
 				!divide && (adjustmentExpr.Code == ILCode.Div || adjustmentExpr.Code == ILCode.Div_Un)) {
 				ILExpression mulArg = adjustmentExpr.Arguments[1];
 				if (mulArg.Code == sizeOfExpression.Code && sizeOfExpression.Operand.Equals(mulArg.Operand)) {
-					adjustmentExpr = UnwrapIntPtrCast(adjustmentExpr.Arguments[0]);
+					var arg = adjustmentExpr.Arguments[0];
+					if (context.CalculateBinSpans) {
+						arg.BinSpans.AddRange(adjustmentExpr.BinSpans);
+						mulArg.AddSelfAndChildrenRecursiveBinSpans(arg.BinSpans);
+					}
+					adjustmentExpr = UnwrapIntPtrCast(arg);
 					return;
 				}
 			}
 
 			if (adjustmentExpr.Code == sizeOfExpression.Code) {
 				if (sizeOfExpression.Operand.Equals(adjustmentExpr.Operand)) {
-					adjustmentExpr = new ILExpression(ILCode.Ldc_I4, 1);
+					adjustmentExpr = new ILExpression(ILCode.Ldc_I4, 1).WithBinSpansFrom(context.CalculateBinSpans, adjustmentExpr);
 					return;
 				}
 
@@ -829,7 +993,7 @@ namespace ICSharpCode.Decompiler.ILAst
 					int elementSize = (int)sizeOfExpression.Operand;
 
 					if (offsetInBytes % elementSize != 0) {
-						pointerExpr = Cast(pointerExpr, new PointerType(typeSystem.Byte));
+						pointerExpr = Cast(pointerExpr, new PtrSig(corLib.Byte));
 						return;
 					}
 
@@ -861,13 +1025,6 @@ namespace ICSharpCode.Decompiler.ILAst
 					ReplaceVariables(child, variableMapping);
 			}
 		}
-		
-		void ReportUnassignedILRanges(ILBlock method)
-		{
-			var unassigned = ILRange.Invert(method.GetSelfAndChildrenRecursive<ILExpression>().SelectMany(e => e.ILRanges), context.CurrentMethod.Body.CodeSize).ToList();
-			if (unassigned.Count > 0)
-				Debug.WriteLine(string.Format("Unassigned ILRanges for {0}.{1}: {2}", this.context.CurrentMethod.DeclaringType.Name, this.context.CurrentMethod.Name, string.Join(", ", unassigned.Select(r => r.ToString()))));
-		}
 	}
 	
 	public static class ILAstOptimizerExtensionMethods
@@ -888,13 +1045,13 @@ namespace ICSharpCode.Decompiler.ILAst
 			return modified;
 		}
 		
-		public static bool RunOptimization(this ILBlock block, Func<List<ILNode>, ILExpression, int, bool> optimization)
+		public static bool RunOptimization(this ILBlock block, Func<ILBlockBase, List<ILNode>, ILExpression, int, bool> optimization)
 		{
 			bool modified = false;
 			foreach (ILBasicBlock bb in block.Body) {
 				for (int i = bb.Body.Count - 1; i >= 0; i--) {
 					ILExpression expr = bb.Body.ElementAtOrDefault(i) as ILExpression;
-					if (expr != null && optimization(bb.Body, expr, i)) {
+					if (expr != null && optimization(bb, bb.Body, expr, i)) {
 						modified = true;
 					}
 				}
@@ -941,7 +1098,7 @@ namespace ICSharpCode.Decompiler.ILAst
 		public static bool IsStoreToArray(this ILCode code)
 		{
 			switch (code) {
-				case ILCode.Stelem_Any:
+				case ILCode.Stelem:
 				case ILCode.Stelem_I:
 				case ILCode.Stelem_I1:
 				case ILCode.Stelem_I2:
@@ -959,7 +1116,7 @@ namespace ICSharpCode.Decompiler.ILAst
 		public static bool IsLoadFromArray(this ILCode code)
 		{
 			switch (code) {
-				case ILCode.Ldelem_Any:
+				case ILCode.Ldelem:
 				case ILCode.Ldelem_I:
 				case ILCode.Ldelem_I1:
 				case ILCode.Ldelem_I2:
@@ -986,7 +1143,7 @@ namespace ICSharpCode.Decompiler.ILAst
 				case ILCode.Call:
 				case ILCode.Callvirt:
 					// property getters can't be expression statements, but all other method calls can be
-					MethodReference mr = (MethodReference)expr.Operand;
+					IMethod mr = (IMethod)expr.Operand;
 					return !mr.Name.StartsWith("get_", StringComparison.Ordinal);
 				case ILCode.CallSetter:
 				case ILCode.CallvirtSetter:
@@ -997,7 +1154,7 @@ namespace ICSharpCode.Decompiler.ILAst
 				case ILCode.Stsfld:
 				case ILCode.Stfld:
 				case ILCode.Stind_Ref:
-				case ILCode.Stelem_Any:
+				case ILCode.Stelem:
 				case ILCode.Stelem_I:
 				case ILCode.Stelem_I1:
 				case ILCode.Stelem_I2:
@@ -1011,20 +1168,33 @@ namespace ICSharpCode.Decompiler.ILAst
 					return false;
 			}
 		}
-		
-		public static ILExpression WithILRanges(this ILExpression expr, IEnumerable<ILRange> ilranges)
+
+		public static ILExpression WithBinSpansFrom(this ILExpression expr, bool calculateBinSpans, ILNode node)
 		{
-			expr.ILRanges.AddRange(ilranges);
+			if (!calculateBinSpans)
+				return expr;
+			long index = 0;
+			bool done = false;
+			for (;;) {
+				var b = node.GetAllBinSpans(ref index, ref done);
+				if (done)
+					break;
+				expr.BinSpans.Add(b);
+			}
 			return expr;
 		}
 		
-		public static void RemoveTail(this List<ILNode> body, params ILCode[] codes)
+		public static ILNode[] RemoveTail(this List<ILNode> body, params ILCode[] codes)
 		{
 			for (int i = 0; i < codes.Length; i++) {
 				if (((ILExpression)body[body.Count - codes.Length + i]).Code != codes[i])
 					throw new Exception("Tailing code does not match expected.");
 			}
+			var list = new ILNode[codes.Length];
+			for (int i = 0; i < codes.Length; i++)
+				list[i] = body[body.Count - codes.Length + i];
 			body.RemoveRange(body.Count - codes.Length, codes.Length);
+			return list;
 		}
 		
 		public static V GetOrDefault<K,V>(this Dictionary<K, V> dict, K key)

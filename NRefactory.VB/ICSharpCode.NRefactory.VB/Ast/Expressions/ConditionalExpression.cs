@@ -2,10 +2,8 @@
 // This code is distributed under MIT X11 license (for details please see \doc\license.txt)
 
 using System;
-using System.Collections.Generic;
 
-namespace ICSharpCode.NRefactory.VB.Ast
-{
+namespace ICSharpCode.NRefactory.VB.Ast {
 	public class ConditionalExpression : Expression
 	{
 		public readonly static Role<Expression> ConditionExpressionRole = new Role<Expression>("ConditionExpressionRole", Expression.Null);

@@ -2,10 +2,10 @@
 // This code is distributed under MIT X11 license (for details please see \doc\license.txt)
 
 using System;
-using System.IO;
+using System.Collections.Generic;
+using dnSpy.Contracts.Decompiler;
 
-namespace ICSharpCode.NRefactory.VB.Ast
-{
+namespace ICSharpCode.NRefactory.VB.Ast {
 	public class ForEachStatement : Statement
 	{
 		public static readonly Role<AstNode> VariableRole = new Role<AstNode>("Variable", AstNode.Null);
@@ -25,6 +25,10 @@ namespace ICSharpCode.NRefactory.VB.Ast
 			set { SetChildByRole(Roles.Body, value); }
 		}
 		
+		public IList<BinSpan> HiddenGetEnumeratorBinSpans { get; set; }	// foreach (var c in |args|)
+		public IList<BinSpan> HiddenMoveNextBinSpans { get; set; }		// foreach (var c |in| args)
+		public IList<BinSpan> HiddenGetCurrentBinSpans { get; set; }	// foreach (|var c| in args)
+
 		protected internal override bool DoMatch(AstNode other, ICSharpCode.NRefactory.PatternMatching.Match match)
 		{
 			throw new NotImplementedException();

@@ -4,13 +4,15 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-
+using System.Text;
+using dnlib.DotNet;
+using dnSpy.Contracts.Decompiler;
+using dnSpy.Contracts.Text;
 using ICSharpCode.NRefactory.PatternMatching;
 using ICSharpCode.NRefactory.TypeSystem;
 using ICSharpCode.NRefactory.VB.Ast;
 
-namespace ICSharpCode.NRefactory.VB.Visitors
-{
+namespace ICSharpCode.NRefactory.VB.Visitors {
 	public interface IEnvironmentProvider
 	{
 		string RootNamespace { get; }
@@ -19,7 +21,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 		TypeCode ResolveExpression(CSharp.Expression expression);
 		bool? IsReferenceType(CSharp.Expression expression);
 		//ITypeResolveContext ResolveContext { get; }
-		IType ResolveType(AstType type, TypeDeclaration entity = null);
+		TypeSystem.IType ResolveType(AstType type, TypeDeclaration entity = null);
 		bool IsMethodGroup(CSharp.Expression expression);
 		bool HasEvent(Expression expression);
 		CSharp.ParameterDeclaration[] GetParametersForProperty(CSharp.PropertyDeclaration property);
@@ -34,14 +36,22 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 		Stack<BlockStatement> blocks;
 		Stack<TypeDeclaration> types;
 		Stack<MemberInfo> members;
-		
+		readonly ModuleDef module;
+
+		enum ConvertedStatementKind {
+			None,
+			While,
+			For,
+		}
+
 		class MemberInfo
 		{
 			public bool inIterator;
 		}
 		
-		public CSharpToVBConverterVisitor(IEnvironmentProvider provider)
+		public CSharpToVBConverterVisitor(ModuleDef module, IEnvironmentProvider provider)
 		{
+			this.module = module;
 			this.provider = provider;
 			this.blocks = new Stack<BlockStatement>();
 			this.types = new Stack<TypeDeclaration>();
@@ -73,16 +83,16 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 			switch (undocumentedExpression.UndocumentedExpressionType) {
 				case CSharp.UndocumentedExpressionType.ArgListAccess:
 				case CSharp.UndocumentedExpressionType.ArgList:
-					invocation.Target = new IdentifierExpression { Identifier = "__ArgList" };
+					invocation.Target = new IdentifierExpression { Identifier = Identifier.Create(BoxedTextColor.Keyword, "__ArgList") };
 					break;
 				case CSharp.UndocumentedExpressionType.RefValue:
-					invocation.Target = new IdentifierExpression { Identifier = "__RefValue" };
+					invocation.Target = new IdentifierExpression { Identifier = Identifier.Create(BoxedTextColor.Keyword, "__RefValue") };
 					break;
 				case CSharp.UndocumentedExpressionType.RefType:
-					invocation.Target = new IdentifierExpression { Identifier = "__RefType" };
+					invocation.Target = new IdentifierExpression { Identifier = Identifier.Create(BoxedTextColor.Keyword, "__RefType") };
 					break;
 				case CSharp.UndocumentedExpressionType.MakeRef:
-					invocation.Target = new IdentifierExpression { Identifier = "__MakeRef" };
+					invocation.Target = new IdentifierExpression { Identifier = Identifier.Create(BoxedTextColor.Keyword, "__MakeRef") };
 					break;
 				default:
 					throw new Exception("Invalid value for UndocumentedExpressionType");
@@ -355,7 +365,8 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 		
 		public AstNode VisitCheckedExpression(CSharp.CheckedExpression checkedExpression, object data)
 		{
-			blocks.Peek().AddChild(new Comment(" The following expression was wrapped in a checked-expression", false), AstNode.Roles.Comment);
+			if (blocks.Count > 0)
+				blocks.Peek().AddChild(new Comment(" The following expression was wrapped in a checked-expression", false), AstNode.Roles.Comment);
 			return EndNode(checkedExpression, checkedExpression.Expression.AcceptVisitor(this, data));
 		}
 		
@@ -384,7 +395,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 		public AstNode VisitIdentifierExpression(CSharp.IdentifierExpression identifierExpression, object data)
 		{
 			var expr = new IdentifierExpression();
-			expr.Identifier = new Identifier(identifierExpression.Identifier, TextLocation.Empty);
+			expr.Identifier = Identifier.Create(identifierExpression.IdentifierToken.Annotations, identifierExpression.Identifier);
 			ConvertNodes(identifierExpression.TypeArguments, expr.TypeArguments);
 			if (provider.IsMethodGroup(identifierExpression)) {
 				return EndNode(identifierExpression, new UnaryOperatorExpression(UnaryOperatorType.AddressOf, expr));
@@ -438,7 +449,8 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 			var memberAccessExpression = new MemberAccessExpression();
 			
 			memberAccessExpression.Target = (Expression)memberReferenceExpression.Target.AcceptVisitor(this, data);
-			memberAccessExpression.MemberName = new Identifier(memberReferenceExpression.MemberName, TextLocation.Empty);
+			memberAccessExpression.MemberName = Identifier.Create(memberReferenceExpression.MemberNameToken.Annotations, memberReferenceExpression.MemberName);
+			memberAccessExpression.MemberName.AddAnnotation(memberReferenceExpression.Annotation<IMemberRef>());
 			ConvertNodes(memberReferenceExpression.TypeArguments, memberAccessExpression.TypeArguments);
 			if (provider.IsMethodGroup(memberReferenceExpression)) {
 				return EndNode(memberReferenceExpression, new UnaryOperatorExpression(UnaryOperatorType.AddressOf, memberAccessExpression));
@@ -450,7 +462,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 		public AstNode VisitNamedArgumentExpression(CSharp.NamedArgumentExpression namedArgumentExpression, object data)
 		{
 			Expression expr = new NamedArgumentExpression {
-				Identifier = namedArgumentExpression.Name,
+				Identifier = Identifier.Create(namedArgumentExpression.NameToken.Annotations, namedArgumentExpression.Name),
 				Expression = (Expression)namedArgumentExpression.Expression.AcceptVisitor(this, data)
 			};
 			
@@ -461,7 +473,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 		{
 			Expression expr = new FieldInitializerExpression {
 				IsKey = true,
-				Identifier = namedExpression.Name,
+				Identifier = Identifier.Create(namedExpression.NameToken.Annotations, namedExpression.Name),
 				Expression = (Expression)namedExpression.Expression.AcceptVisitor(this, data)
 			};
 			return EndNode(namedExpression, expr);
@@ -498,16 +510,20 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 		
 		public AstNode VisitParenthesizedExpression(CSharp.ParenthesizedExpression parenthesizedExpression, object data)
 		{
+			var expr = parenthesizedExpression.Expression;
+			if (expr is CSharp.CastExpression || expr is CSharp.AsExpression || expr is CSharp.TypeOfExpression || expr is CSharp.ConditionalExpression || expr is CSharp.ParenthesizedExpression)
+				return expr.AcceptVisitor(this, data);
+
 			var result = new ParenthesizedExpression();
 			
-			result.Expression = (Expression)parenthesizedExpression.Expression.AcceptVisitor(this, data);
+			result.Expression = (Expression)expr.AcceptVisitor(this, data);
 			
 			return EndNode(parenthesizedExpression, result);
 		}
 		
 		public AstNode VisitPointerReferenceExpression(CSharp.PointerReferenceExpression pointerReferenceExpression, object data)
 		{
-			return EndNode(pointerReferenceExpression,((Expression)pointerReferenceExpression.Target.AcceptVisitor(this, data)).Invoke("Dereference").Member(pointerReferenceExpression.MemberName));
+			return EndNode(pointerReferenceExpression, ((Expression)pointerReferenceExpression.Target.AcceptVisitor(this, data)).Invoke2(BoxedTextColor.InstanceMethod, "Dereference").Member(pointerReferenceExpression.MemberNameToken.Annotation<object>(), pointerReferenceExpression.MemberName));
 		}
 		
 		public AstNode VisitPrimitiveExpression(CSharp.PrimitiveExpression primitiveExpression, object data)
@@ -550,9 +566,9 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 							parts.Push(new PrimitiveExpression(part));
 						if (i + 1 < literal.Length && literal[i + 1] == '\n') {
 							i++;
-							parts.Push(new IdentifierExpression("vbCrLf"));
+							parts.Push(new IdentifierExpression(Identifier.CreateLiteralField("vbCrLf")));
 						} else
-							parts.Push(new IdentifierExpression("vbCr"));
+							parts.Push(new IdentifierExpression(Identifier.CreateLiteralField("vbCr")));
 						start = i + 1;
 						break;
 					default:
@@ -560,7 +576,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 							part = literal.Substring(start, i - start);
 							if (!string.IsNullOrEmpty(part))
 								parts.Push(new PrimitiveExpression(part));
-							parts.Push(new InvocationExpression(new IdentifierExpression("ChrW"), new PrimitiveExpression((int)literal[i])));
+							parts.Push(new InvocationExpression(new IdentifierExpression(Identifier.Create(BoxedTextColor.StaticMethod, "ChrW")), new PrimitiveExpression((int)literal[i])));
 						} else
 							continue;
 						start = i + 1;
@@ -586,22 +602,22 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 		{
 			switch (ch) {
 				case '\0':
-					return new IdentifierExpression("vbNullChar");
+					return new IdentifierExpression(Identifier.CreateLiteralField("vbNullChar"));
 				case '\b':
-					return new IdentifierExpression("vbBack");
+					return new IdentifierExpression(Identifier.CreateLiteralField("vbBack"));
 				case '\f':
-					return new IdentifierExpression("vbFormFeed");
+					return new IdentifierExpression(Identifier.CreateLiteralField("vbFormFeed"));
 				case '\r':
-					return new IdentifierExpression("vbCr");
+					return new IdentifierExpression(Identifier.CreateLiteralField("vbCr"));
 				case '\n':
-					return new IdentifierExpression("vbLf");
+					return new IdentifierExpression(Identifier.CreateLiteralField("vbLf"));
 				case '\t':
-					return new IdentifierExpression("vbTab");
+					return new IdentifierExpression(Identifier.CreateLiteralField("vbTab"));
 				case '\v':
-					return new IdentifierExpression("vbVerticalTab");
+					return new IdentifierExpression(Identifier.CreateLiteralField("vbVerticalTab"));
 				default:
 					if (ch > 255)
-						return new InvocationExpression(new IdentifierExpression("ChrW"), new PrimitiveExpression((int)ch));
+						return new InvocationExpression(new IdentifierExpression(Identifier.Create(BoxedTextColor.StaticMethod, "ChrW")), new PrimitiveExpression((int)ch));
 					return new PrimitiveExpression(ch);
 			}
 		}
@@ -611,7 +627,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 			return EndNode(
 				sizeOfExpression,
 				new InvocationExpression(
-					new IdentifierExpression() { Identifier = "__SizeOf" },
+					new IdentifierExpression() { Identifier = Identifier.Create(BoxedTextColor.Keyword, "__SizeOf") },
 					new TypeReferenceExpression((AstType)sizeOfExpression.Type.AcceptVisitor(this, data))
 				)
 			);
@@ -622,7 +638,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 			return EndNode(
 				stackAllocExpression,
 				new InvocationExpression(
-					new IdentifierExpression() { Identifier = "__StackAlloc" },
+					new IdentifierExpression() { Identifier = Identifier.Create(BoxedTextColor.Keyword, "__StackAlloc") },
 					new TypeReferenceExpression((AstType)stackAllocExpression.Type.AcceptVisitor(this, data)),
 					(Expression)stackAllocExpression.CountExpression.AcceptVisitor(this, data)
 				)
@@ -674,22 +690,22 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 					break;
 				case CSharp.UnaryOperatorType.Increment:
 					expr = new InvocationExpression();
-					((InvocationExpression)expr).Target = new IdentifierExpression() { Identifier = "__Increment" };
+					((InvocationExpression)expr).Target = new IdentifierExpression() { Identifier = Identifier.Create(BoxedTextColor.Keyword, "__Increment") };
 					((InvocationExpression)expr).Arguments.Add((Expression)unaryOperatorExpression.Expression.AcceptVisitor(this, data));
 					break;
 				case CSharp.UnaryOperatorType.PostIncrement:
 					expr = new InvocationExpression();
-					((InvocationExpression)expr).Target = new IdentifierExpression() { Identifier = "__PostIncrement" };
+					((InvocationExpression)expr).Target = new IdentifierExpression() { Identifier = Identifier.Create(BoxedTextColor.Keyword, "__PostIncrement") };
 					((InvocationExpression)expr).Arguments.Add((Expression)unaryOperatorExpression.Expression.AcceptVisitor(this, data));
 					break;
 				case CSharp.UnaryOperatorType.Decrement:
 					expr = new InvocationExpression();
-					((InvocationExpression)expr).Target = new IdentifierExpression() { Identifier = "__Decrement" };
+					((InvocationExpression)expr).Target = new IdentifierExpression() { Identifier = Identifier.Create(BoxedTextColor.Keyword, "__Decrement") };
 					((InvocationExpression)expr).Arguments.Add((Expression)unaryOperatorExpression.Expression.AcceptVisitor(this, data));
 					break;
 				case CSharp.UnaryOperatorType.PostDecrement:
 					expr = new InvocationExpression();
-					((InvocationExpression)expr).Target = new IdentifierExpression() { Identifier = "__PostDecrement" };
+					((InvocationExpression)expr).Target = new IdentifierExpression() { Identifier = Identifier.Create(BoxedTextColor.Keyword, "__PostDecrement") };
 					((InvocationExpression)expr).Arguments.Add((Expression)unaryOperatorExpression.Expression.AcceptVisitor(this, data));
 					break;
 				case CSharp.UnaryOperatorType.AddressOf:
@@ -700,7 +716,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 					break;
 				case CSharp.UnaryOperatorType.Dereference:
 					expr = new InvocationExpression();
-					((InvocationExpression)expr).Target = new IdentifierExpression() { Identifier = "__Dereference" };
+					((InvocationExpression)expr).Target = new IdentifierExpression() { Identifier = Identifier.Create(BoxedTextColor.Keyword, "__Dereference") };
 					((InvocationExpression)expr).Arguments.Add((Expression)unaryOperatorExpression.Expression.AcceptVisitor(this, data));
 					break;
 				case CSharp.UnaryOperatorType.Await:
@@ -739,7 +755,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 			var op = new FromQueryOperator();
 			op.Variables.Add(
 				new CollectionRangeVariableDeclaration {
-					Identifier = new VariableIdentifier { Name = queryFromClause.Identifier },
+					Identifier = new VariableIdentifier { Name = Identifier.Create(queryFromClause.IdentifierToken.Annotations, queryFromClause.Identifier) },
 					Type = (AstType)queryFromClause.Type.AcceptVisitor(this, data),
 					Expression = (Expression)queryFromClause.Expression.AcceptVisitor(this, data)
 				}
@@ -790,7 +806,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 			
 			op.Variables.Add(
 				new VariableInitializer {
-					Identifier = new VariableIdentifier { Name = "SelectVar" + selectVarCount },
+					Identifier = new VariableIdentifier { Name = Identifier.Create(BoxedTextColor.Local, "SelectVar" + selectVarCount) },
 					Expression = (Expression)querySelectClause.Expression.AcceptVisitor(this, data)
 				});
 			
@@ -831,7 +847,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 			
 			ConvertNodes(delegateDeclaration.Attributes.Where(section => section.AttributeTarget != "return"), result.Attributes);
 			ConvertNodes(delegateDeclaration.ModifierTokens, result.ModifierTokens);
-			result.Name = new Identifier(delegateDeclaration.Name, TextLocation.Empty);
+			result.Name = Identifier.Create(delegateDeclaration.NameToken.Annotations, delegateDeclaration.Name);
 			result.IsSub = IsSub(delegateDeclaration.ReturnType);
 			ConvertNodes(delegateDeclaration.Parameters, result.Parameters);
 			ConvertNodes(delegateDeclaration.TypeParameters, result.TypeParameters);
@@ -844,9 +860,11 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 		public AstNode VisitNamespaceDeclaration(CSharp.NamespaceDeclaration namespaceDeclaration, object data)
 		{
 			var newNamespace = new NamespaceDeclaration();
-			
-			foreach (string id in namespaceDeclaration.Identifiers) {
-				newNamespace.Identifiers.Add(new Identifier(id, TextLocation.Empty));
+
+			foreach (var id in namespaceDeclaration.IdentifierTypes) {
+				var newId = new Identifier(BoxedTextColor.Namespace, id.Name, TextLocation.Empty);
+				CopyAnnotations(id, newId);
+				newNamespace.Identifiers.Add(newId);
 			}
 			ConvertMembers(namespaceDeclaration, newNamespace, CSharp.NamespaceDeclaration.MemberRole, NamespaceDeclaration.MemberRole);
 			
@@ -870,7 +888,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 					type.UnderlyingType = (AstType)first.AcceptVisitor(this, data);
 				}
 				
-				type.Name = new Identifier(typeDeclaration.Name, TextLocation.Empty);
+				type.Name = Identifier.Create(typeDeclaration.NameToken.Annotations, typeDeclaration.Name);
 				
 				ConvertMembers(typeDeclaration, type, CSharp.Roles.TypeMemberRole, EnumDeclaration.MemberRole);
 				
@@ -913,6 +931,12 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 				ConvertNodes(typeDeclaration.Attributes, type.Attributes);
 				ConvertNodes(typeDeclaration.ModifierTokens, type.ModifierTokens);
 				ConvertNodes(typeDeclaration.TypeParameters, type.TypeParameters);
+
+				if (typeDeclaration.Parent is CSharp.TypeDeclaration && type.ClassType == ClassType.Module) {
+					type.ClassType = ClassType.Class;
+					type.Modifiers &= ~Modifiers.Static;
+					type.Modifiers |= Modifiers.NotInheritable;
+				}
 				
 				if (typeDeclaration.BaseTypes.Any()) {
 					var first = typeDeclaration.BaseTypes.First();
@@ -924,7 +948,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 						ConvertNodes(typeDeclaration.BaseTypes, type.ImplementsTypes);
 				}
 				
-				type.Name = typeDeclaration.Name;
+				type.Name = Identifier.Create(typeDeclaration.NameToken.Annotations, typeDeclaration.Name);
 				
 				types.Push(type);
 				ConvertMembers(typeDeclaration, type, CSharp.Roles.TypeMemberRole, TypeDeclaration.MemberRole);
@@ -939,7 +963,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 			var imports = new ImportsStatement();
 			
 			var clause = new AliasImportsClause() {
-				Name = new Identifier(usingAliasDeclaration.Alias, TextLocation.Empty),
+				Name = Identifier.Create(usingAliasDeclaration.AliasToken.Annotations, usingAliasDeclaration.Alias),
 				Alias = (AstType)usingAliasDeclaration.Import.AcceptVisitor(this, data)
 			};
 			
@@ -970,6 +994,8 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 		{
 			var block = new BlockStatement();
 			blocks.Push(block);
+			block.HiddenStart = ICSharpCode.Decompiler.Ast.NRefactoryExtensions.GetAllRecursiveBinSpans(blockStatement.HiddenStart);
+			block.HiddenEnd = ICSharpCode.Decompiler.Ast.NRefactoryExtensions.GetAllRecursiveBinSpans(blockStatement.HiddenEnd);
 			ConvertNodes(blockStatement, block.Statements);
 			blocks.Pop();
 			return EndNode(blockStatement, block);
@@ -993,7 +1019,11 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 					break;
 				}
 				if (stmt is CSharp.ForStatement || stmt is CSharp.ForeachStatement) {
-					exit.ExitKind = ExitKind.For;
+					ConvertedStatementKind kind;
+					if (!convertedKind.TryGetValue(stmt, out kind) || kind != ConvertedStatementKind.While)
+						exit.ExitKind = ExitKind.For;
+					else
+						exit.ExitKind = ExitKind.While;
 					break;
 				}
 				if (stmt is CSharp.WhileStatement) {
@@ -1036,7 +1066,11 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 					break;
 				}
 				if (stmt is CSharp.ForStatement || stmt is CSharp.ForeachStatement) {
-					@continue.ContinueKind = ContinueKind.For;
+					ConvertedStatementKind kind;
+					if (!convertedKind.TryGetValue(stmt, out kind) || kind != ConvertedStatementKind.While)
+						@continue.ContinueKind = ContinueKind.For;
+					else
+						@continue.ContinueKind = ContinueKind.While;
 					break;
 				}
 				if (stmt is CSharp.WhileStatement) {
@@ -1083,16 +1117,16 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 			stmt.FinallyBlock = new BlockStatement();
 			foreach (var decl in fixedStatement.Variables) {
 				var v = new VariableDeclaratorWithTypeAndInitializer {
-					Identifiers = { new VariableIdentifier { Name = decl.Name } },
-					Type = new SimpleType("GCHandle"),
+					Identifiers = { new VariableIdentifier { Name = Identifier.Create(decl.NameToken.Annotations, decl.Name) } },
+					Type = SimpleType.CreateWithColor(BoxedTextColor.ValueType, "GCHandle"),
 					Initializer = new InvocationExpression(
-						new MemberAccessExpression { Target = new IdentifierExpression { Identifier = "GCHandle" }, MemberName = "Alloc" },
+						new MemberAccessExpression { Target = new IdentifierExpression { Identifier = Identifier.Create(BoxedTextColor.ValueType, "GCHandle") }, MemberName = Identifier.Create(BoxedTextColor.StaticMethod, "Alloc") },
 						(Expression)decl.Initializer.AcceptVisitor(this, data),
-						new MemberAccessExpression { Target = new IdentifierExpression { Identifier = "GCHandleType" }, MemberName = "Pinned" }
+						new MemberAccessExpression { Target = new IdentifierExpression { Identifier = Identifier.Create(BoxedTextColor.Enum, "GCHandleType") }, MemberName = Identifier.Create(BoxedTextColor.EnumField, "Pinned") }
 					)
 				};
 				variables.Variables.Add(v);
-				stmt.FinallyBlock.Add(new IdentifierExpression { Identifier = decl.Name }.Invoke("Free"));
+				stmt.FinallyBlock.Add(new IdentifierExpression { Identifier = Identifier.Create(decl.NameToken.Annotations, decl.Name) }.Invoke2(BoxedTextColor.InstanceMethod, "Free"));
 			}
 			
 			block.Add(variables);
@@ -1100,7 +1134,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 			stmt.Body = (BlockStatement)fixedStatement.EmbeddedStatement.AcceptVisitor(this, data);
 			
 			foreach (var ident in stmt.Body.Descendants.OfType<IdentifierExpression>()) {
-				ident.ReplaceWith(expr => ((Expression)expr).Invoke("AddrOfPinnedObject"));
+				ident.ReplaceWith(expr => ((Expression)expr).Invoke2(BoxedTextColor.InstanceMethod, "AddrOfPinnedObject"));
 			}
 			
 			return EndNode(fixedStatement, stmt);
@@ -1112,10 +1146,13 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 				Body = (BlockStatement)foreachStatement.EmbeddedStatement.AcceptVisitor(this, data),
 				InExpression = (Expression)foreachStatement.InExpression.AcceptVisitor(this, data),
 				Variable = new VariableInitializer() {
-					Identifier = new VariableIdentifier() { Name = foreachStatement.VariableName },
+					Identifier = new VariableIdentifier() { Name = Identifier.Create(foreachStatement.VariableNameToken.Annotations, foreachStatement.VariableName) },
 					Type = (AstType)foreachStatement.VariableType.AcceptVisitor(this, data)
 				}
 			};
+			stmt.HiddenGetEnumeratorBinSpans = ICSharpCode.Decompiler.Ast.NRefactoryExtensions.GetAllRecursiveBinSpans(foreachStatement.HiddenGetEnumeratorNode);
+			stmt.HiddenMoveNextBinSpans = ICSharpCode.Decompiler.Ast.NRefactoryExtensions.GetAllRecursiveBinSpans(foreachStatement.HiddenMoveNextNode);
+			stmt.HiddenGetCurrentBinSpans = ICSharpCode.Decompiler.Ast.NRefactoryExtensions.GetAllRecursiveBinSpans(foreachStatement.HiddenGetCurrentNode);
 			
 			return EndNode(foreachStatement, stmt);
 		}
@@ -1183,14 +1220,17 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 				if (init is CSharp.VariableDeclarationStatement) {
 					var var = ((CSharp.VariableDeclarationStatement)init).Variables.First();
 					iteratorVariable = new VariableInitializer() {
-						Identifier = new VariableIdentifier { Name = var.Name },
+						Identifier = new VariableIdentifier { Name = Identifier.Create(var.NameToken.Annotations, var.Name) },
 						Type = (AstType)((CSharp.VariableDeclarationStatement)init).Type.AcceptVisitor(this, data),
 						Expression = (Expression)var.Initializer.AcceptVisitor(this, data)
 					};
+					CopyAnnotations(var, iteratorVariable);
 				} else if (init is CSharp.ExpressionStatement) {
 					iteratorVariable = init.AcceptVisitor(this, data);
 				} else goto end;
 				
+				bool copiedCondAnns = false;
+				bool copiedIncAnns = false;
 				Expression toExpr = Expression.Null;
 				
 				var cond = match.Get<CSharp.BinaryOperatorExpression>("condition").SingleOrDefault();
@@ -1215,6 +1255,24 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 					stepExpr = factorExpr;
 				if (increment.Operator == CSharp.AssignmentOperatorType.Subtract)
 					stepExpr = new UnaryOperatorExpression(UnaryOperatorType.Minus, factorExpr);
+
+				// Copy all IL ranges
+				if (!toExpr.IsNull) {
+					CopyAnnotations(cond, toExpr);
+					copiedCondAnns = true;
+				}
+				if (!stepExpr.IsNull) {
+					CopyAnnotations(increment, stepExpr);
+					copiedIncAnns = true;
+				}
+				if (!copiedCondAnns) {
+					if (!stepExpr.IsNull)
+						CopyAnnotations(cond, stepExpr);
+				}
+				if (!copiedIncAnns) {
+					if (!toExpr.IsNull)
+						CopyAnnotations(increment, toExpr);
+				}
 				
 				return new ForStatement() {
 					Variable = iteratorVariable,
@@ -1225,6 +1283,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 			}
 			
 		end:
+			convertedKind[forStatement] = ConvertedStatementKind.While;
 			var stmt = new WhileStatement() {
 				Condition = (Expression)forStatement.Condition.AcceptVisitor(this, data),
 				Body = (BlockStatement)forStatement.EmbeddedStatement.AcceptVisitor(this, data)
@@ -1232,9 +1291,11 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 			ConvertNodes(forStatement.Iterators, stmt.Body.Statements);
 			foreach (var initializer in forStatement.Initializers)
 				blocks.Peek().Statements.Add((Statement)initializer.AcceptVisitor(this, data));
+			convertedKind.Remove(forStatement);
 			
 			return EndNode(forStatement, stmt);
 		}
+		readonly Dictionary<CSharp.AstNode, ConvertedStatementKind> convertedKind = new Dictionary<CSharp.AstNode, ConvertedStatementKind>();
 		
 		bool IsEqual(object value, int num)
 		{
@@ -1270,7 +1331,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 		
 		public AstNode VisitGotoStatement(CSharp.GotoStatement gotoStatement, object data)
 		{
-			return EndNode(gotoStatement, new GoToStatement() { Label = new IdentifierExpression() { Identifier = gotoStatement.Label } });
+			return EndNode(gotoStatement, new GoToStatement() { Label = new IdentifierExpression() { Identifier = Identifier.Create(BoxedTextColor.Label, gotoStatement.Label) } });
 		}
 		
 		public AstNode VisitIfElseStatement(CSharp.IfElseStatement ifElseStatement, object data)
@@ -1286,7 +1347,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 		
 		public AstNode VisitLabelStatement(CSharp.LabelStatement labelStatement, object data)
 		{
-			return EndNode(labelStatement, new LabelDeclarationStatement() { Label = new IdentifierExpression() { Identifier = labelStatement.Label } });
+			return EndNode(labelStatement, new LabelDeclarationStatement() { Label = new IdentifierExpression() { Identifier = Identifier.Create(BoxedTextColor.Label, labelStatement.Label) } });
 		}
 		
 		public AstNode VisitLockStatement(CSharp.LockStatement lockStatement, object data)
@@ -1310,6 +1371,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 		{
 			var stmt = new SelectStatement() { Expression = (Expression)switchStatement.Expression.AcceptVisitor(this, data) };
 			ConvertNodes(switchStatement.SwitchSections, stmt.Cases);
+			stmt.HiddenEnd = ICSharpCode.Decompiler.Ast.NRefactoryExtensions.GetAllRecursiveBinSpans(switchStatement.HiddenEnd);
 			
 			return EndNode(switchStatement, stmt);
 		}
@@ -1354,8 +1416,10 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 		{
 			var clause = new CatchBlock();
 			
-			clause.ExceptionType = (AstType)catchClause.Type.AcceptVisitor(this, data);
-			clause.ExceptionVariable = catchClause.VariableName;
+			if (!catchClause.Type.IsNull)
+				clause.ExceptionType = (AstType)catchClause.Type.AcceptVisitor(this, data);
+			if (!catchClause.VariableNameToken.IsNull)
+				clause.ExceptionVariable = Identifier.Create(catchClause.VariableNameToken.Annotations, catchClause.VariableName);
 			ConvertNodes(catchClause.Body.Statements, clause.Statements);
 			
 			return EndNode(catchClause, clause);
@@ -1363,7 +1427,8 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 		
 		public AstNode VisitUncheckedStatement(CSharp.UncheckedStatement uncheckedStatement, object data)
 		{
-			throw new NotImplementedException();
+			var body = uncheckedStatement.Body.AcceptVisitor(this, data);
+			return EndNode<AstNode>(uncheckedStatement, body);
 		}
 		
 		public AstNode VisitUnsafeStatement(CSharp.UnsafeStatement unsafeStatement, object data)
@@ -1441,12 +1506,18 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 		
 		public AstNode VisitConstructorInitializer(CSharp.ConstructorInitializer constructorInitializer, object data)
 		{
+			InstanceExpression instExpr;
+			Identifier identifier;
 			var result = new InvocationExpression(
 				new MemberAccessExpression() {
-					Target = new InstanceExpression(constructorInitializer.ConstructorInitializerType == CSharp.ConstructorInitializerType.This ? InstanceExpressionType.Me : InstanceExpressionType.MyBase, TextLocation.Empty),
-					MemberName = new Identifier("New", TextLocation.Empty)
+					Target = instExpr = new InstanceExpression(constructorInitializer.ConstructorInitializerType == CSharp.ConstructorInitializerType.This ? InstanceExpressionType.Me : InstanceExpressionType.MyBase, TextLocation.Empty),
+					MemberName = identifier = new Identifier(BoxedTextColor.Keyword, "New", TextLocation.Empty)
 				}
 			);
+			var ctor = constructorInitializer.Annotation<dnlib.DotNet.IMethod>();
+			instExpr.AddAnnotation(ctor?.DeclaringType);
+			identifier.AddAnnotation(ctor);
+			CopyAnnotations(constructorInitializer, instExpr);
 			ConvertNodes(constructorInitializer.Arguments, result.Arguments);
 			
 			return EndNode(constructorInitializer, new ExpressionStatement(result));
@@ -1454,10 +1525,11 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 		
 		public AstNode VisitDestructorDeclaration(CSharp.DestructorDeclaration destructorDeclaration, object data)
 		{
-			var finalizer = new MethodDeclaration() { Name = "Finalize", IsSub = true };
+			var finalizer = new MethodDeclaration() { Name = Identifier.Create(BoxedTextColor.InstanceMethod, "Finalize"), IsSub = true };
 			
 			ConvertNodes(destructorDeclaration.Attributes, finalizer.Attributes);
 			ConvertNodes(destructorDeclaration.ModifierTokens, finalizer.ModifierTokens);
+			finalizer.Modifiers |= Modifiers.Overrides;
 			finalizer.Body = (BlockStatement)destructorDeclaration.Body.AcceptVisitor(this, data);
 			
 			return EndNode(destructorDeclaration, finalizer);
@@ -1468,35 +1540,46 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 			var result = new EnumMemberDeclaration();
 			
 			ConvertNodes(enumMemberDeclaration.Attributes, result.Attributes);
-			result.Name = new Identifier(enumMemberDeclaration.Name, TextLocation.Empty);
+			result.Name = Identifier.Create(enumMemberDeclaration.NameToken.Annotations, enumMemberDeclaration.Name);
 			result.Value = (Expression)enumMemberDeclaration.Initializer.AcceptVisitor(this, data);
 			
 			return EndNode(enumMemberDeclaration, result);
+		}
+
+		bool IsOwnerAModule(CSharp.AstNode node)
+		{
+			if (types.Count > 0 && types.Peek().ClassType == ClassType.Module)
+				return true;
+			var def = node.Annotation<dnlib.DotNet.IMemberDef>();
+			if (def == null)
+				return false;
+			var td = def.DeclaringType;
+			return td != null && td.DeclaringType == null && td.IsSealed && td.IsAbstract;
 		}
 		
 		public AstNode VisitEventDeclaration(CSharp.EventDeclaration eventDeclaration, object data)
 		{
 			members.Push(new MemberInfo());
 			
+			EventDeclaration result = null;
 			foreach (var evt in eventDeclaration.Variables) {
-				var result = new EventDeclaration();
+				result = new EventDeclaration();
 
 				ConvertNodes(eventDeclaration.Attributes, result.Attributes);
 				if (types.Any()) {
-					if (types.Peek().ClassType == ClassType.Module)
+					if (IsOwnerAModule(eventDeclaration))
 						eventDeclaration.Modifiers &= ~CSharp.Modifiers.Static;
-					types.Peek().Members.Add(result);
 				}
 				result.Modifiers = ConvertModifiers(eventDeclaration.Modifiers, eventDeclaration);
-				result.Name = evt.Name;
+				result.Name = Identifier.Create(evt.NameToken.Annotations, evt.Name);
 				result.ReturnType = (AstType)eventDeclaration.ReturnType.AcceptVisitor(this, data);
 				
-//				CreateImplementsClausesForEvent(result);
+				CreateImplementsClausesForEvent(eventDeclaration, result);
 			}
 			
 			members.Pop();
 			
-			return EndNode<EventDeclaration>(eventDeclaration, null);
+			return EndNode(eventDeclaration, result);
 		}
 		
 		public AstNode VisitCustomEventDeclaration(CSharp.CustomEventDeclaration customEventDeclaration, object data)
@@ -1506,17 +1589,13 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 			members.Push(new MemberInfo());
 			
 			ConvertNodes(customEventDeclaration.Attributes, result.Attributes);
-			if (types.Any() && types.Peek().ClassType == ClassType.Module)
+			if (IsOwnerAModule(customEventDeclaration))
 				customEventDeclaration.Modifiers &= ~CSharp.Modifiers.Static;
 			result.Modifiers = ConvertModifiers(customEventDeclaration.Modifiers, customEventDeclaration);
 			result.IsCustom = true;
-			result.Name = new Identifier(customEventDeclaration.Name, TextLocation.Empty);
+			result.Name = Identifier.Create(customEventDeclaration.NameToken.Annotations, customEventDeclaration.Name);
 			result.ReturnType = (AstType)customEventDeclaration.ReturnType.AcceptVisitor(this, data);
-			if (!customEventDeclaration.PrivateImplementationType.IsNull)
-				result.ImplementsClause.Add(
-					new InterfaceMemberSpecifier((AstType)customEventDeclaration.PrivateImplementationType.AcceptVisitor(this, data), customEventDeclaration.Name));
-//			else
-//				CreateImplementsClausesForEvent(result);
+			CreateImplementsClausesForEvent(customEventDeclaration, result);
 			result.AddHandlerBlock = (Accessor)customEventDeclaration.AddAccessor.AcceptVisitor(this, data);
 			result.RemoveHandlerBlock = (Accessor)customEventDeclaration.RemoveAccessor.AcceptVisitor(this, data);
 			
@@ -1532,7 +1611,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 			members.Push(new MemberInfo());
 			
 			ConvertNodes(fieldDeclaration.Attributes, decl.Attributes);
-			if (types.Any() && types.Peek().ClassType == ClassType.Module)
+			if (IsOwnerAModule(fieldDeclaration))
 				fieldDeclaration.Modifiers &= ~CSharp.Modifiers.Static;
 			decl.Modifiers = ConvertModifiers(fieldDeclaration.Modifiers, fieldDeclaration);
 			ConvertNodes(fieldDeclaration.Variables, decl.Variables);
@@ -1550,24 +1629,28 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 			
 			ConvertNodes(indexerDeclaration.Attributes.Where(section => section.AttributeTarget != "return"), decl.Attributes);
 			decl.Getter = (Accessor)indexerDeclaration.Getter.AcceptVisitor(this, data);
-			if (types.Any() && types.Peek().ClassType == ClassType.Module)
+			if (IsOwnerAModule(indexerDeclaration))
 				indexerDeclaration.Modifiers &= ~CSharp.Modifiers.Static;
 			decl.Modifiers = ConvertModifiers(indexerDeclaration.Modifiers, indexerDeclaration);
-			decl.Name = new Identifier(indexerDeclaration.Name, TextLocation.Empty);
+			decl.Name = Identifier.Create(BoxedTextColor.InstanceProperty, indexerDeclaration.Name);
 			ConvertNodes(indexerDeclaration.Parameters, decl.Parameters);
 			ConvertNodes(indexerDeclaration.Attributes.Where(section => section.AttributeTarget == "return"), decl.ReturnTypeAttributes);
-			if (!indexerDeclaration.PrivateImplementationType.IsNull)
-				decl.ImplementsClause.Add(
-					new InterfaceMemberSpecifier((AstType)indexerDeclaration.PrivateImplementationType.AcceptVisitor(this, data),
-					                             indexerDeclaration.Name));
+			CreateImplementsClausesForProperty(indexerDeclaration, decl);
 			decl.ReturnType = (AstType)indexerDeclaration.ReturnType.AcceptVisitor(this, data);
 			decl.Setter = (Accessor)indexerDeclaration.Setter.AcceptVisitor(this, data);
 			
 			if (!decl.Setter.IsNull) {
+				Identifier id;
 				decl.Setter.Parameters.Add(new ParameterDeclaration() {
-				                           	Name = new Identifier("value", TextLocation.Empty),
+				                           	Name = id = new Identifier(BoxedTextColor.Parameter, "value", TextLocation.Empty),
 				                           	Type = (AstType)indexerDeclaration.ReturnType.AcceptVisitor(this, data),
 				                           });
+				var method = decl.Setter.Annotation<MethodDef>();
+				if (method != null) {
+					var p = method.Parameters.FirstOrDefault(a => a.IsNormalMethodParameter);
+					if (p != null)
+						id.AddAnnotation(p);
+				}
 			}
 			
 			members.Pop();
@@ -1579,7 +1662,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 		{
 			CSharp.Attribute attr;
 			
-			if (types.Any() && types.Peek().ClassType == ClassType.Module)
+			if (IsOwnerAModule(methodDeclaration))
 				methodDeclaration.Modifiers &= ~CSharp.Modifiers.Static;
 			
 			if ((methodDeclaration.Modifiers & CSharp.Modifiers.Extern) == CSharp.Modifiers.Extern && HasAttribute(methodDeclaration.Attributes, "System.Runtime.InteropServices.DllImportAttribute", out attr)) {
@@ -1600,7 +1683,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 				
 				ConvertNodes(methodDeclaration.Attributes.Where(section => section.AttributeTarget != "return"), result.Attributes);
 				ConvertNodes(methodDeclaration.ModifierTokens, result.ModifierTokens);
-				result.Name = new Identifier(methodDeclaration.Name, TextLocation.Empty);
+				result.Name = Identifier.Create(methodDeclaration.NameToken.Annotations, methodDeclaration.Name);
 				result.IsSub = IsSub(methodDeclaration.ReturnType);
 				ConvertNodes(methodDeclaration.Parameters, result.Parameters);
 				ConvertNodes(methodDeclaration.Attributes.Where(section => section.AttributeTarget == "return"), result.ReturnTypeAttributes);
@@ -1610,6 +1693,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 				if (members.Pop().inIterator) {
 					result.Modifiers |= Modifiers.Iterator;
 				}
+				result.Modifiers &= ~Modifiers.Shared;
 				
 				return EndNode(methodDeclaration, result);
 			} else {
@@ -1619,30 +1703,25 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 				
 				ConvertNodes(methodDeclaration.Attributes.Where(section => section.AttributeTarget != "return"), result.Attributes);
 				ConvertNodes(methodDeclaration.ModifierTokens, result.ModifierTokens);
-				result.Name = new Identifier(methodDeclaration.Name, TextLocation.Empty);
+				result.Name = Identifier.Create(methodDeclaration.NameToken.Annotations, methodDeclaration.Name);
 				result.IsSub = IsSub(methodDeclaration.ReturnType);
 				ConvertNodes(methodDeclaration.Parameters, result.Parameters);
 				ConvertNodes(methodDeclaration.TypeParameters, result.TypeParameters);
 				ConvertNodes(methodDeclaration.Attributes.Where(section => section.AttributeTarget == "return"), result.ReturnTypeAttributes);
-				if (!methodDeclaration.PrivateImplementationType.IsNull)
-					result.ImplementsClause.Add(
-						new InterfaceMemberSpecifier((AstType)methodDeclaration.PrivateImplementationType.AcceptVisitor(this, data),
-						                             methodDeclaration.Name));
-//				else
-//					CreateImplementsClausesForMethod(result);
+				CreateImplementsClausesForMethod(methodDeclaration, result);
 				if (!result.IsSub)
 					result.ReturnType = (AstType)methodDeclaration.ReturnType.AcceptVisitor(this, data);
 				
 				if (methodDeclaration.IsExtensionMethod) {
-					result.Attributes.Add(
-						new AttributeBlock {
-							Attributes = {
-								new Ast.Attribute {
-									Type = AstType.FromName("System.Runtime.CompilerServices.ExtensionAttribute")
-								}
-							}
-						});
+					AttributeBlock block = new AttributeBlock();
+					var attrRef = module.UpdateRowId(module.CorLibTypes.GetTypeRef("System.Runtime.CompilerServices", "ExtensionAttribute"));
+					block.Attributes.Add(new Ast.Attribute() { Type = CreateType(attrRef) });
+					result.Attributes.Add(block);
 				}
+
+				var md = methodDeclaration.Annotation<MethodDef>();
+				if (md != null)
+					result.Modifiers |= GetExtraMethodModifiers(md);
 				
 				result.Body = (BlockStatement)methodDeclaration.Body.AcceptVisitor(this, data);
 				
@@ -1653,39 +1732,233 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 				return EndNode(methodDeclaration, result);
 			}
 		}
-		
-		void CreateImplementsClausesForMethod(MethodDeclaration result)
-		{
-			if (!types.Any()) return;
-			var current = types.Peek();
-			if (current.ClassType == ClassType.Interface)
-				return;
-			
-			foreach (var type in current.ImplementsTypes) {
-				var resolved = provider.ResolveType(type, current);
-				var found = resolved.GetMembers(m => m.SymbolKind == SymbolKind.Method && m.Name == result.Name.Name);
-				if (found.FirstOrDefault() != null) {
-					result.ImplementsClause.Add(new InterfaceMemberSpecifier((AstType)type.Clone(), found.FirstOrDefault().Name));
+
+		Dictionary<TypeDef, Dictionary<string, uint>> modifiersDict = new Dictionary<TypeDef, Dictionary<string, uint>>();
+		Modifiers GetExtraMethodModifiers(MethodDef md) {
+			Dictionary<string, uint> dict;
+			uint count;
+			if (!modifiersDict.TryGetValue(md.DeclaringType, out dict)) {
+				modifiersDict.Add(md.DeclaringType, dict = new Dictionary<string, uint>());
+				foreach (var m in md.DeclaringType.Methods) {
+					dict.TryGetValue(m.Name, out count);
+					if (!m.IsNewSlot && (m.IsAbstract || m.IsFinal || m.IsVirtual))
+						count++;
+					count += (1U << 16);
+					dict[m.Name] = count;
+				}
+			}
+			if (dict.TryGetValue(md.Name, out count)) {
+				uint numOverrides = count & 0xFFFF;
+				uint totalMethods = count >> 16;
+				if (numOverrides >= 1 && totalMethods > 1)
+					return Modifiers.Overloads;
+			}
+			return Modifiers.None;
+		}
+
+		static MethodBaseSig GetMethodBaseSig(ITypeDefOrRef type, MethodBaseSig msig, IList<TypeSig> methodGenArgs = null) {
+			IList<TypeSig> typeGenArgs = null;
+			var ts = type as TypeSpec;
+			if (ts != null) {
+				var genSig = ts.TypeSig.ToGenericInstSig();
+				if (genSig != null)
+					typeGenArgs = genSig.GenericArguments;
+			}
+			if (typeGenArgs == null && methodGenArgs == null)
+				return msig;
+			return GenericArgumentResolver.Resolve(msig, typeGenArgs, methodGenArgs);
+		}
+
+		static ITypeDefOrRef GetReplacedType(ITypeDefOrRef iface, ITypeDefOrRef typeToFix) {
+			IList<TypeSig> typeGenArgs = null;
+			var ts = iface as TypeSpec;
+			if (ts != null) {
+				var genSig = ts.TypeSig.ToGenericInstSig();
+				if (genSig != null)
+					typeGenArgs = genSig.GenericArguments;
+			}
+			if (typeGenArgs == null)
+				return typeToFix;
+			return GenericArgumentResolver.Resolve(typeToFix.ToTypeSig(), typeGenArgs, null).ToTypeDefOrRef();
+		}
+
+		struct ImplementsResult {
+			public ITypeDefOrRef Type { get; }
+			public string OriginalName { get; }
+			public object Reference { get; }
+			public ImplementsResult(IMethodDefOrRef method, object reference)
+				: this(method.DeclaringType, method.Name, reference) {
+			}
+			public ImplementsResult(ITypeDefOrRef type, string originalName, object reference) {
+				Type = type;
+				OriginalName = originalName;
+				Reference = reference;
+			}
+		}
+
+		IEnumerable<ImplementsResult> GetMethods(MethodDef method) {
+			foreach (var o in method.Overrides) {
+				var m = o.MethodDeclaration.ResolveMethodDef();
+				if (m == null)
+					continue;
+				if (!m.DeclaringType.IsInterface)
+					continue;
+				yield return new ImplementsResult(o.MethodDeclaration, o.MethodDeclaration);
+			}
+			var comparer = new SigComparer(0, method.Module);
+			foreach (var ii in method.DeclaringType.Interfaces) {
+				var iface = ii.Interface.Resolve();
+				if (iface == null)
+					continue;
+				foreach (var ifaceMethod in iface.Methods) {
+					if (ifaceMethod.Name != method.Name)
+						continue;
+					var ifaceMethodSig = GetMethodBaseSig(ii.Interface, ifaceMethod.MethodSig);
+					if (!comparer.Equals(ifaceMethodSig, method.MethodSig))
+						continue;
+					yield return new ImplementsResult(ii.Interface, ifaceMethod.Name, ifaceMethod);
 				}
 			}
 		}
-		
-		void CreateImplementsClausesForEvent(EventDeclaration result)
-		{
-			if (!types.Any()) return;
-			var current = types.Peek();
-			if (current.ClassType == ClassType.Interface)
-				return;
-			
-			foreach (var type in current.ImplementsTypes) {
-				var resolved = provider.ResolveType(type, current);
-				var found = resolved.GetMembers(m => m.SymbolKind == SymbolKind.Event && m.Name == result.Name.Name);
-				if (found.FirstOrDefault() != null) {
-					result.ImplementsClause.Add(new InterfaceMemberSpecifier((AstType)type.Clone(), found.FirstOrDefault().Name));
+
+		static IEnumerable<ImplementsResult> GetProperties(PropertyDef prop) {
+			var pm = prop.GetMethod ?? prop.SetMethod;
+			if (pm != null) {
+				foreach (var o in pm.Overrides) {
+					var m = o.MethodDeclaration.ResolveMethodDef();
+					if (m == null)
+						continue;
+					if (!m.DeclaringType.IsInterface)
+						continue;
+					var p = m.DeclaringType.Properties.FirstOrDefault(a => a.GetMethod == m || a.SetMethod == m);
+					if (p == null)
+						continue;
+					yield return new ImplementsResult(o.MethodDeclaration.DeclaringType, p.Name, o.MethodDeclaration);
+				}
+			}
+			var comparer = new SigComparer(0, prop.Module);
+			foreach (var ii in prop.DeclaringType.Interfaces) {
+				var iface = ii.Interface.Resolve();
+				if (iface == null)
+					continue;
+				foreach (var ifaceProp in iface.Properties) {
+					if (ifaceProp.Name != prop.Name)
+						continue;
+					var ifaceMethodSig = GetMethodBaseSig(ii.Interface, ifaceProp.PropertySig);
+					if (!comparer.Equals(ifaceMethodSig, prop.PropertySig))
+						continue;
+					yield return new ImplementsResult(ii.Interface, ifaceProp.Name, ifaceProp);
 				}
 			}
 		}
-		
+
+		static IEnumerable<ImplementsResult> GetEvents(EventDef evt) {
+			var em = evt.AddMethod ?? evt.RemoveMethod ?? evt.InvokeMethod;
+			if (em != null) {
+				foreach (var o in em.Overrides) {
+					var m = o.MethodDeclaration.ResolveMethodDef();
+					if (m == null)
+						continue;
+					if (!m.DeclaringType.IsInterface)
+						continue;
+					var e = m.DeclaringType.Events.FirstOrDefault(a => a.AddMethod == m || a.RemoveMethod == m || a.InvokeMethod == m);
+					if (e == null)
+						continue;
+					yield return new ImplementsResult(o.MethodDeclaration.DeclaringType, e.Name, o.MethodDeclaration);
+				}
+			}
+			var comparer = new SigComparer(0, evt.Module);
+			foreach (var ii in evt.DeclaringType.Interfaces) {
+				var iface = ii.Interface.Resolve();
+				if (iface == null)
+					continue;
+				foreach (var ifaceEvent in iface.Events) {
+					if (ifaceEvent.Name != evt.Name)
+						continue;
+					var eventType = GetReplacedType(ii.Interface, ifaceEvent.EventType);
+					if (!comparer.Equals(eventType, evt.EventType))
+						continue;
+					yield return new ImplementsResult(ii.Interface, ifaceEvent.Name, ifaceEvent);
+				}
+			}
+		}
+
+		StringBuilder createTypeStringBuilder = new StringBuilder();
+		AstType CreateType(ITypeDefOrRef type) {
+			//TODO: Use full namespace with Global if necessary, else add an Imports statement and don't use a namespace
+			var options = Decompiler.Ast.ConvertTypeOptions.IncludeNamespace;
+			var astType = Decompiler.Ast.AstBuilder.ConvertType(type, createTypeStringBuilder, null, options);
+			return (AstType)astType.AcceptVisitor(this, null);
+		}
+
+		void CreateImplementsClausesForMethod(CSharp.MethodDeclaration orig, MethodDeclaration result) {
+			var md = orig.Annotation<MethodDef>();
+			if (md == null || !md.IsVirtual)
+				return;
+			var type = md.DeclaringType;
+			if (type.IsInterface)
+				return;
+
+			foreach (var t in GetMethods(md))
+				result.ImplementsClause.Add(InterfaceMemberSpecifier.CreateWithData(CreateType(t.Type), t.OriginalName, t.Reference));
+		}
+
+		void CreateImplementsClausesForProperty(CSharp.IndexerDeclaration orig, PropertyDeclaration result) {
+			var pd = orig.Annotation<PropertyDef>();
+			if (pd == null)
+				return;
+			if (pd.GetMethod?.IsVirtual == false && pd.SetMethod?.IsVirtual == false)
+				return;
+			var type = pd.DeclaringType;
+			if (type.IsInterface)
+				return;
+
+			foreach (var t in GetProperties(pd))
+				result.ImplementsClause.Add(InterfaceMemberSpecifier.CreateWithData(CreateType(t.Type), t.OriginalName, t.Reference));
+		}
+
+		void CreateImplementsClausesForProperty(CSharp.PropertyDeclaration orig, PropertyDeclaration result) {
+			var pd = orig.Annotation<PropertyDef>();
+			if (pd == null)
+				return;
+			if (pd.GetMethod?.IsVirtual == false && pd.SetMethod?.IsVirtual == false)
+				return;
+			var type = pd.DeclaringType;
+			if (type.IsInterface)
+				return;
+
+			foreach (var t in GetProperties(pd))
+				result.ImplementsClause.Add(InterfaceMemberSpecifier.CreateWithData(CreateType(t.Type), t.OriginalName, t.Reference));
+		}
+
+		void CreateImplementsClausesForEvent(CSharp.CustomEventDeclaration orig, EventDeclaration result) {
+			var ed = orig.Annotation<EventDef>();
+			if (ed == null)
+				return;
+			if (ed.AddMethod?.IsVirtual == false && ed.RemoveMethod?.IsVirtual == false && ed.InvokeMethod?.IsVirtual == false)
+				return;
+			var type = ed.DeclaringType;
+			if (type.IsInterface)
+				return;
+
+			foreach (var t in GetEvents(ed))
+				result.ImplementsClause.Add(InterfaceMemberSpecifier.CreateWithData(CreateType(t.Type), t.OriginalName, t.Reference));
+		}
+
+		void CreateImplementsClausesForEvent(CSharp.EventDeclaration orig, EventDeclaration result) {
+			var ed = orig.Annotation<EventDef>();
+			if (ed == null)
+				return;
+			if (ed.AddMethod?.IsVirtual == false && ed.RemoveMethod?.IsVirtual == false && ed.InvokeMethod?.IsVirtual == false)
+				return;
+			var type = ed.DeclaringType;
+			if (type.IsInterface)
+				return;
+
+			foreach (var t in GetEvents(ed))
+				result.ImplementsClause.Add(InterfaceMemberSpecifier.CreateWithData(CreateType(t.Type), t.OriginalName, t.Reference));
+		}
+
 		string ConvertAlias(CSharp.AstNodeCollection<CSharp.Expression> arguments)
 		{
 			var pattern = new CSharp.AssignmentExpression() {
@@ -1714,7 +1987,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 				Right = new NamedNode(
 					"modifier",
 					new CSharp.MemberReferenceExpression() {
-						Target = new CSharp.IdentifierExpression("CharSet"),
+						Target = new CSharp.TypeReferenceExpression { Type = new AnyNode() },
 						MemberName = Pattern.AnyString
 					})
 			};
@@ -1748,7 +2021,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 			MemberDeclaration result;
 			members.Push(new MemberInfo());
 			
-			if (types.Any() && types.Peek().ClassType == ClassType.Module)
+			if (IsOwnerAModule(operatorDeclaration))
 				operatorDeclaration.Modifiers &= ~CSharp.Modifiers.Static;
 			
 			if (operatorDeclaration.OperatorType == CSharp.OperatorType.Increment || operatorDeclaration.OperatorType == CSharp.OperatorType.Decrement) {
@@ -1757,7 +2030,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 				
 				ConvertNodes(operatorDeclaration.Attributes.Where(section => section.AttributeTarget != "return"), m.Attributes);
 				ConvertNodes(operatorDeclaration.ModifierTokens, m.ModifierTokens);
-				m.Name = operatorDeclaration.OperatorType == CSharp.OperatorType.Increment ? "op_Increment" : "op_Decrement";
+				m.Name = Identifier.Create(TextColorHelper.GetColor((object)operatorDeclaration.Annotation<dnlib.DotNet.IMethod>() ?? BoxedTextColor.InstanceMethod), operatorDeclaration.OperatorType == CSharp.OperatorType.Increment ? "op_Increment" : "op_Decrement");
 				ConvertNodes(operatorDeclaration.Parameters, m.Parameters);
 				ConvertNodes(operatorDeclaration.Attributes.Where(section => section.AttributeTarget == "return"), m.ReturnTypeAttributes);
 				m.ReturnType = (AstType)operatorDeclaration.ReturnType.AcceptVisitor(this, data);
@@ -1864,10 +2137,11 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 			param.Modifiers = ConvertParamModifiers(parameterDeclaration.ParameterModifier);
 			if ((parameterDeclaration.ParameterModifier & CSharp.ParameterModifier.Out) == CSharp.ParameterModifier.Out) {
 				AttributeBlock block = new AttributeBlock();
-				block.Attributes.Add(new Ast.Attribute() { Type = new SimpleType("Out") });
+				var attrRef = module.UpdateRowId(module.CorLibTypes.GetTypeRef("System.Runtime.InteropServices", "OutAttribute"));
+				block.Attributes.Add(new Ast.Attribute() { Type = CreateType(attrRef) });
 				param.Attributes.Add(block);
 			}
-			param.Name = new Identifier(parameterDeclaration.Name, TextLocation.Empty);
+			param.Name = Identifier.Create(parameterDeclaration.NameToken.Annotations, parameterDeclaration.Name);
 			param.Type = (AstType)parameterDeclaration.Type.AcceptVisitor(this, data);
 			param.OptionalValue = (Expression)parameterDeclaration.DefaultExpression.AcceptVisitor(this, data);
 			if (!param.OptionalValue.IsNull)
@@ -1898,26 +2172,30 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 			
 			members.Push(new MemberInfo());
 			
-			if (types.Any() && types.Peek().ClassType == ClassType.Module)
+			if (IsOwnerAModule(propertyDeclaration))
 				propertyDeclaration.Modifiers &= ~CSharp.Modifiers.Static;
 			
 			ConvertNodes(propertyDeclaration.Attributes.Where(section => section.AttributeTarget != "return"), decl.Attributes);
 			decl.Getter = (Accessor)propertyDeclaration.Getter.AcceptVisitor(this, data);
 			decl.Modifiers = ConvertModifiers(propertyDeclaration.Modifiers, propertyDeclaration);
-			decl.Name = new Identifier(propertyDeclaration.Name, TextLocation.Empty);
+			decl.Name = Identifier.Create(propertyDeclaration.NameToken.Annotations, propertyDeclaration.Name);
 			ConvertNodes(propertyDeclaration.Attributes.Where(section => section.AttributeTarget == "return"), decl.ReturnTypeAttributes);
-			if (!propertyDeclaration.PrivateImplementationType.IsNull)
-				decl.ImplementsClause.Add(
-					new InterfaceMemberSpecifier((AstType)propertyDeclaration.PrivateImplementationType.AcceptVisitor(this, data),
-					                             propertyDeclaration.Name));
+			CreateImplementsClausesForProperty(propertyDeclaration, decl);
 			decl.ReturnType = (AstType)propertyDeclaration.ReturnType.AcceptVisitor(this, data);
 			decl.Setter = (Accessor)propertyDeclaration.Setter.AcceptVisitor(this, data);
 			
 			if (!decl.Setter.IsNull) {
+				Identifier id;
 				decl.Setter.Parameters.Add(new ParameterDeclaration() {
-				                           	Name = new Identifier("value", TextLocation.Empty),
+				                           	Name = id = new Identifier(BoxedTextColor.Parameter, "value", TextLocation.Empty),
 				                           	Type = (AstType)propertyDeclaration.ReturnType.AcceptVisitor(this, data),
 				                           });
+				var method = decl.Setter.Annotation<MethodDef>();
+				if (method != null) {
+					var p = method.Parameters.FirstOrDefault(a => a.IsNormalMethodParameter);
+					if (p != null)
+						id.AddAnnotation(p);
+				}
 			}
 			
 			if (members.Pop().inIterator) {
@@ -1937,7 +2215,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 			decl.Type = (AstType)variableInitializer.Parent
 				.GetChildByRole(CSharp.Roles.Type)
 				.AcceptVisitor(this, data);
-			decl.Identifiers.Add(new VariableIdentifier() { Name = variableInitializer.Name });
+			decl.Identifiers.Add(new VariableIdentifier() { Name = Identifier.Create(variableInitializer.NameToken.Annotations, variableInitializer.Name) });
 			decl.Initializer = (Expression)variableInitializer.Initializer.AcceptVisitor(this, data);
 			
 			return EndNode(variableInitializer, decl);
@@ -1965,7 +2243,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 		
 		public AstNode VisitSimpleType(CSharp.SimpleType simpleType, object data)
 		{
-			var type = new SimpleType(simpleType.Identifier);
+			var type = new SimpleType(simpleType.IdentifierToken.Annotations, simpleType.Identifier);
 			ConvertNodes(simpleType.TypeArguments, type.TypeArguments);
 			
 			return EndNode(simpleType, type);
@@ -1980,7 +2258,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 			else
 				target = (AstType)memberType.Target.AcceptVisitor(this, data);
 			
-			var type = new QualifiedType(target, new Identifier(memberType.MemberName, TextLocation.Empty));
+			var type = new QualifiedType(target, Identifier.Create(memberType.MemberNameToken.Annotations, memberType.MemberName));
 			ConvertNodes(memberType.TypeArguments, type.TypeArguments);
 			
 			return EndNode(memberType, type);
@@ -1995,7 +2273,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 			((ComposedType)type).HasNullableSpecifier = composedType.HasNullableSpecifier;
 			
 			for (int i = 0; i < composedType.PointerRank; i++) {
-				var tmp = new SimpleType() { Identifier = "__Pointer" };
+				var tmp = new SimpleType(Identifier.Create(BoxedTextColor.Keyword, "__Pointer"));
 				tmp.TypeArguments.Add(type);
 				type = tmp;
 			}
@@ -2071,6 +2349,9 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 				case "void":
 					typeName = "Void";
 					break;
+				case "__arglist":
+					typeName = "__ArgList";
+					break;
 				default:
 					typeName = "unknown";
 					break;
@@ -2099,8 +2380,9 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 		{
 			var param = new TypeParameterDeclaration() {
 				Variance = typeParameterDeclaration.Variance,
-				Name = typeParameterDeclaration.Name
+				NameToken = Identifier.Create(typeParameterDeclaration.NameToken.Annotations, typeParameterDeclaration.Name)
 			};
+			param.NameToken.AddAnnotation(typeParameterDeclaration.Annotation<object>());
 			
 			var constraint = typeParameterDeclaration.Parent
 				.GetChildrenByRole(CSharp.Roles.Constraint)
@@ -2145,6 +2427,8 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 			
 			if ((modifier & CSharp.Modifiers.Const) == CSharp.Modifiers.Const)
 				mod |= Modifiers.Const;
+			if ((modifier & CSharp.Modifiers.Partial) == CSharp.Modifiers.Partial)
+				mod |= Modifiers.Partial;
 			if ((modifier & CSharp.Modifiers.Abstract) == CSharp.Modifiers.Abstract) {
 				if (container is CSharp.TypeDeclaration)
 					mod |= Modifiers.MustInherit;
@@ -2213,7 +2497,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors
 		
 		public AstNode VisitIdentifier(CSharp.Identifier identifier, object data)
 		{
-			var ident = new Identifier(identifier.Name, identifier.StartLocation);
+			var ident = Identifier.Create(identifier.Annotations, identifier.Name, identifier.StartLocation);
 			
 			return EndNode(identifier, ident);
 		}

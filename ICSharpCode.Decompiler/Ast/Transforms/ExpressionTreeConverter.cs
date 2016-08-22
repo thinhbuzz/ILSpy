@@ -21,41 +21,46 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
+using System.Text;
+using dnlib.DotNet;
+using dnSpy.Contracts.Text;
 using ICSharpCode.Decompiler.ILAst;
 using ICSharpCode.NRefactory.CSharp;
 using ICSharpCode.NRefactory.PatternMatching;
-using Mono.Cecil;
 
-namespace ICSharpCode.Decompiler.Ast.Transforms
-{
+//TODO: Verify that no BinSpans have been removed from this file
+
+namespace ICSharpCode.Decompiler.Ast.Transforms {
 	public class ExpressionTreeConverter
 	{
 		#region static TryConvert method
 		public static bool CouldBeExpressionTree(InvocationExpression expr)
 		{
 			if (expr != null && expr.Arguments.Count == 2) {
-				MethodReference mr = expr.Annotation<MethodReference>();
-				return mr != null && mr.Name == "Lambda" && mr.DeclaringType.FullName == "System.Linq.Expressions.Expression";
+				IMethod mr = expr.Annotation<IMethod>();
+				return mr != null && mr.Name == "Lambda" && mr.DeclaringType != null && mr.DeclaringType.FullName == "System.Linq.Expressions.Expression";
 			}
 			return false;
 		}
 		
-		public static Expression TryConvert(DecompilerContext context, Expression expr)
+		public static Expression TryConvert(DecompilerContext context, Expression expr, StringBuilder sb)
 		{
-			Expression converted = new ExpressionTreeConverter(context).Convert(expr);
+			Expression converted = new ExpressionTreeConverter(context, sb).Convert(expr);
 			if (converted != null) {
 				converted.AddAnnotation(new ExpressionTreeLambdaAnnotation());
 			}
 			return converted;
 		}
 		#endregion
-		
+
 		readonly DecompilerContext context;
 		Stack<LambdaExpression> activeLambdas = new Stack<LambdaExpression>();
-		
-		private ExpressionTreeConverter(DecompilerContext context)
+		readonly StringBuilder stringBuilder;
+
+		private ExpressionTreeConverter(DecompilerContext context, StringBuilder sb)
 		{
 			this.context = context;
+			this.stringBuilder = sb;
 		}
 		
 		#region Main Convert method
@@ -63,8 +68,8 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 		{
 			InvocationExpression invocation = expr as InvocationExpression;
 			if (invocation != null) {
-				MethodReference mr = invocation.Annotation<MethodReference>();
-				if (mr != null && mr.DeclaringType.FullName == "System.Linq.Expressions.Expression") {
+				IMethod mr = invocation.Annotation<IMethod>();
+				if (mr != null && mr.DeclaringType != null && mr.DeclaringType.FullName == "System.Linq.Expressions.Expression") {
 					switch (mr.Name) {
 						case "Add":
 							return ConvertBinaryOperator(invocation, BinaryOperatorType.Add, false);
@@ -201,7 +206,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 					foreach (LambdaExpression lambda in activeLambdas) {
 						foreach (ParameterDeclaration p in lambda.Parameters) {
 							if (p.Annotation<ILVariable>() == v)
-								return new IdentifierExpression(p.Name).WithAnnotation(v);
+								return IdentifierExpression.Create(p.Name, v.IsParameter ? BoxedTextColor.Parameter : BoxedTextColor.Local).WithAnnotation(v);
 						}
 					}
 				}
@@ -253,10 +258,11 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 		
 		#region Convert Field
 		static readonly Expression getFieldFromHandlePattern =
-			new TypePattern(typeof(FieldInfo)).ToType().Invoke(
+			new TypePattern(typeof(FieldInfo)).ToType().Invoke2(
+				BoxedTextColor.StaticMethod,
 				"GetFieldFromHandle",
-				new LdTokenPattern("field").ToExpression().Member("FieldHandle"),
-				new OptionalNode(new TypeOfExpression(new AnyNode("declaringType")).Member("TypeHandle"))
+				new LdTokenPattern("field").ToExpression().Member("FieldHandle", BoxedTextColor.InstanceProperty),
+				new OptionalNode(new TypeOfExpression(new AnyNode("declaringType")).Member("TypeHandle", BoxedTextColor.InstanceProperty))
 			);
 		
 		Expression ConvertField(InvocationExpression invocation)
@@ -269,7 +275,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 			if (!m.Success)
 				return NotSupported(invocation);
 			
-			FieldReference fr = m.Get<AstNode>("field").Single().Annotation<FieldReference>();
+			IField fr = m.Get<AstNode>("field").Single().Annotation<IField>();
 			if (fr == null)
 				return null;
 			
@@ -279,23 +285,24 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 				if (m.Has("declaringType"))
 					convertedTarget = new TypeReferenceExpression(m.Get<AstType>("declaringType").Single().Clone());
 				else
-					convertedTarget = new TypeReferenceExpression(AstBuilder.ConvertType(fr.DeclaringType));
+					convertedTarget = new TypeReferenceExpression(AstBuilder.ConvertType(fr.DeclaringType, stringBuilder));
 			} else {
 				convertedTarget = Convert(target);
 				if (convertedTarget == null)
 					return null;
 			}
 			
-			return convertedTarget.Member(fr.Name).WithAnnotation(fr);
+			return convertedTarget.Member(fr.Name, fr).WithAnnotation(fr);
 		}
 		#endregion
 		
 		#region Convert Property
 		static readonly Expression getMethodFromHandlePattern =
-			new TypePattern(typeof(MethodBase)).ToType().Invoke(
+			new TypePattern(typeof(MethodBase)).ToType().Invoke2(
+				BoxedTextColor.StaticMethod,
 				"GetMethodFromHandle",
-				new LdTokenPattern("method").ToExpression().Member("MethodHandle"),
-				new OptionalNode(new TypeOfExpression(new AnyNode("declaringType")).Member("TypeHandle"))
+				new LdTokenPattern("method").ToExpression().Member("MethodHandle", BoxedTextColor.InstanceProperty),
+				new OptionalNode(new TypeOfExpression(new AnyNode("declaringType")).Member("TypeHandle", BoxedTextColor.InstanceProperty))
 			).CastTo(new TypePattern(typeof(MethodInfo)));
 		
 		Expression ConvertProperty(InvocationExpression invocation)
@@ -307,7 +314,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 			if (!m.Success)
 				return NotSupported(invocation);
 			
-			MethodReference mr = m.Get<AstNode>("method").Single().Annotation<MethodReference>();
+			IMethod mr = m.Get<AstNode>("method").Single().Annotation<IMethod>();
 			if (mr == null)
 				return null;
 			
@@ -317,17 +324,17 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 				if (m.Has("declaringType"))
 					convertedTarget = new TypeReferenceExpression(m.Get<AstType>("declaringType").Single().Clone());
 				else
-					convertedTarget = new TypeReferenceExpression(AstBuilder.ConvertType(mr.DeclaringType));
+					convertedTarget = new TypeReferenceExpression(AstBuilder.ConvertType(mr.DeclaringType, stringBuilder));
 			} else {
 				convertedTarget = Convert(target);
 				if (convertedTarget == null)
 					return null;
 			}
 			
-			return convertedTarget.Member(GetPropertyName(mr)).WithAnnotation(mr);
+			return convertedTarget.Member(GetPropertyName(mr), mr.MethodSig == null || mr.MethodSig.HasThis ? BoxedTextColor.InstanceProperty : BoxedTextColor.StaticProperty).WithAnnotation(mr);
 		}
 		
-		string GetPropertyName(MethodReference accessor)
+		string GetPropertyName(IMethod accessor)
 		{
 			string name = accessor.Name;
 			if (name.StartsWith("get_", StringComparison.Ordinal) || name.StartsWith("set_", StringComparison.Ordinal))
@@ -357,7 +364,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 				firstArgumentPosition = 2;
 			}
 			
-			MethodReference mr = m.Get<AstNode>("method").Single().Annotation<MethodReference>();
+			IMethod mr = m.Get<AstNode>("method").Single().Annotation<IMethod>();
 			if (mr == null)
 				return null;
 			
@@ -367,18 +374,18 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 				if (m.Has("declaringType"))
 					convertedTarget = new TypeReferenceExpression(m.Get<AstType>("declaringType").Single().Clone());
 				else
-					convertedTarget = new TypeReferenceExpression(AstBuilder.ConvertType(mr.DeclaringType));
+					convertedTarget = new TypeReferenceExpression(AstBuilder.ConvertType(mr.DeclaringType, stringBuilder));
 			} else {
 				convertedTarget = Convert(target);
 				if (convertedTarget == null)
 					return null;
 			}
 			
-			MemberReferenceExpression mre = convertedTarget.Member(mr.Name);
-			GenericInstanceMethod gim = mr as GenericInstanceMethod;
-			if (gim != null) {
-				foreach (TypeReference tr in gim.GenericArguments) {
-					mre.TypeArguments.Add(AstBuilder.ConvertType(tr));
+			MemberReferenceExpression mre = convertedTarget.Member(mr.Name, mr);
+			MethodSpec gim = mr as MethodSpec;
+			if (gim != null && gim.GenericInstMethodSig != null) {
+				foreach (TypeSig tr in gim.GenericInstMethodSig.GenericArguments) {
+					mre.TypeArguments.Add(AstBuilder.ConvertType(tr, stringBuilder));
 				}
 			}
 			IList<Expression> arguments = null;
@@ -395,9 +402,9 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 					arguments.Add(convertedArgument);
 				}
 			}
-			MethodDefinition methodDef = mr.Resolve();
+			MethodDef methodDef = mr.Resolve();
 			if (methodDef != null && methodDef.IsGetter) {
-				PropertyDefinition indexer = AstMethodBodyBuilder.GetIndexer(methodDef);
+				PropertyDef indexer = AstMethodBodyBuilder.GetIndexer(methodDef);
 				if (indexer != null)
 					return new IndexerExpression(mre.Target.Detach(), arguments).WithAnnotation(indexer);
 			}
@@ -446,7 +453,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 				case 3:
 					Match m = getMethodFromHandlePattern.Match(invocation.Arguments.ElementAt(2));
 					if (m.Success)
-						return boe.WithAnnotation(m.Get<AstNode>("method").Single().Annotation<MethodReference>());
+						return boe.WithAnnotation(m.Get<AstNode>("method").Single().Annotation<IMethod>());
 					else
 						return null;
 				case 4:
@@ -454,7 +461,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 						return null;
 					m = getMethodFromHandlePattern.Match(invocation.Arguments.ElementAt(3));
 					if (m.Success)
-						return boe.WithAnnotation(m.Get<AstNode>("method").Single().Annotation<MethodReference>());
+						return boe.WithAnnotation(m.Get<AstNode>("method").Single().Annotation<IMethod>());
 					else
 						return null;
 				default:
@@ -490,7 +497,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 				case 2:
 					Match m = getMethodFromHandlePattern.Match(invocation.Arguments.ElementAt(1));
 					if (m.Success)
-						return uoe.WithAnnotation(m.Get<AstNode>("method").Single().Annotation<MethodReference>());
+						return uoe.WithAnnotation(m.Get<AstNode>("method").Single().Annotation<IMethod>());
 					else
 						return null;
 				default:
@@ -516,11 +523,12 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 		#endregion
 		
 		#region Convert New Object
-		static readonly Expression newObjectCtorPattern = new TypePattern(typeof(MethodBase)).ToType().Invoke
+		static readonly Expression newObjectCtorPattern = new TypePattern(typeof(MethodBase)).ToType().Invoke2
 			(
+				BoxedTextColor.StaticMethod,
 				"GetMethodFromHandle",
-				new LdTokenPattern("ctor").ToExpression().Member("MethodHandle"),
-				new OptionalNode(new TypeOfExpression(new AnyNode("declaringType")).Member("TypeHandle"))
+				new LdTokenPattern("ctor").ToExpression().Member("MethodHandle", BoxedTextColor.InstanceProperty),
+				new OptionalNode(new TypeOfExpression(new AnyNode("declaringType")).Member("TypeHandle", BoxedTextColor.InstanceProperty))
 			).CastTo(new TypePattern(typeof(ConstructorInfo)));
 		
 		Expression ConvertNewObject(InvocationExpression invocation)
@@ -532,17 +540,17 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 			if (!m.Success)
 				return NotSupported(invocation);
 			
-			MethodReference ctor = m.Get<AstNode>("ctor").Single().Annotation<MethodReference>();
+			IMethod ctor = m.Get<AstNode>("ctor").Single().Annotation<IMethod>();
 			if (ctor == null)
 				return null;
 			
 			AstType declaringTypeNode;
-			TypeReference declaringType;
+			ITypeDefOrRef declaringType;
 			if (m.Has("declaringType")) {
 				declaringTypeNode = m.Get<AstType>("declaringType").Single().Clone();
-				declaringType = declaringTypeNode.Annotation<TypeReference>();
+				declaringType = declaringTypeNode.Annotation<ITypeDefOrRef>();
 			} else {
-				declaringTypeNode = AstBuilder.ConvertType(ctor.DeclaringType);
+				declaringTypeNode = AstBuilder.ConvertType(ctor.DeclaringType, stringBuilder);
 				declaringType = ctor.DeclaringType;
 			}
 			if (declaringTypeNode == null)
@@ -556,18 +564,21 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 				oce.Arguments.AddRange(arguments);
 			}
 			if (invocation.Arguments.Count >= 3 && declaringType.IsAnonymousType()) {
-				MethodDefinition resolvedCtor = ctor.Resolve();
-				if (resolvedCtor == null || resolvedCtor.Parameters.Count != oce.Arguments.Count)
+				MethodDef resolvedCtor = ctor.Resolve();
+				if (resolvedCtor == null)
+					return null;
+				int skip = resolvedCtor.Parameters.GetParametersSkip();
+				if (resolvedCtor.Parameters.Count - skip != oce.Arguments.Count)
 					return null;
 				AnonymousTypeCreateExpression atce = new AnonymousTypeCreateExpression();
 				var arguments = oce.Arguments.ToArray();
 				if (AstMethodBodyBuilder.CanInferAnonymousTypePropertyNamesFromArguments(arguments, resolvedCtor.Parameters)) {
 					oce.Arguments.MoveTo(atce.Initializers);
 				} else {
-					for (int i = 0; i < resolvedCtor.Parameters.Count; i++) {
+					for (int i = 0; i < resolvedCtor.Parameters.Count - skip; i++) {
 						atce.Initializers.Add(
 							new NamedExpression {
-								Name = resolvedCtor.Parameters[i].Name,
+								NameToken = Identifier.Create(resolvedCtor.Parameters[i + skip].Name).WithAnnotation(resolvedCtor.Parameters[i + skip]),
 								Expression = arguments[i].Detach()
 							});
 					}
@@ -659,12 +670,14 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 				Expression bindingValue = bindingInvocation.Arguments.ElementAt(1);
 				
 				string memberName;
+				object color;
 				Match m2 = getMethodFromHandlePattern.Match(bindingTarget);
 				if (m2.Success) {
-					MethodReference setter = m2.Get<AstNode>("method").Single().Annotation<MethodReference>();
+					IMethod setter = m2.Get<AstNode>("method").Single().Annotation<IMethod>();
 					if (setter == null)
 						return null;
 					memberName = GetPropertyName(setter);
+					color = setter.MethodSig == null || setter.MethodSig.HasThis ? BoxedTextColor.InstanceProperty : BoxedTextColor.StaticProperty;
 				} else {
 					return null;
 				}
@@ -685,7 +698,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 				}
 				if (convertedValue == null)
 					return null;
-				result.Elements.Add(new NamedExpression(memberName, convertedValue));
+				result.Elements.Add(new NamedExpression(memberName, convertedValue, color));
 			}
 			return result;
 		}
@@ -707,7 +720,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 					case 3:
 						Match m = getMethodFromHandlePattern.Match(invocation.Arguments.ElementAt(2));
 						if (m.Success)
-							return cast.WithAnnotation(m.Get<AstNode>("method").Single().Annotation<MethodReference>());
+							return cast.WithAnnotation(m.Get<AstNode>("method").Single().Annotation<IMethod>());
 						else
 							return null;
 				}
@@ -817,10 +830,50 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 			
 			Expression targetConverted = Convert(invocation.Arguments.Single());
 			if (targetConverted != null)
-				return targetConverted.Member("Length");
+				return targetConverted.Member("Length", BoxedTextColor.InstanceProperty).WithAnnotation(Create_SystemArray_get_Length());
 			else
 				return null;
 		}
+
+		ModuleDef GetModule()
+		{
+			if (context.CurrentMethod != null && context.CurrentMethod.Module != null)
+				return context.CurrentMethod.Module;
+			if (context.CurrentType != null && context.CurrentType.Module != null)
+				return context.CurrentType.Module;
+			if (context.CurrentModule != null)
+				return context.CurrentModule;
+
+			return null;
+		}
+
+		IMDTokenProvider Create_SystemArray_get_Length()
+		{
+			if (Create_SystemArray_get_Length_result_initd)
+				return Create_SystemArray_get_Length_result;
+			Create_SystemArray_get_Length_result_initd = true;
+
+			var module = GetModule();
+			if (module == null)
+				return null;
+
+			const string propName = "Length";
+			var type = module.CorLibTypes.GetTypeRef("System", "Array");
+			var retType = module.CorLibTypes.Int32;
+			var mr = new MemberRefUser(module, "get_" + propName, MethodSig.CreateInstance(retType), type);
+			Create_SystemArray_get_Length_result = mr;
+			var md = mr.ResolveMethod();
+			if (md == null || md.DeclaringType == null)
+				return mr;
+			var prop = md.DeclaringType.FindProperty(propName);
+			if (prop == null)
+				return mr;
+
+			Create_SystemArray_get_Length_result = prop;
+			return prop;
+		}
+		IMDTokenProvider Create_SystemArray_get_Length_result;
+		bool Create_SystemArray_get_Length_result_initd;
 		
 		Expression ConvertNewArrayInit(InvocationExpression invocation)
 		{
@@ -864,7 +917,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 		bool ContainsAnonymousType(AstType type)
 		{
 			foreach (AstType t in type.DescendantsAndSelf.OfType<AstType>()) {
-				TypeReference tr = t.Annotation<TypeReference>();
+				ITypeDefOrRef tr = t.Annotation<ITypeDefOrRef>();
 				if (tr != null && tr.IsAnonymousType())
 					return true;
 			}

@@ -2,16 +2,18 @@
 // This code is distributed under MIT X11 license (for details please see \doc\license.txt)
 
 using System;
-using System.IO;
+using System.Collections.Generic;
+using dnSpy.Contracts.Decompiler;
 
-namespace ICSharpCode.NRefactory.VB.Ast
-{
+namespace ICSharpCode.NRefactory.VB.Ast {
 	public class SelectStatement : Statement
 	{
 		public Expression Expression {
 			get { return GetChildByRole(Roles.Expression); }
 			set { SetChildByRole(Roles.Expression, value); }
 		}
+
+		public IList<BinSpan> HiddenEnd { get; set; }
 		
 		public AstNodeCollection<CaseStatement> Cases {
 			get { return GetChildrenByRole(CaseStatement.CaseStatementRole); }

@@ -24,35 +24,58 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 
-namespace ICSharpCode.NRefactory.VB.Ast
-{
+namespace ICSharpCode.NRefactory.VB.Ast {
 	public class SimpleType : AstType
 	{
-		public SimpleType()
+		public static SimpleType CreateWithColor(object color, string identifier)
 		{
+			return new SimpleType(identifier, color);
+		}
+
+		public static SimpleType CreateWithColor(object color, string identifier, TextLocation location)
+		{
+			return new SimpleType(identifier, color, location);
+		}
+
+		public SimpleType(Identifier identifier)
+		{
+			this.IdentifierToken = identifier;
+		}
+
+		public SimpleType(IEnumerable<object> annotations, string identifier)
+		{
+			this.IdentifierToken = Ast.Identifier.Create(annotations, identifier);
 		}
 		
-		public SimpleType(string identifier)
+		SimpleType(string identifier, object data)
 		{
-			this.Identifier = identifier;
+			this.IdentifierToken = Ast.Identifier.Create(data, identifier);
 		}
 		
-		public SimpleType(string identifier, TextLocation location)
+		SimpleType(string identifier, object data, TextLocation location)
 		{
-			SetChildByRole (Roles.Identifier, new Identifier (identifier, location));
+			SetChildByRole (Roles.Identifier, new Identifier (data, identifier, location));
 		}
 		
 		public string Identifier {
 			get {
 				return GetChildByRole (Roles.Identifier).Name;
 			}
+// 			set {
+// 				SetChildByRole (Roles.Identifier, new Identifier (TextToken.Default, value, TextLocation.Empty));
+// 			}
+		}
+
+		public Identifier IdentifierToken {
+			get {
+				return GetChildByRole (Roles.Identifier);
+			}
 			set {
-				SetChildByRole (Roles.Identifier, new Identifier (value, TextLocation.Empty));
+				SetChildByRole (Roles.Identifier, value);
 			}
 		}
 		

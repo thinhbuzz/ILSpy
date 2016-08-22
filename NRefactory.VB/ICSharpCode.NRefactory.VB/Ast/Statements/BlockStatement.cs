@@ -1,11 +1,10 @@
 ﻿// Copyright (c) AlphaSierraPapa for the SharpDevelop Team (for details please see \doc\copyright.txt)
 // This code is distributed under MIT X11 license (for details please see \doc\license.txt)
 
-using System;
 using System.Collections.Generic;
+using dnSpy.Contracts.Decompiler;
 
-namespace ICSharpCode.NRefactory.VB.Ast
-{
+namespace ICSharpCode.NRefactory.VB.Ast {
 	/// <summary>
 	/// { Statements }
 	/// </summary>
@@ -70,6 +69,9 @@ namespace ICSharpCode.NRefactory.VB.Ast
 		public AstNodeCollection<Statement> Statements {
 			get { return GetChildrenByRole (StatementRole); }
 		}
+
+		public IList<BinSpan> HiddenStart { get; set; }
+		public IList<BinSpan> HiddenEnd { get; set; }
 		
 		public override S AcceptVisitor<T, S> (IAstVisitor<T, S> visitor, T data)
 		{

@@ -3,9 +3,9 @@
 
 using System;
 using System.IO;
+using dnSpy.Contracts.Decompiler;
 
-namespace ICSharpCode.NRefactory.VB
-{
+namespace ICSharpCode.NRefactory.VB {
 	/// <summary>
 	/// Writes VB code into a TextWriter.
 	/// </summary>
@@ -14,6 +14,8 @@ namespace ICSharpCode.NRefactory.VB
 		readonly TextWriter textWriter;
 		int indentation;
 		bool needsIndent = true;
+
+		public int NextPosition => 0;
 		
 		public TextWriterOutputFormatter(TextWriter textWriter)
 		{
@@ -22,7 +24,7 @@ namespace ICSharpCode.NRefactory.VB
 			this.textWriter = textWriter;
 		}
 		
-		public void WriteIdentifier(string ident)
+		public void WriteIdentifier(string ident, object data, object extraData)
 		{
 			WriteIndentation();
 			textWriter.Write(ident);
@@ -34,7 +36,7 @@ namespace ICSharpCode.NRefactory.VB
 			textWriter.Write(keyword);
 		}
 		
-		public void WriteToken(string token)
+		public void WriteToken(string token, object data)
 		{
 			WriteIndentation();
 			textWriter.Write(token);
@@ -89,12 +91,36 @@ namespace ICSharpCode.NRefactory.VB
 				textWriter.Write("'");
 			textWriter.WriteLine(content);
 		}
-		
-		public void MarkFoldStart()
+
+		public void DebugHidden(object hiddenBinSpans)
 		{
 		}
-		
-		public void MarkFoldEnd()
+
+		public void DebugStart(AstNode node)
+		{
+		}
+
+		public void DebugExpression(AstNode node)
+		{
+		}
+
+		public void DebugEnd(AstNode node)
+		{
+		}
+
+		public void AddHighlightedKeywordReference(object reference, int start, int end)
+		{
+		}
+
+		public void AddBracePair(int leftStart, int leftEnd, int rightStart, int rightEnd, CodeBracesRangeFlags flags)
+		{
+		}
+
+		public void AddBlock(int start, int end, CodeBracesRangeFlags flags)
+		{
+		}
+
+		public void AddLineSeparator(int position)
 		{
 		}
 	}

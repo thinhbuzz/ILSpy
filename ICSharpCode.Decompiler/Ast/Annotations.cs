@@ -1,18 +1,17 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Diagnostics;
 using ICSharpCode.Decompiler.ILAst;
 using ICSharpCode.NRefactory.CSharp;
-using Mono.Cecil;
+using dnlib.DotNet;
+using System.Text;
 
-namespace ICSharpCode.Decompiler.Ast
-{
+namespace ICSharpCode.Decompiler.Ast {
 	public class TypeInformation
 	{
-		public readonly TypeReference InferredType;
-		public readonly TypeReference ExpectedType;
+		public readonly TypeSig InferredType;
+		public readonly TypeSig ExpectedType;
 		
-		public TypeInformation(TypeReference inferredType, TypeReference expectedType)
+		public TypeInformation(TypeSig inferredType, TypeSig expectedType)
 		{
 			this.InferredType = inferredType;
 			this.ExpectedType = expectedType;
@@ -28,7 +27,7 @@ namespace ICSharpCode.Decompiler.Ast
 	{
 		public readonly List<ParameterDeclaration> Parameters = new List<ParameterDeclaration>();
 		
-		public ParameterDeclarationAnnotation(ILExpression expr)
+		public ParameterDeclarationAnnotation(ILExpression expr, StringBuilder sb)
 		{
 			Debug.Assert(expr.Code == ILCode.ExpressionTreeParameterDeclarations);
 			for (int i = 0; i < expr.Arguments.Count - 1; i++) {
@@ -36,9 +35,9 @@ namespace ICSharpCode.Decompiler.Ast
 				// p looks like this:
 				//   stloc(v, call(Expression::Parameter, call(Type::GetTypeFromHandle, ldtoken(...)), ldstr(...)))
 				ILVariable v = (ILVariable)p.Operand;
-				TypeReference typeRef = (TypeReference)p.Arguments[0].Arguments[0].Arguments[0].Operand;
+				ITypeDefOrRef typeRef = (ITypeDefOrRef)p.Arguments[0].Arguments[0].Arguments[0].Operand;
 				string name = (string)p.Arguments[0].Arguments[1].Operand;
-				Parameters.Add(new ParameterDeclaration(AstBuilder.ConvertType(typeRef), name).WithAnnotation(v));
+				Parameters.Add(new ParameterDeclaration(AstBuilder.ConvertType(typeRef, sb), name).WithAnnotation(v));
 			}
 		}
 	}

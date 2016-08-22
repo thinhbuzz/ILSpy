@@ -17,21 +17,24 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-using System.Threading;
 using ICSharpCode.NRefactory.CSharp;
 
-namespace ICSharpCode.Decompiler.Ast.Transforms
-{
+namespace ICSharpCode.Decompiler.Ast.Transforms {
 	public interface IAstTransform
 	{
 		void Run(AstNode compilationUnit);
 	}
-	
+
+	public interface IAstTransformPoolObject : IAstTransform
+	{
+		void Reset(DecompilerContext context);
+	}
+
 	public static class TransformationPipeline
 	{
-		public static IAstTransform[] CreatePipeline(DecompilerContext context)
+		public static IAstTransformPoolObject[] CreatePipeline(DecompilerContext context)
 		{
-			return new IAstTransform[] {
+			return new IAstTransformPoolObject[] {
 				new PushNegation(),
 				new DelegateConstruction(context),
 				new PatternStatementTransform(context),
@@ -39,7 +42,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 				new IntroduceUnsafeModifier(),
 				new AddCheckedBlocks(),
 				new DeclareVariables(context), // should run after most transforms that modify statements
-				new ConvertConstructorCallIntoInitializer(), // must run after DeclareVariables
+				new ConvertConstructorCallIntoInitializer(context), // must run after DeclareVariables
 				new DecimalConstantTransform(),
 				new IntroduceUsingDeclarations(context),
 				new IntroduceExtensionMethods(context), // must run after IntroduceUsingDeclarations
@@ -53,12 +56,19 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 		{
 			if (node == null)
 				return;
-			
-			foreach (var transform in CreatePipeline(context)) {
-				context.CancellationToken.ThrowIfCancellationRequested();
-				if (abortCondition != null && abortCondition(transform))
-					return;
-				transform.Run(node);
+
+			var pipeline = context.Cache.GetPipelinePool();
+			try {
+				foreach (var transform in pipeline) {
+					transform.Reset(context);
+					context.CancellationToken.ThrowIfCancellationRequested();
+					if (abortCondition != null && abortCondition(transform))
+						return;
+					transform.Run(node);
+				}
+			}
+			finally {
+				context.Cache.Return(pipeline);
 			}
 		}
 	}

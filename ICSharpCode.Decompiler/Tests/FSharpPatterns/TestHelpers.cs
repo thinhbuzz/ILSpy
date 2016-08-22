@@ -1,19 +1,15 @@
 ﻿using ICSharpCode.Decompiler.Ast;
 using ICSharpCode.Decompiler.Tests.Helpers;
 using ICSharpCode.NRefactory.CSharp;
-using Mono.Cecil;
 using NUnit.Framework;
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using System.Text;
-using System.Threading.Tasks;
+using dnSpy.Contracts.Decompiler;
 
-namespace ICSharpCode.Decompiler.Tests.FSharpPatterns
-{
+namespace ICSharpCode.Decompiler.Tests.FSharpPatterns {
 	public class TestHelpers
 	{
 		public static string FuzzyReadResource(string resourceName)
@@ -57,14 +53,14 @@ namespace ICSharpCode.Decompiler.Tests.FSharpPatterns
 
 		private static void CompareAssemblyAgainstCSharp(string expectedCSharpCode, string asmFilePath)
 		{
-			var module = ModuleDefinition.ReadModule(asmFilePath);
+			var module = Utils.OpenModule(asmFilePath);
 			try
 			{
-				try { module.ReadSymbols(); } catch { }
-				AstBuilder decompiler = new AstBuilder(new DecompilerContext(module));
-				decompiler.AddAssembly(module);
+				try { module.LoadPdb(); } catch { }
+				AstBuilder decompiler = AstBuilder.CreateAstBuilderTestContext(module);
+				decompiler.AddAssembly(module, false, true, true);
 				new Helpers.RemoveCompilerAttribute().Run(decompiler.SyntaxTree);
-				StringWriter output = new StringWriter();
+				var output = new StringBuilderDecompilerOutput();
 
 				// the F# assembly contains a namespace `<StartupCode$tmp6D55>` where the part after tmp is randomly generated.
 				// remove this from the ast to simplify the diff
@@ -72,8 +68,7 @@ namespace ICSharpCode.Decompiler.Tests.FSharpPatterns
 				if (startupCodeNode != null)
 					startupCodeNode.Remove();
 
-				decompiler.GenerateCode(new PlainTextOutput(output));
-				var fullCSharpCode = output.ToString();
+				decompiler.GenerateCode(output);
 
 				CodeAssert.AreEqual(expectedCSharpCode, output.ToString());
 			}

@@ -20,41 +20,43 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using dnlib.DotNet;
 
-using ICSharpCode.NRefactory.Utils;
-using Mono.Cecil;
-
-namespace ICSharpCode.Decompiler.ILAst
-{
+namespace ICSharpCode.Decompiler.ILAst {
 	public partial class ILAstOptimizer
 	{
 		#region TypeConversionSimplifications
-		static bool TypeConversionSimplifications(List<ILNode> body, ILExpression expr, int pos)
+		bool TypeConversionSimplifications(ILBlockBase block, List<ILNode> body, ILExpression expr, int pos)
 		{
 			bool modified = false;
 			modified |= TransformDecimalCtorToConstant(expr);
 			modified |= SimplifyLdcI4ConvI8(expr);
 			modified |= RemoveConvIFromArrayCreation(expr);
 			foreach(ILExpression arg in expr.Arguments) {
-				modified |= TypeConversionSimplifications(null, arg, -1);
+				modified |= TypeConversionSimplifications(block, null, arg, -1);
 			}
 			return modified;
 		}
-		
-		static bool TransformDecimalCtorToConstant(ILExpression expr)
+
+		static readonly UTF8String systemString = new UTF8String("System");
+		static readonly UTF8String decimalString = new UTF8String("Decimal");
+		bool TransformDecimalCtorToConstant(ILExpression expr)
 		{
-			MethodReference r;
+			IMethod r;
 			List<ILExpression> args;
 			if (expr.Match(ILCode.Newobj, out r, out args) &&
-			    r.DeclaringType.Namespace == "System" &&
-			    r.DeclaringType.Name == "Decimal")
+				r.DeclaringType.Compare(systemString, decimalString))
 			{
 				if (args.Count == 1) {
 					int val;
 					if (args[0].Match(ILCode.Ldc_I4, out val)) {
 						expr.Code = ILCode.Ldc_Decimal;
 						expr.Operand = new decimal(val);
-						expr.InferredType = r.DeclaringType;
+						expr.InferredType = r.DeclaringType.ToTypeSig();
+						if (context.CalculateBinSpans) {
+							foreach (var arg in expr.Arguments)
+								arg.AddSelfAndChildrenRecursiveBinSpans(expr.BinSpans);
+						}
 						expr.Arguments.Clear();
 						return true;
 					}
@@ -68,7 +70,11 @@ namespace ICSharpCode.Decompiler.ILAst
 					{
 						expr.Code = ILCode.Ldc_Decimal;
 						expr.Operand = new decimal(lo, mid, hi, isNegative != 0, (byte)scale);
-						expr.InferredType = r.DeclaringType;
+						expr.InferredType = r.DeclaringType.ToTypeSig();
+						if (context.CalculateBinSpans) {
+							foreach (var arg in expr.Arguments)
+								arg.AddSelfAndChildrenRecursiveBinSpans(expr.BinSpans);
+						}
 						expr.Arguments.Clear();
 						return true;
 					}
@@ -77,22 +83,26 @@ namespace ICSharpCode.Decompiler.ILAst
 			return false;
 		}
 		
-		static bool SimplifyLdcI4ConvI8(ILExpression expr)
+		bool SimplifyLdcI4ConvI8(ILExpression expr)
 		{
 			ILExpression ldc;
 			int val;
 			if (expr.Match(ILCode.Conv_I8, out ldc) && ldc.Match(ILCode.Ldc_I4, out val)) {
 				expr.Code = ILCode.Ldc_I8;
 				expr.Operand = (long)val;
+				if (context.CalculateBinSpans) {
+					foreach (var arg in expr.Arguments)
+						arg.AddSelfAndChildrenRecursiveBinSpans(expr.BinSpans);
+				}
 				expr.Arguments.Clear();
 				return true;
 			}
 			return false;
 		}
 		
-		static bool RemoveConvIFromArrayCreation(ILExpression expr)
+		bool RemoveConvIFromArrayCreation(ILExpression expr)
 		{
-			TypeReference typeRef;
+			ITypeDefOrRef typeRef;
 			ILExpression length;
 			ILExpression input;
 			if (expr.Match(ILCode.Newarr, out typeRef, out length)) {
@@ -100,6 +110,8 @@ namespace ICSharpCode.Decompiler.ILAst
 				    || length.Match(ILCode.Conv_Ovf_I_Un, out input) || length.Match(ILCode.Conv_U, out input))
 				{
 					expr.Arguments[0] = input;
+					if (context.CalculateBinSpans)
+						input.BinSpans.AddRange(length.BinSpans);	// no recursive add
 					return true;
 				}
 			}
@@ -108,7 +120,7 @@ namespace ICSharpCode.Decompiler.ILAst
 		#endregion
 		
 		#region SimplifyLdObjAndStObj
-		static bool SimplifyLdObjAndStObj(List<ILNode> body, ILExpression expr, int pos)
+		bool SimplifyLdObjAndStObj(ILBlockBase block, List<ILNode> body, ILExpression expr, int pos)
 		{
 			bool modified = false;
 			expr = SimplifyLdObjAndStObj(expr, ref modified);
@@ -116,12 +128,12 @@ namespace ICSharpCode.Decompiler.ILAst
 				body[pos] = expr;
 			for (int i = 0; i < expr.Arguments.Count; i++) {
 				expr.Arguments[i] = SimplifyLdObjAndStObj(expr.Arguments[i], ref modified);
-				modified |= SimplifyLdObjAndStObj(null, expr.Arguments[i], -1);
+				modified |= SimplifyLdObjAndStObj(block, null, expr.Arguments[i], -1);
 			}
 			return modified;
 		}
 		
-		static ILExpression SimplifyLdObjAndStObj(ILExpression expr, ref bool modified)
+		ILExpression SimplifyLdObjAndStObj(ILExpression expr, ref bool modified)
 		{
 			if (expr.Code == ILCode.Initobj) {
 				expr.Code = ILCode.Stobj;
@@ -133,18 +145,18 @@ namespace ICSharpCode.Decompiler.ILAst
 				modified = true;
 			}
 			ILExpression arg, arg2;
-			TypeReference type;
+			ITypeDefOrRef type;
 			ILCode? newCode = null;
 			if (expr.Match(ILCode.Stobj, out type, out arg, out arg2)) {
 				switch (arg.Code) {
-						case ILCode.Ldelema: newCode = ILCode.Stelem_Any; break;
+						case ILCode.Ldelema: newCode = ILCode.Stelem; break;
 						case ILCode.Ldloca:  newCode = ILCode.Stloc; break;
 						case ILCode.Ldflda:  newCode = ILCode.Stfld; break;
 						case ILCode.Ldsflda: newCode = ILCode.Stsfld; break;
 				}
 			} else if (expr.Match(ILCode.Ldobj, out type, out arg)) {
 				switch (arg.Code) {
-						case ILCode.Ldelema: newCode = ILCode.Ldelem_Any; break;
+						case ILCode.Ldelema: newCode = ILCode.Ldelem; break;
 						case ILCode.Ldloca:  newCode = ILCode.Ldloc; break;
 						case ILCode.Ldflda:  newCode = ILCode.Ldfld; break;
 						case ILCode.Ldsflda: newCode = ILCode.Ldsfld; break;
@@ -157,7 +169,8 @@ namespace ICSharpCode.Decompiler.ILAst
 					arg.ExpectedType = expr.ExpectedType;
 					arg.Arguments.Add(arg2);
 				}
-				arg.ILRanges.AddRange(expr.ILRanges);
+				if (context.CalculateBinSpans)
+					arg.BinSpans.AddRange(expr.BinSpans);
 				modified = true;
 				return arg;
 			} else {
@@ -185,11 +198,13 @@ namespace ICSharpCode.Decompiler.ILAst
 			ILExpression condition = c.Condition.Arguments.Single() as ILExpression;
 			if (condition == null || condition.Code != ILCode.Ldsfld)
 				return;
-			FieldDefinition field = ((FieldReference)condition.Operand).ResolveWithinSameModule(); // field is defined in current assembly
+			FieldDef field = condition.Operand is MemberRef ? 
+				((MemberRef)condition.Operand).ResolveFieldWithinSameModule() : 
+				(FieldDef)condition.Operand; // field is defined in current assembly
 			if (field == null || !field.IsCompilerGeneratedOrIsInCompilerGeneratedClass())
 				return;
 			ILExpression stsfld = c.TrueBlock.Body[0] as ILExpression;
-			if (!(stsfld != null && stsfld.Code == ILCode.Stsfld && ((FieldReference)stsfld.Operand).ResolveWithinSameModule() == field))
+			if (!(stsfld != null && stsfld.Code == ILCode.Stsfld && ((IField)stsfld.Operand).ResolveFieldWithinSameModule() == field))
 				return;
 			ILExpression newObj = stsfld.Arguments[0];
 			if (!(newObj.Code == ILCode.Newobj && newObj.Arguments.Count == 2))
@@ -198,20 +213,48 @@ namespace ICSharpCode.Decompiler.ILAst
 				return;
 			if (newObj.Arguments[1].Code != ILCode.Ldftn)
 				return;
-			MethodDefinition anonymousMethod = ((MethodReference)newObj.Arguments[1].Operand).ResolveWithinSameModule(); // method is defined in current assembly
+			MethodDef anonymousMethod = ((IMethod)newObj.Arguments[1].Operand).ResolveMethodWithinSameModule(); // method is defined in current assembly
 			if (!Ast.Transforms.DelegateConstruction.IsAnonymousMethod(context, anonymousMethod))
 				return;
 			
 			ILNode followingNode = block.Body.ElementAtOrDefault(i + 1);
-			if (followingNode != null && followingNode.GetSelfAndChildrenRecursive<ILExpression>().Count(
-				e => e.Code == ILCode.Ldsfld && ((FieldReference)e.Operand).ResolveWithinSameModule() == field) == 1)
+			if (followingNode != null && followingNode.GetSelfAndChildrenRecursive<ILExpression>(Optimize_List_ILExpression).Count(
+				e => e.Code == ILCode.Ldsfld && ((IField)e.Operand).ResolveFieldWithinSameModule() == field) == 1)
 			{
-				foreach (ILExpression parent in followingNode.GetSelfAndChildrenRecursive<ILExpression>()) {
+				foreach (ILExpression parent in Optimize_List_ILExpression) {
 					for (int j = 0; j < parent.Arguments.Count; j++) {
-						if (parent.Arguments[j].Code == ILCode.Ldsfld && ((FieldReference)parent.Arguments[j].Operand).ResolveWithinSameModule() == field) {
+						if (parent.Arguments[j].Code == ILCode.Ldsfld && ((IField)parent.Arguments[j].Operand).ResolveFieldWithinSameModule() == field) {
+							if (context.CalculateBinSpans) {
+								long index = 0;
+								bool done = false;
+								for (;;) {
+									var b = c.GetAllBinSpans(ref index, ref done);
+									if (done)
+										break;
+									newObj.BinSpans.Add(b);
+								}
+								c.Condition.AddSelfAndChildrenRecursiveBinSpans(newObj.BinSpans);
+								c.FalseBlock.AddSelfAndChildrenRecursiveBinSpans(newObj.BinSpans);
+
+								index = 0;
+								done = false;
+								for (;;) {
+									var b = c.TrueBlock.GetAllBinSpans(ref index, ref done);
+									if (done)
+										break;
+									newObj.BinSpans.Add(b);
+								}
+								foreach (var instr in c.TrueBlock.Body.Skip(1))
+									instr.AddSelfAndChildrenRecursiveBinSpans(newObj.BinSpans);
+								newObj.BinSpans.AddRange(stsfld.BinSpans);
+								foreach (var arg in stsfld.Arguments.Skip(1))
+									arg.AddSelfAndChildrenRecursiveBinSpans(newObj.BinSpans);
+
+								newObj.BinSpans.AddRange(parent.Arguments[j].BinSpans);
+							}
 							parent.Arguments[j] = newObj;
 							block.Body.RemoveAt(i);
-							i -= new ILInlining(method).InlineInto(block.Body, i, aggressive: false);
+							i -= GetILInlining(method).InlineInto(block, block.Body, i, aggressive: false);
 							return;
 						}
 					}
@@ -248,7 +291,7 @@ namespace ICSharpCode.Decompiler.ILAst
 				return;
 			if (newObj.Arguments[1].Code != ILCode.Ldftn)
 				return;
-			MethodDefinition anonymousMethod = ((MethodReference)newObj.Arguments[1].Operand).ResolveWithinSameModule(); // method is defined in current assembly
+			MethodDef anonymousMethod = ((IMethod)newObj.Arguments[1].Operand).ResolveMethodWithinSameModule(); // method is defined in current assembly
 			if (!Ast.Transforms.DelegateConstruction.IsAnonymousMethod(context, anonymousMethod))
 				return;
 			
@@ -256,7 +299,7 @@ namespace ICSharpCode.Decompiler.ILAst
 			if (followingNode != null && followingNode.GetSelfAndChildrenRecursive<ILExpression>().Count(
 				e => e.Code == ILCode.Ldloc && (ILVariable)e.Operand == v) == 1)
 			{
-				ILInlining inlining = new ILInlining(method);
+				ILInlining inlining = GetILInlining(method);
 				if (!(inlining.numLdloc.GetOrDefault(v) == 2 && inlining.numStloc.GetOrDefault(v) == 2 && inlining.numLdloca.GetOrDefault(v) == 0))
 					return;
 				
@@ -267,6 +310,8 @@ namespace ICSharpCode.Decompiler.ILAst
 						ILExpression storedExpr;
 						if (storeBlock.Body[j].Match(ILCode.Stloc, out storedVar, out storedExpr) && storedVar == v && storedExpr.Match(ILCode.Ldnull)) {
 							// Remove the instruction
+							if (context.CalculateBinSpans)
+								Utils.AddBinSpans(storeBlock, storeBlock.Body, j);
 							storeBlock.Body.RemoveAt(j);
 							if (storeBlock == block && j < i)
 								i--;
@@ -274,16 +319,42 @@ namespace ICSharpCode.Decompiler.ILAst
 						}
 					}
 				}
-				
+
+				if (context.CalculateBinSpans) {
+					long index = 0;
+					bool done = false;
+					for (;;) {
+						var b = c.GetAllBinSpans(ref index, ref done);
+						if (done)
+							break;
+						stloc.BinSpans.Add(b);
+					}
+
+					c.Condition.AddSelfAndChildrenRecursiveBinSpans(stloc.BinSpans);
+					c.FalseBlock.AddSelfAndChildrenRecursiveBinSpans(stloc.BinSpans);
+
+					index = 0;
+					done = false;
+					for (;;) {
+						var b = c.TrueBlock.GetAllBinSpans(ref index, ref done);
+						if (done)
+							break;
+						stloc.BinSpans.Add(b);
+					}
+
+					foreach (var instr in c.TrueBlock.Body.Skip(1))
+						instr.AddSelfAndChildrenRecursiveBinSpans(stloc.BinSpans);
+				}
+
 				block.Body[i] = stloc; // remove the 'if (v==null)'
-				inlining = new ILInlining(method);
-				inlining.InlineIfPossible(block.Body, ref i);
+				inlining = GetILInlining(method);
+				inlining.InlineIfPossible(block, block.Body, ref i);
 			}
 		}
 		#endregion
 		
 		#region MakeAssignmentExpression
-		bool MakeAssignmentExpression(List<ILNode> body, ILExpression expr, int pos)
+		bool MakeAssignmentExpression(ILBlockBase block, List<ILNode> body, ILExpression expr, int pos)
 		{
 			// exprVar = ...
 			// stloc(v, exprVar)
@@ -291,9 +362,11 @@ namespace ICSharpCode.Decompiler.ILAst
 			// exprVar = stloc(v, ...))
 			ILVariable exprVar;
 			ILExpression initializer;
-			if (!(expr.Match(ILCode.Stloc, out exprVar, out initializer) && exprVar.IsGenerated))
+			if (!(expr.Match(ILCode.Stloc, out exprVar, out initializer) && exprVar.GeneratedByDecompiler))
 				return false;
 			ILExpression nextExpr = body.ElementAtOrDefault(pos + 1) as ILExpression;
+			if (nextExpr == null)
+				return false;
 			ILVariable v;
 			ILExpression stLocArg;
 			if (nextExpr.Match(ILCode.Stloc, out v, out stLocArg) && stLocArg.MatchLdloc(exprVar)) {
@@ -304,22 +377,32 @@ namespace ICSharpCode.Decompiler.ILAst
 					// anystore(v2, expr_44)
 					// ->
 					// stloc(v1, anystore(v2, ...))
-					ILInlining inlining = new ILInlining(method);
+					ILInlining inlining = GetILInlining(method);
 					if (inlining.numLdloc.GetOrDefault(exprVar) == 2 && inlining.numStloc.GetOrDefault(exprVar) == 1) {
 						body.RemoveAt(pos + 2); // remove store2
 						body.RemoveAt(pos); // remove expr = ...
+						if (context.CalculateBinSpans)
+							nextExpr.Arguments[0].AddSelfAndChildrenRecursiveBinSpans(nextExpr.BinSpans);
 						nextExpr.Arguments[0] = store2;
+						if (context.CalculateBinSpans) {
+							expr.AddSelfAndChildrenRecursiveBinSpans(store2.BinSpans);
+							store2.Arguments[store2.Arguments.Count - 1].AddSelfAndChildrenRecursiveBinSpans(store2.BinSpans);
+						}
 						store2.Arguments[store2.Arguments.Count - 1] = initializer;
 						
-						inlining.InlineIfPossible(body, ref pos);
+						inlining.InlineIfPossible(block, body, ref pos);
 						
 						return true;
 					}
 				}
 				
 				body.RemoveAt(pos + 1); // remove stloc
+				if (context.CalculateBinSpans)
+					nextExpr.Arguments[0].AddSelfAndChildrenRecursiveBinSpans(nextExpr.BinSpans);
 				nextExpr.Arguments[0] = initializer;
-				((ILExpression)body[pos]).Arguments[0] = nextExpr;
+				if (context.CalculateBinSpans)
+					expr.Arguments[0].AddSelfAndChildrenRecursiveBinSpans(nextExpr.BinSpans);
+				expr.Arguments[0] = nextExpr;
 				return true;
 			} else if ((nextExpr.Code == ILCode.Stsfld || nextExpr.Code == ILCode.CallSetter || nextExpr.Code == ILCode.CallvirtSetter) && nextExpr.Arguments.Count == 1) {
 				// exprVar = ...
@@ -328,8 +411,12 @@ namespace ICSharpCode.Decompiler.ILAst
 				// exprVar = stsfld(fld, ...))
 				if (nextExpr.Arguments[0].MatchLdloc(exprVar)) {
 					body.RemoveAt(pos + 1); // remove stsfld
+					if (context.CalculateBinSpans)
+						nextExpr.Arguments[0].AddSelfAndChildrenRecursiveBinSpans(nextExpr.BinSpans);
 					nextExpr.Arguments[0] = initializer;
-					((ILExpression)body[pos]).Arguments[0] = nextExpr;
+					if (context.CalculateBinSpans)
+						expr.Arguments[0].AddSelfAndChildrenRecursiveBinSpans(expr.BinSpans);
+					expr.Arguments[0] = nextExpr;
 					return true;
 				}
 			}
@@ -358,7 +445,7 @@ namespace ICSharpCode.Decompiler.ILAst
 		#endregion
 		
 		#region MakeCompoundAssignments
-		bool MakeCompoundAssignments(List<ILNode> body, ILExpression expr, int pos)
+		bool MakeCompoundAssignments(ILBlockBase block, List<ILNode> body, ILExpression expr, int pos)
 		{
 			bool modified = false;
 			modified |= MakeCompoundAssignment(expr);
@@ -366,10 +453,10 @@ namespace ICSharpCode.Decompiler.ILAst
 			// and get handled by ReplaceMethodCallsWithOperators
 			// (which does a reversible transform to the short operator form, as the introduction of checked/unchecked might have to revert to the long form).
 			foreach (ILExpression arg in expr.Arguments) {
-				modified |= MakeCompoundAssignments(null, arg, -1);
+				modified |= MakeCompoundAssignments(block, null, arg, -1);
 			}
 			if (modified && body != null)
-				new ILInlining(method).InlineInto(body, pos, aggressive: false);
+				GetILInlining(method).InlineInto(block, body, pos, aggressive: false);
 			return modified;
 		}
 		
@@ -380,8 +467,8 @@ namespace ICSharpCode.Decompiler.ILAst
 			// stobj(T, ldloc(ptr), <OP>(ldobj(T, ldloc(ptr)), <RIGHT>))
 			ILCode expectedLdelemCode;
 			switch (expr.Code) {
-				case ILCode.Stelem_Any:
-					expectedLdelemCode = ILCode.Ldelem_Any;
+				case ILCode.Stelem:
+					expectedLdelemCode = ILCode.Ldelem;
 					break;
 				case ILCode.Stfld:
 					expectedLdelemCode = ILCode.Ldfld;
@@ -405,7 +492,7 @@ namespace ICSharpCode.Decompiler.ILAst
 				ILVariable inputVar;
 				if (!expr.Arguments[i].Match(ILCode.Ldloc, out inputVar))
 					return false;
-				hasGeneratedVar |= inputVar.IsGenerated;
+				hasGeneratedVar |= inputVar.GeneratedByDecompiler;
 			}
 			// At least one of the variables must be generated; otherwise we just keep the expanded form.
 			// We do this because we want compound assignments to be represented in ILAst only when strictly necessary;
@@ -439,6 +526,10 @@ namespace ICSharpCode.Decompiler.ILAst
 			}
 			expr.Code = ILCode.CompoundAssignment;
 			expr.Operand = null;
+			if (context.CalculateBinSpans) {
+				for (int i = 0; i < ldelem.Arguments.Count; i++)
+					expr.Arguments[i].AddSelfAndChildrenRecursiveBinSpans(expr.BinSpans);
+			}
 			expr.Arguments.RemoveRange(0, ldelem.Arguments.Count);
 			// result is "CompoundAssignment(<OP>(ldelem.any(...), <RIGHT>))"
 			return true;
@@ -468,8 +559,8 @@ namespace ICSharpCode.Decompiler.ILAst
 				case ILCode.Shr_Un:
 					return true;
 				case ILCode.Call:
-					var m = expr.Operand as MethodReference;
-					if (m == null || m.HasThis || expr.Arguments.Count != 2) return false;
+					var m = expr.Operand as IMethod;
+					if (m == null || m.MethodSig == null || m.MethodSig.HasThis || expr.Arguments.Count != 2) return false;
 					switch (m.Name) {
 						case "op_Addition":
 						case "op_Subtraction":
@@ -493,7 +584,7 @@ namespace ICSharpCode.Decompiler.ILAst
 		
 		#region IntroducePostIncrement
 
-		bool IntroducePostIncrement(List<ILNode> body, ILExpression expr, int pos)
+		bool IntroducePostIncrement(ILBlockBase block, List<ILNode> body, ILExpression expr, int pos)
 		{
 			bool modified = IntroducePostIncrementForVariables(body, expr, pos);
 			Debug.Assert(body[pos] == expr); // IntroducePostIncrementForVariables shouldn't change the expression reference
@@ -501,7 +592,7 @@ namespace ICSharpCode.Decompiler.ILAst
 			if (newExpr != null) {
 				modified = true;
 				body[pos] = newExpr;
-				new ILInlining(method).InlineIfPossible(body, ref pos);
+				GetILInlining(method).InlineIfPossible(block, body, ref pos);
 			}
 			return modified;
 		}
@@ -516,7 +607,7 @@ namespace ICSharpCode.Decompiler.ILAst
 			// expr = postincrement(1, ldloca(i))
 			ILVariable exprVar;
 			ILExpression exprInit;
-			if (!(expr.Match(ILCode.Stloc, out exprVar, out exprInit) && exprVar.IsGenerated))
+			if (!(expr.Match(ILCode.Stloc, out exprVar, out exprInit) && exprVar.GeneratedByDecompiler))
 				return false;
 			
 			//The next expression
@@ -587,23 +678,25 @@ namespace ICSharpCode.Decompiler.ILAst
 					break;
 			}
 			expr.Arguments[0] = new ILExpression(incrementCode, incrementAmount, exprInit);
-			body.RemoveAt(pos + 1); // TODO ILRanges
+			if (context.CalculateBinSpans)
+				nextExpr.AddSelfAndChildrenRecursiveBinSpans(expr.BinSpans);
+			body.RemoveAt(pos + 1);
 			return true;
 		}
 		
 		static bool IsGetterSetterPair(object getterOperand, object setterOperand)
 		{
-			MethodReference getter = getterOperand as MethodReference;
-			MethodReference setter = setterOperand as MethodReference;
-			if (getter == null || setter == null)
+			IMethod getter = getterOperand as IMethod;
+			IMethod setter = setterOperand as IMethod;
+			if (getter == null || setter == null || !getter.IsMethod || !setter.IsMethod)
 				return false;
 			if (!TypeAnalysis.IsSameType(getter.DeclaringType, setter.DeclaringType))
 				return false;
-			MethodDefinition getterDef = getter.Resolve();
-			MethodDefinition setterDef = setter.Resolve();
+			MethodDef getterDef = getter.Resolve();
+			MethodDef setterDef = setter.Resolve();
 			if (getterDef == null || setterDef == null)
 				return false;
-			foreach (PropertyDefinition prop in getterDef.DeclaringType.Properties) {
+			foreach (PropertyDef prop in getterDef.DeclaringType.Properties) {
 				if (prop.GetMethod == getterDef)
 					return prop.SetMethod == setterDef;
 			}
@@ -647,10 +740,12 @@ namespace ICSharpCode.Decompiler.ILAst
 				if (initialValue.Code != ILCode.Ldfld)
 					return null;
 				// There might be two different FieldReference instances, so we compare the field's signatures:
-				FieldReference getField = (FieldReference)initialValue.Operand;
-				FieldReference setField = (FieldReference)expr.Operand;
+				IField getField = (IField)initialValue.Operand;
+				IField setField = (IField)expr.Operand;
 				if (!(TypeAnalysis.IsSameType(getField.DeclaringType, setField.DeclaringType)
-				      && getField.Name == setField.Name && TypeAnalysis.IsSameType(getField.FieldType, setField.FieldType)))
+				      && getField.Name == setField.Name &&
+					  getField.FieldSig != null && setField.FieldSig != null &&
+					  TypeAnalysis.IsSameType(getField.FieldSig.Type, setField.FieldSig.Type)))
 				{
 					return null;
 				}
@@ -674,6 +769,15 @@ namespace ICSharpCode.Decompiler.ILAst
 			}
 			
 			ILExpression stloc = addExpr.Arguments[0];
+			if (context.CalculateBinSpans) {
+				stloc.Arguments[0].AddSelfAndChildrenRecursiveBinSpans(stloc.BinSpans);
+				stloc.BinSpans.AddRange(expr.BinSpans);     // no recursive add
+				stloc.BinSpans.AddRange(addExpr.BinSpans);  // no recursive add
+				for (int i = 0; i < expr.Arguments.Count - 1; i++)
+					expr.Arguments[i].AddSelfAndChildrenRecursiveBinSpans(stloc.BinSpans);
+				for (int i = 1; i < addExpr.Arguments.Count; i++)
+					addExpr.Arguments[i].AddSelfAndChildrenRecursiveBinSpans(stloc.BinSpans);
+			}
 			if (expr.Code == ILCode.Stobj) {
 				stloc.Arguments[0] = new ILExpression(ILCode.PostIncrement, incrementAmount, initialValue.Arguments[0]);
 			} else if (expr.Code == ILCode.CallSetter || expr.Code == ILCode.CallvirtSetter) {
@@ -683,7 +787,6 @@ namespace ICSharpCode.Decompiler.ILAst
 				stloc.Arguments[0] = new ILExpression(ILCode.PostIncrement, incrementAmount, initialValue);
 				initialValue.Code = (expr.Code == ILCode.Stfld ? ILCode.Ldflda : ILCode.Ldelema);
 			}
-			// TODO: ILRanges?
 			
 			return stloc;
 		}
@@ -731,7 +834,7 @@ namespace ICSharpCode.Decompiler.ILAst
 		#endregion
 		
 		#region IntroduceFixedStatements
-		bool IntroduceFixedStatements(List<ILNode> body, int i)
+		bool IntroduceFixedStatements(ILBlockBase block, List<ILNode> body, int i)
 		{
 			ILExpression initValue;
 			ILVariable pinnedVar;
@@ -745,10 +848,16 @@ namespace ICSharpCode.Decompiler.ILAst
 				if (expr != null && expr.Code == ILCode.Stloc && expr.Operand == pinnedVar && IsNullOrZero(expr.Arguments[0])) {
 					// we found a second initializer for the existing fixed statement
 					fixedStmt.Initializers.Insert(0, initValue);
+					if (context.CalculateBinSpans) {
+						for (int k = i; k < initEndPos; k++)
+							initValue.BinSpans.AddRange(body[k].GetSelfAndChildrenRecursiveBinSpans().ToArray());
+					}
 					body.RemoveRange(i, initEndPos - i);
+					if (context.CalculateBinSpans)
+						Utils.AddBinSpans(fixedStmt.BodyBlock, fixedStmt.BodyBlock.Body, fixedStmt.BodyBlock.Body.Count - 1);
 					fixedStmt.BodyBlock.Body.RemoveAt(fixedStmt.BodyBlock.Body.Count - 1);
-					if (pinnedVar.Type.IsByReference)
-						pinnedVar.Type = new PointerType(((ByReferenceType)pinnedVar.Type).ElementType);
+					if (pinnedVar.Type is ByRefSig)
+						pinnedVar.Type = new PtrSig(((ByRefSig)pinnedVar.Type).Next);
 					return true;
 				}
 			}
@@ -769,10 +878,14 @@ namespace ICSharpCode.Decompiler.ILAst
 			fixedStmt = new ILFixedStatement();
 			fixedStmt.Initializers.Add(initValue);
 			fixedStmt.BodyBlock = new ILBlock(body.GetRange(initEndPos, j - initEndPos)); // from initEndPos to j-1 (inclusive)
+			if (context.CalculateBinSpans) {
+				for (int k = i; k < initEndPos; k++)
+					initValue.BinSpans.AddRange(body[k].GetSelfAndChildrenRecursiveBinSpans().ToArray());
+			}
 			body.RemoveRange(i + 1, Math.Min(j, body.Count - 1) - i); // from i+1 to j (inclusive)
 			body[i] = fixedStmt;
-			if (pinnedVar.Type.IsByReference)
-				pinnedVar.Type = new PointerType(((ByReferenceType)pinnedVar.Type).ElementType);
+			if (pinnedVar.Type is ByRefSig)
+				pinnedVar.Type = new PtrSig(((ByRefSig)pinnedVar.Type).Next);
 			
 			return true;
 		}
@@ -817,7 +930,7 @@ namespace ICSharpCode.Decompiler.ILAst
 								// Now check whether the loading expression was a store ot a temp. var
 								// that can be eliminated.
 								if (arrayLoadingExpr.Code == ILCode.Stloc) {
-									ILInlining inlining = new ILInlining(method);
+									ILInlining inlining = GetILInlining(method);
 									if (inlining.numLdloc.GetOrDefault(arrayVariable) == 2 &&
 									    inlining.numStloc.GetOrDefault(arrayVariable) == 1 && inlining.numLdloca.GetOrDefault(arrayVariable) == 0)
 									{
@@ -883,7 +996,7 @@ namespace ICSharpCode.Decompiler.ILAst
 			ILExpression varAssignment, ptrInitialization;
 			if (!(body[pos].Match(ILCode.Stloc, out var1, out varAssignment) && varAssignment.Match(ILCode.Stloc, out var2, out ptrInitialization)))
 				return false;
-			if (!(var1.IsGenerated && var2.IsGenerated))
+			if (!(var1.GeneratedByDecompiler && var2.GeneratedByDecompiler))
 				return false;
 			if (ptrInitialization.Code == ILCode.Conv_I || ptrInitialization.Code == ILCode.Conv_U)
 				ptrInitialization = ptrInitialization.Arguments[0];
@@ -899,12 +1012,12 @@ namespace ICSharpCode.Decompiler.ILAst
 			ILExpression assignedExpr;
 			if (!(ifStmt.TrueBlock.Body[0].Match(ILCode.Stloc, out assignedVar, out assignedExpr) && assignedVar == var2 && assignedExpr.Code == ILCode.Add))
 				return false;
-			MethodReference calledMethod;
+			IMethod calledMethod;
 			if (!(assignedExpr.Arguments[0].MatchLdloc(var1)))
 				return false;
 			if (!(assignedExpr.Arguments[1].Match(ILCode.Call, out calledMethod) || assignedExpr.Arguments[1].Match(ILCode.CallGetter, out calledMethod)))
 				return false;
-			if (!(calledMethod.Name == "get_OffsetToStringData" && calledMethod.DeclaringType.FullName == "System.Runtime.CompilerServices.RuntimeHelpers"))
+			if (!(calledMethod.Name == "get_OffsetToStringData" && calledMethod.DeclaringType != null && calledMethod.DeclaringType.FullName == "System.Runtime.CompilerServices.RuntimeHelpers"))
 				return false;
 			
 			ILVariable pointerVar;
@@ -918,7 +1031,7 @@ namespace ICSharpCode.Decompiler.ILAst
 		#endregion
 		
 		#region SimplifyLogicNot
-		static bool SimplifyLogicNot(List<ILNode> body, ILExpression expr, int pos)
+		bool SimplifyLogicNot(ILBlockBase block, List<ILNode> body, ILExpression expr, int pos)
 		{
 			bool modified = false;
 			expr = SimplifyLogicNot(expr, ref modified);
@@ -926,13 +1039,14 @@ namespace ICSharpCode.Decompiler.ILAst
 			return modified;
 		}
 
-		static ILExpression SimplifyLogicNot(ILExpression expr, ref bool modified)
+		ILExpression SimplifyLogicNot(ILExpression expr, ref bool modified)
 		{
 			ILExpression a;
 			// "ceq(a, ldc.i4.0)" becomes "logicnot(a)" if the inferred type for expression "a" is boolean
-			if (expr.Code == ILCode.Ceq && TypeAnalysis.IsBoolean(expr.Arguments[0].InferredType) && (a = expr.Arguments[1]).Code == ILCode.Ldc_I4 && (int)a.Operand == 0) {
+			if (expr.Code == ILCode.Ceq && expr.Arguments[0].InferredType.GetElementType() == ElementType.Boolean && (a = expr.Arguments[1]).Code == ILCode.Ldc_I4 && (int)a.Operand == 0) {
 				expr.Code = ILCode.LogicNot;
-				expr.ILRanges.AddRange(a.ILRanges);
+				if (context.CalculateBinSpans)
+					a.AddSelfAndChildrenRecursiveBinSpans(expr.BinSpans);
 				expr.Arguments.RemoveAt(1);
 				modified = true;
 			}
@@ -943,8 +1057,10 @@ namespace ICSharpCode.Decompiler.ILAst
 				// remove double negation
 				if (a.Code == ILCode.LogicNot) {
 					res = a.Arguments[0];
-					res.ILRanges.AddRange(expr.ILRanges);
-					res.ILRanges.AddRange(a.ILRanges);
+					if (context.CalculateBinSpans) {
+						res.BinSpans.AddRange(expr.BinSpans);
+						res.BinSpans.AddRange(a.BinSpans);
+					}
 					expr = res;
 				} else {
 					if (SimplifyLogicNotArgument(expr)) res = expr = a;
@@ -966,7 +1082,7 @@ namespace ICSharpCode.Decompiler.ILAst
 		/// <summary>
 		/// If the argument is a binary comparison operation then the negation is pushed through it
 		/// </summary>
-		static bool SimplifyLogicNotArgument(ILExpression expr)
+		bool SimplifyLogicNotArgument(ILExpression expr)
 		{
 			var a = expr.Arguments[0];
 			ILCode c;
@@ -984,13 +1100,14 @@ namespace ICSharpCode.Decompiler.ILAst
 					default: return false;
 			}
 			a.Code = c;
-			a.ILRanges.AddRange(expr.ILRanges);
+			if (context.CalculateBinSpans)
+				a.BinSpans.AddRange(expr.BinSpans);
 			return true;
 		}
 		#endregion
 
 		#region SimplifyShiftOperators
-		static bool SimplifyShiftOperators(List<ILNode> body, ILExpression expr, int pos)
+		bool SimplifyShiftOperators(ILBlockBase block, List<ILNode> body, ILExpression expr, int pos)
 		{
 			// C# compiles "a << b" to "a << (b & 31)", so we will remove the "& 31" if possible.
 			bool modified = false;
@@ -998,7 +1115,7 @@ namespace ICSharpCode.Decompiler.ILAst
 			return modified;
 		}
 
-		static void SimplifyShiftOperators(ILExpression expr, ref bool modified)
+		void SimplifyShiftOperators(ILExpression expr, ref bool modified)
 		{
 			for (int i = 0; i < expr.Arguments.Count; i++)
 				SimplifyShiftOperators(expr.Arguments[i], ref modified);
@@ -1008,24 +1125,26 @@ namespace ICSharpCode.Decompiler.ILAst
 			if (a.Code != ILCode.And || a.Arguments[1].Code != ILCode.Ldc_I4 || expr.InferredType == null)
 				return;
 			int mask;
-			switch (expr.InferredType.MetadataType) {
-				case MetadataType.Int32:
-					case MetadataType.UInt32: mask = 31; break;
-				case MetadataType.Int64:
-					case MetadataType.UInt64: mask = 63; break;
+			switch (expr.InferredType.ElementType) {
+				case ElementType.I4:
+					case ElementType.U4: mask = 31; break;
+				case ElementType.I8:
+					case ElementType.U8: mask = 63; break;
 					default: return;
 			}
 			if ((int)a.Arguments[1].Operand != mask) return;
 			var res = a.Arguments[0];
-			res.ILRanges.AddRange(a.ILRanges);
-			res.ILRanges.AddRange(a.Arguments[1].ILRanges);
+			if (context.CalculateBinSpans) {
+				res.BinSpans.AddRange(a.BinSpans);
+				res.BinSpans.AddRange(a.Arguments[1].BinSpans);
+			}
 			expr.Arguments[1] = res;
 			modified = true;
 		}
 		#endregion
 		
 		#region InlineExpressionTreeParameterDeclarations
-		bool InlineExpressionTreeParameterDeclarations(List<ILNode> body, ILExpression expr, int pos)
+		bool InlineExpressionTreeParameterDeclarations(ILBlockBase block, List<ILNode> body, ILExpression expr, int pos)
 		{
 			// When there is a Expression.Lambda() call, and the parameters are declared in the
 			// IL statement immediately prior to the one containing the Lambda() call,
@@ -1039,15 +1158,15 @@ namespace ICSharpCode.Decompiler.ILAst
 			// of expression trees into C# will be performed by a C# AST transformer.
 			
 			for (int i = expr.Arguments.Count - 1; i >= 0; i--) {
-				if (InlineExpressionTreeParameterDeclarations(body, expr.Arguments[i], pos))
+				if (InlineExpressionTreeParameterDeclarations(block, body, expr.Arguments[i], pos))
 					return true;
 			}
 			
-			MethodReference mr;
+			IMethod mr;
 			ILExpression lambdaBodyExpr, parameterArray;
 			if (!(expr.Match(ILCode.Call, out mr, out lambdaBodyExpr, out parameterArray) && mr.Name == "Lambda"))
 				return false;
-			if (!(parameterArray.Code == ILCode.InitArray && mr.DeclaringType.FullName == "System.Linq.Expressions.Expression"))
+			if (!(parameterArray.Code == ILCode.InitArray && mr.DeclaringType != null && mr.DeclaringType.FullName == "System.Linq.Expressions.Expression"))
 				return false;
 			int firstParameterPos = pos - parameterArray.Arguments.Count;
 			if (firstParameterPos < 0)
@@ -1075,26 +1194,28 @@ namespace ICSharpCode.Decompiler.ILAst
 		
 		bool MatchParameterVariableAssignment(ILExpression expr)
 		{
+			if (expr == null)
+				return false;
 			// stloc(v, call(Expression::Parameter, call(Type::GetTypeFromHandle, ldtoken(...)), ldstr(...)))
 			ILVariable v;
 			ILExpression init;
 			if (!expr.Match(ILCode.Stloc, out v, out init))
 				return false;
-			if (v.IsGenerated || v.IsParameter || v.IsPinned)
+			if (v.GeneratedByDecompiler || v.IsParameter || v.IsPinned)
 				return false;
 			if (v.Type == null || v.Type.FullName != "System.Linq.Expressions.ParameterExpression")
 				return false;
-			MethodReference parameterMethod;
+			IMethod parameterMethod;
 			ILExpression typeArg, nameArg;
 			if (!init.Match(ILCode.Call, out parameterMethod, out typeArg, out nameArg))
 				return false;
-			if (!(parameterMethod.Name == "Parameter" && parameterMethod.DeclaringType.FullName == "System.Linq.Expressions.Expression"))
+			if (!(parameterMethod.Name == "Parameter" && parameterMethod.DeclaringType != null && parameterMethod.DeclaringType.FullName == "System.Linq.Expressions.Expression"))
 				return false;
-			MethodReference getTypeFromHandle;
+			IMethod getTypeFromHandle;
 			ILExpression typeToken;
 			if (!typeArg.Match(ILCode.Call, out getTypeFromHandle, out typeToken))
 				return false;
-			if (!(getTypeFromHandle.Name == "GetTypeFromHandle" && getTypeFromHandle.DeclaringType.FullName == "System.Type"))
+			if (!(getTypeFromHandle.Name == "GetTypeFromHandle" && getTypeFromHandle.DeclaringType != null && getTypeFromHandle.DeclaringType.FullName == "System.Type"))
 				return false;
 			return typeToken.Code == ILCode.Ldtoken && nameArg.Code == ILCode.Ldstr;
 		}

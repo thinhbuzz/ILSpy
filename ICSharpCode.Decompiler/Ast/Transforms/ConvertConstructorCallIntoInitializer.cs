@@ -18,18 +18,32 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
+using ICSharpCode.Decompiler.ILAst;
 using ICSharpCode.NRefactory.CSharp;
 using ICSharpCode.NRefactory.PatternMatching;
-using Mono.Cecil;
+using dnlib.DotNet;
+using dnSpy.Contracts.Decompiler;
 
-namespace ICSharpCode.Decompiler.Ast.Transforms
-{
+namespace ICSharpCode.Decompiler.Ast.Transforms {
 	/// <summary>
 	/// If the first element of a constructor is a chained constructor call, convert it into a constructor initializer.
 	/// </summary>
-	public class ConvertConstructorCallIntoInitializer : DepthFirstAstVisitor<object, object>, IAstTransform
+	public class ConvertConstructorCallIntoInitializer : DepthFirstAstVisitor<object, object>, IAstTransformPoolObject
 	{
+		DecompilerContext context;
+
+		public ConvertConstructorCallIntoInitializer(DecompilerContext context)
+		{
+			Reset(context);
+		}
+
+		public void Reset(DecompilerContext context)
+		{
+			this.context = context;
+		}
+
 		public override object VisitConstructorDeclaration(ConstructorDeclaration constructorDeclaration, object data)
 		{
 			ExpressionStatement stmt = constructorDeclaration.Body.Statements.FirstOrDefault() as ExpressionStatement;
@@ -49,9 +63,14 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 					return null;
 				// Move arguments from invocation to initializer:
 				invocation.Arguments.MoveTo(ci.Arguments);
+				var binSpans = stmt.GetAllRecursiveBinSpans();
 				// Add the initializer: (unless it is the default 'base()')
-				if (!(ci.ConstructorInitializerType == ConstructorInitializerType.Base && ci.Arguments.Count == 0))
-					constructorDeclaration.Initializer = ci.WithAnnotation(invocation.Annotation<MethodReference>());
+				if (!(ci.ConstructorInitializerType == ConstructorInitializerType.Base && ci.Arguments.Count == 0)) {
+					constructorDeclaration.Initializer = ci.WithAnnotation(invocation.Annotation<IMethod>());
+					ci.AddAnnotation(binSpans);
+				}
+				else
+					constructorDeclaration.Body.HiddenStart = NRefactoryExtensions.CreateHidden(!context.CalculateBinSpans ? null : BinSpan.OrderAndCompactList(binSpans), constructorDeclaration.Body.HiddenStart);
 				// Remove the statement:
 				stmt.Remove();
 			}
@@ -92,8 +111,8 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 			var instanceCtors = members.OfType<ConstructorDeclaration>().Where(c => (c.Modifiers & Modifiers.Static) == 0).ToArray();
 			var instanceCtorsNotChainingWithThis = instanceCtors.Where(ctor => !thisCallPattern.IsMatch(ctor.Body.Statements.FirstOrDefault())).ToArray();
 			if (instanceCtorsNotChainingWithThis.Length > 0) {
-				MethodDefinition ctorMethodDef = instanceCtorsNotChainingWithThis[0].Annotation<MethodDefinition>();
-				if (ctorMethodDef != null && ctorMethodDef.DeclaringType.IsValueType)
+				MethodDef ctorMethodDef = instanceCtorsNotChainingWithThis[0].Annotation<MethodDef>();
+				if (ctorMethodDef != null && DnlibExtensions.IsValueType(ctorMethodDef.DeclaringType))
 					return;
 				
 				// Recognize field initializers:
@@ -104,10 +123,10 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 					if (!m.Success)
 						break;
 					
-					FieldDefinition fieldDef = m.Get<AstNode>("fieldAccess").Single().Annotation<FieldReference>().ResolveWithinSameModule();
+					FieldDef fieldDef = m.Get<AstNode>("fieldAccess").Single().Annotation<IField>().ResolveFieldWithinSameModule();
 					if (fieldDef == null)
 						break;
-					AstNode fieldOrEventDecl = members.FirstOrDefault(f => f.Annotation<FieldDefinition>() == fieldDef);
+					AstNode fieldOrEventDecl = members.FirstOrDefault(f => f.Annotation<FieldDef>() == fieldDef);
 					if (fieldOrEventDecl == null)
 						break;
 					Expression initializer = m.Get<Expression>("initializer").Single();
@@ -117,13 +136,27 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 					
 					allSame = true;
 					for (int i = 1; i < instanceCtorsNotChainingWithThis.Length; i++) {
-						if (!instanceCtors[0].Body.First().IsMatch(instanceCtorsNotChainingWithThis[i].Body.FirstOrDefault()))
+						if (!instanceCtors[0].Body.First().IsMatch(instanceCtorsNotChainingWithThis[i].Body.FirstOrDefault())) {
 							allSame = false;
+							break;
+						}
 					}
 					if (allSame) {
-						foreach (var ctor in instanceCtorsNotChainingWithThis)
-							ctor.Body.First().Remove();
-						fieldOrEventDecl.GetChildrenByRole(Roles.Variable).Single().Initializer = initializer.Detach();
+						var ctorBinSpans = new List<Tuple<MethodDebugInfoBuilder, List<BinSpan>>>(instanceCtorsNotChainingWithThis.Length);
+						for (int i = 0; i < instanceCtorsNotChainingWithThis.Length; i++) {
+							var ctor = instanceCtorsNotChainingWithThis[i];
+							var stmt = ctor.Body.First();
+							stmt.Remove();
+							var mm = ctor.Annotation<MethodDebugInfoBuilder>() ?? ctor.Body.Annotation<MethodDebugInfoBuilder>();
+							Debug.Assert(mm != null);
+							if (mm != null)
+								ctorBinSpans.Add(Tuple.Create(mm, stmt.GetAllRecursiveBinSpans()));
+						}
+						var varInit = fieldOrEventDecl.GetChildrenByRole(Roles.Variable).Single();
+						initializer.Remove();
+						initializer.RemoveAllBinSpansRecursive();
+						varInit.Initializer = initializer;
+						fieldOrEventDecl.AddAnnotation(ctorBinSpans);
 					}
 				} while (allSame);
 			}
@@ -131,6 +164,8 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 		
 		void RemoveSingleEmptyConstructor(TypeDeclaration typeDeclaration)
 		{
+			if (!context.Settings.RemoveEmptyDefaultConstructors || context.Settings.ForceShowAllMembers)
+				return;
 			var instanceCtors = typeDeclaration.Members.OfType<ConstructorDeclaration>().Where(c => (c.Modifiers & Modifiers.Static) == 0).ToArray();
 			if (instanceCtors.Length == 1) {
 				ConstructorDeclaration emptyCtor = new ConstructorDeclaration();
@@ -146,8 +181,9 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 			// Convert static constructor into field initializers if the class is BeforeFieldInit
 			var staticCtor = members.OfType<ConstructorDeclaration>().FirstOrDefault(c => (c.Modifiers & Modifiers.Static) == Modifiers.Static);
 			if (staticCtor != null) {
-				MethodDefinition ctorMethodDef = staticCtor.Annotation<MethodDefinition>();
+				MethodDef ctorMethodDef = staticCtor.Annotation<MethodDef>();
 				if (ctorMethodDef != null && ctorMethodDef.DeclaringType.IsBeforeFieldInit) {
+					var mm = staticCtor.Annotation<MethodDebugInfoBuilder>() ?? staticCtor.Body.Annotation<MethodDebugInfoBuilder>();
 					while (true) {
 						ExpressionStatement es = staticCtor.Body.Statements.FirstOrDefault() as ExpressionStatement;
 						if (es == null)
@@ -155,16 +191,23 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 						AssignmentExpression assignment = es.Expression as AssignmentExpression;
 						if (assignment == null || assignment.Operator != AssignmentOperatorType.Assign)
 							break;
-						FieldDefinition fieldDef = assignment.Left.Annotation<FieldReference>().ResolveWithinSameModule();
+						FieldDef fieldDef = assignment.Left.Annotation<IField>().ResolveFieldWithinSameModule();
 						if (fieldDef == null || !fieldDef.IsStatic)
 							break;
-						FieldDeclaration fieldDecl = members.OfType<FieldDeclaration>().FirstOrDefault(f => f.Annotation<FieldDefinition>() == fieldDef);
+						FieldDeclaration fieldDecl = members.OfType<FieldDeclaration>().FirstOrDefault(f => f.Annotation<FieldDef>() == fieldDef);
 						if (fieldDecl == null)
 							break;
-						fieldDecl.Variables.Single().Initializer = assignment.Right.Detach();
+						var binSpans = assignment.GetAllRecursiveBinSpans();
+						assignment.RemoveAllBinSpansRecursive();
+						var varInit = fieldDecl.Variables.Single();
+						varInit.Initializer = assignment.Right.Detach();
+						var ctorBinSpans = new List<Tuple<MethodDebugInfoBuilder, List<BinSpan>>>(1);
+						if (mm != null)
+							ctorBinSpans.Add(Tuple.Create(mm, binSpans));
+						fieldDecl.AddAnnotation(ctorBinSpans);
 						es.Remove();
 					}
-					if (staticCtor.Body.Statements.Count == 0)
+					if (!context.Settings.ForceShowAllMembers && context.Settings.RemoveEmptyDefaultConstructors && staticCtor.Body.Statements.Count == 0)
 						staticCtor.Remove();
 				}
 			}

@@ -1,6 +1,5 @@
 ﻿#region Using directives
 
-using System;
 using System.Resources;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -10,7 +9,7 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyTitle("ICSharpCode.Decompiler")]
 [assembly: AssemblyDescription("IL decompiler engine")]
 [assembly: AssemblyCompany("ic#code")]
-[assembly: AssemblyProduct("ILSpy")]
+[assembly: AssemblyProduct("dnSpy")]
 [assembly: AssemblyCopyright("Copyright 2011-2014 AlphaSierraPapa for the SharpDevelop Team")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
@@ -19,8 +18,8 @@ using System.Runtime.InteropServices;
 // If you need to expose a type to COM, use [ComVisible(true)] on that type.
 [assembly: ComVisible(false)]
 
-[assembly: AssemblyVersion("$INSERTVERSION$")]
-[assembly: AssemblyInformationalVersion("$INSERTVERSION$$INSERTBRANCHPOSTFIX$$INSERTVERSIONNAMEPOSTFIX$-$INSERTSHORTCOMMITHASH$")]
+[assembly: AssemblyVersion("2.3.1.0")]
+[assembly: AssemblyInformationalVersion("2.3.1.0")]
 [assembly: NeutralResourcesLanguage("en-US")]
 
 [assembly: System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Usage", "CA2243:AttributeStringLiteralsShouldParseCorrectly",

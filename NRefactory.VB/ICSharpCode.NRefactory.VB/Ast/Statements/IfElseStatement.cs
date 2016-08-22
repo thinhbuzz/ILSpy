@@ -2,10 +2,8 @@
 // This code is distributed under MIT X11 license (for details please see \doc\license.txt)
 
 using System;
-using System.IO;
 
-namespace ICSharpCode.NRefactory.VB.Ast
-{
+namespace ICSharpCode.NRefactory.VB.Ast {
 	public class IfElseStatement : Statement
 	{
 		public static readonly Role<Statement> FalseStatementRole = new Role<Statement>("False", Ast.Statement.Null);

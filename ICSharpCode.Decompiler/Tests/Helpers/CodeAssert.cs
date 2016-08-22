@@ -1,13 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Text;
 using DiffLib;
 using NUnit.Framework;
 
-namespace ICSharpCode.Decompiler.Tests.Helpers
-{
+namespace ICSharpCode.Decompiler.Tests.Helpers {
 	public class CodeAssert
 	{
 		public static void AreEqual(string input1, string input2)

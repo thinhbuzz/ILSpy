@@ -1,13 +1,6 @@
 ﻿using NUnit.Framework;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Reflection;
-using System.Text;
-using System.Threading.Tasks;
 
-namespace ICSharpCode.Decompiler.Tests.FSharpPatterns
-{
+namespace ICSharpCode.Decompiler.Tests.FSharpPatterns {
 	[TestFixture]
 	public class FSharpPatternTests
 	{

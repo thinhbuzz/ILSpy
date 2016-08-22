@@ -20,7 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-using Mono.Cecil.Cil;
+using dnlib.DotNet.Emit;
 
 namespace ICSharpCode.Decompiler.FlowAnalysis
 {
@@ -31,7 +31,7 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 	{
 		public static bool IsUnconditionalBranch(OpCode opcode)
 		{
-			if (opcode.OpCodeType == OpCodeType.Prefix)
+			if (opcode.OpCodeType == OpCodeType.Prefix || opcode.OpCodeType == OpCodeType.Nternal)
 				return false;
 			switch (opcode.FlowControl) {
 				case FlowControl.Branch:
@@ -43,7 +43,7 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 				case FlowControl.Cond_Branch:
 					return false;
 				default:
-					throw new NotSupportedException(opcode.FlowControl.ToString());
+					return false;
 			}
 		}
 		
@@ -227,7 +227,7 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 			new OpCodeInfo(OpCodes.Cpobj),
 			new OpCodeInfo(OpCodes.Initobj) { CanThrow = false },
 			new OpCodeInfo(OpCodes.Isinst)  { CanThrow = false },
-			new OpCodeInfo(OpCodes.Ldelem_Any),
+			new OpCodeInfo(OpCodes.Ldelem),
 			// ldelem.<type>
 			new OpCodeInfo(OpCodes.Ldelem_I) ,
 			new OpCodeInfo(OpCodes.Ldelem_I1),
@@ -257,7 +257,7 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 			new OpCodeInfo(OpCodes.Refanyval),
 			new OpCodeInfo(OpCodes.Rethrow),
 			new OpCodeInfo(OpCodes.Sizeof) { CanThrow = false },
-			new OpCodeInfo(OpCodes.Stelem_Any),
+			new OpCodeInfo(OpCodes.Stelem),
 			new OpCodeInfo(OpCodes.Stelem_I1),
 			new OpCodeInfo(OpCodes.Stelem_I2),
 			new OpCodeInfo(OpCodes.Stelem_I4),

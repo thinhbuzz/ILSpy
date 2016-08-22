@@ -1,17 +1,8 @@
 ﻿// Copyright (c) AlphaSierraPapa for the SharpDevelop Team (for details please see \doc\copyright.txt)
 // This code is distributed under MIT X11 license (for details please see \doc\license.txt)
 
-using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Linq;
-using System.Threading;
-using ICSharpCode.NRefactory.PatternMatching;
-using ICSharpCode.NRefactory.VB.Ast;
 
-namespace ICSharpCode.NRefactory.VB
-{
+namespace ICSharpCode.NRefactory.VB {
 	public class Comment : AstNode
 	{
 		public bool IsDocumentationComment { get; set; }

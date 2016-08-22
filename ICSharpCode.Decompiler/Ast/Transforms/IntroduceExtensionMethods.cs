@@ -16,46 +16,57 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
 using System.Linq;
+using System.Text;
+using dnlib.DotNet;
+using dnSpy.Contracts.Decompiler;
 using ICSharpCode.NRefactory.CSharp;
-using Mono.Cecil;
 
-namespace ICSharpCode.Decompiler.Ast.Transforms
-{
+namespace ICSharpCode.Decompiler.Ast.Transforms {
 	/// <summary>
 	/// Converts extension method calls into infix syntax.
 	/// </summary>
-	public class IntroduceExtensionMethods : IAstTransform
+	public class IntroduceExtensionMethods : IAstTransformPoolObject
 	{
-		readonly DecompilerContext context;
-		
+		readonly StringBuilder stringBuilder;
+
 		public IntroduceExtensionMethods(DecompilerContext context)
 		{
-			this.context = context;
+			this.stringBuilder = new StringBuilder();
+			Reset(context);
 		}
-		
+
+		public void Reset(DecompilerContext context)
+		{
+		}
+
+		static readonly UTF8String systemRuntimeCompilerServicesString = new UTF8String("System.Runtime.CompilerServices");
+		static readonly UTF8String extensionAttributeString = new UTF8String("ExtensionAttribute");
 		public void Run(AstNode compilationUnit)
 		{
 			foreach (InvocationExpression invocation in compilationUnit.Descendants.OfType<InvocationExpression>()) {
 				MemberReferenceExpression mre = invocation.Target as MemberReferenceExpression;
-				MethodReference methodReference = invocation.Annotation<MethodReference>();
+				IMethod methodReference = invocation.Annotation<IMethod>();
 				if (mre != null && mre.Target is TypeReferenceExpression && methodReference != null && invocation.Arguments.Any()) {
-					MethodDefinition d = methodReference.Resolve();
+					MethodDef d = methodReference.Resolve();
 					if (d != null) {
-						foreach (var ca in d.CustomAttributes) {
-							if (ca.AttributeType.Name == "ExtensionAttribute" && ca.AttributeType.Namespace == "System.Runtime.CompilerServices") {
-								var firstArgument = invocation.Arguments.First();
-								if (firstArgument is NullReferenceExpression)
-									firstArgument = firstArgument.ReplaceWith(expr => expr.CastTo(AstBuilder.ConvertType(d.Parameters.First().ParameterType)));
-								else
-									mre.Target = firstArgument.Detach();
-								if (invocation.Arguments.Any()) {
-									// HACK: removing type arguments should be done indepently from whether a method is an extension method,
-									// just by testing whether the arguments can be inferred
-									mre.TypeArguments.Clear();
-								}
-								break;
+						if (d.IsDefined(systemRuntimeCompilerServicesString, extensionAttributeString)) {
+							var firstArgument = invocation.Arguments.First();
+							if (firstArgument is NullReferenceExpression)
+								firstArgument = firstArgument.ReplaceWith(expr => expr.CastTo(AstBuilder.ConvertType(d.Parameters.SkipNonNormal().First().Type, stringBuilder)));
+							else {
+								var binSpans = mre.Target.GetAllRecursiveBinSpans();
+								mre.Target = firstArgument.Detach();
+								if (binSpans.Count > 0)
+									mre.Target.AddAnnotation(binSpans);
+							}
+							if (invocation.Arguments.Any()) {
+								// HACK: removing type arguments should be done indepently from whether a method is an extension method,
+								// just by testing whether the arguments can be inferred
+								var binSpans = mre.TypeArguments.GetAllRecursiveBinSpans();
+								mre.TypeArguments.Clear();
+								if (binSpans.Count > 0)
+									mre.AddAnnotation(binSpans);
 							}
 						}
 					}

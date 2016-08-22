@@ -18,11 +18,14 @@
 
 using System;
 using System.Collections.Generic;
-using Mono.Cecil;
-using Mono.Cecil.Cil;
+using System.Text;
+using System.Threading;
+using dnlib.DotNet;
+using dnlib.DotNet.Emit;
+using dnSpy.Contracts.Decompiler;
+using dnSpy.Contracts.Text;
 
-namespace ICSharpCode.Decompiler.Disassembler
-{
+namespace ICSharpCode.Decompiler.Disassembler {
 	public enum ILNameSyntax
 	{
 		/// <summary>
@@ -45,115 +48,239 @@ namespace ICSharpCode.Decompiler.Disassembler
 	
 	public static class DisassemblerHelpers
 	{
-		public static void WriteOffsetReference(ITextOutput writer, Instruction instruction)
+		const int OPERAND_ALIGNMENT = 10;
+
+		static DisassemblerHelpers()
 		{
-			writer.WriteReference(CecilExtensions.OffsetToString(instruction.Offset), instruction);
+			spaces = new string[OPERAND_ALIGNMENT];
+			for (int i = 0; i < spaces.Length; i++)
+				spaces[i] = new string(' ', i);
+		}
+		static readonly string[] spaces;
+
+		public static void WriteOffsetReference(IDecompilerOutput writer, Instruction instruction, MethodDef method, object data = null)
+		{
+			if (data == null)
+				data = BoxedTextColor.Label;
+			var r = instruction == null ? null : method == null ? (object)instruction : new InstructionReference(method, instruction);
+			writer.Write(DnlibExtensions.OffsetToString(instruction.GetOffset()), r, DecompilerReferenceFlags.None, data);
 		}
 		
-		public static void WriteTo(this ExceptionHandler exceptionHandler, ITextOutput writer)
+		public static void WriteTo(this ExceptionHandler exceptionHandler, IDecompilerOutput writer, MethodDef method)
 		{
-			writer.Write("Try ");
-			WriteOffsetReference(writer, exceptionHandler.TryStart);
-			writer.Write('-');
-			WriteOffsetReference(writer, exceptionHandler.TryEnd);
-			writer.Write(' ');
-			writer.Write(exceptionHandler.HandlerType.ToString());
+			writer.Write("Try", BoxedTextColor.Keyword);
+			writer.Write(" ", BoxedTextColor.Text);
+			WriteOffsetReference(writer, exceptionHandler.TryStart, method);
+			writer.Write("-", BoxedTextColor.Operator);
+			WriteOffsetReference(writer, exceptionHandler.TryEnd, method);
+			writer.Write(" ", BoxedTextColor.Text);
+			writer.Write(exceptionHandler.HandlerType.ToString(), BoxedTextColor.Keyword);
 			if (exceptionHandler.FilterStart != null) {
-				writer.Write(' ');
-				WriteOffsetReference(writer, exceptionHandler.FilterStart);
-				writer.Write(" handler ");
+				writer.Write(" ", BoxedTextColor.Text);
+				WriteOffsetReference(writer, exceptionHandler.FilterStart, method);
+				writer.Write(" ", BoxedTextColor.Text);
+				writer.Write("handler", BoxedTextColor.Keyword);
+				writer.Write(" ", BoxedTextColor.Text);
 			}
 			if (exceptionHandler.CatchType != null) {
-				writer.Write(' ');
+				writer.Write(" ", BoxedTextColor.Text);
 				exceptionHandler.CatchType.WriteTo(writer);
 			}
-			writer.Write(' ');
-			WriteOffsetReference(writer, exceptionHandler.HandlerStart);
-			writer.Write('-');
-			WriteOffsetReference(writer, exceptionHandler.HandlerEnd);
+			writer.Write(" ", BoxedTextColor.Text);
+			WriteOffsetReference(writer, exceptionHandler.HandlerStart, method);
+			writer.Write("-", BoxedTextColor.Operator);
+			WriteOffsetReference(writer, exceptionHandler.HandlerEnd, method);
 		}
 		
-		public static void WriteTo(this Instruction instruction, ITextOutput writer)
+		public static void WriteTo(this Instruction instruction, IDecompilerOutput writer, DisassemblerOptions options, uint baseRva, long baseOffs, IInstructionBytesReader byteReader, MethodDef method, out int startLocation)
 		{
-			writer.WriteDefinition(CecilExtensions.OffsetToString(instruction.Offset), instruction);
-			writer.Write(": ");
-			writer.WriteReference(instruction.OpCode.Name, instruction.OpCode);
-			if (instruction.Operand != null) {
-				writer.Write(' ');
-				if (instruction.OpCode == OpCodes.Ldtoken) {
-					if (instruction.Operand is MethodReference)
-						writer.Write("method ");
-					else if (instruction.Operand is FieldReference)
-						writer.Write("field ");
+			if (options != null && (options.ShowTokenAndRvaComments || options.ShowILBytes)) {
+				writer.Write("/* ", BoxedTextColor.Comment);
+
+				bool needSpace = false;
+
+				if (options.ShowTokenAndRvaComments) {
+					ulong fileOffset = (ulong)baseOffs + instruction.Offset;
+					writer.Write(string.Format("0x{0:X8}", fileOffset), new AddressReference(options.OwnerModule == null ? null : options.OwnerModule.Location, false, fileOffset, (ulong)instruction.GetSize()), DecompilerReferenceFlags.None, BoxedTextColor.Comment);
+					needSpace = true;
 				}
-				WriteOperand(writer, instruction.Operand);
+
+				if (options.ShowILBytes) {
+					if (needSpace)
+						writer.Write(" ", BoxedTextColor.Comment);
+					if (byteReader == null)
+						writer.Write("??", BoxedTextColor.Comment);
+					else {
+						int size = instruction.GetSize();
+						for (int i = 0; i < size; i++) {
+							var b = byteReader.ReadByte();
+							if (b < 0)
+								writer.Write("??", BoxedTextColor.Comment);
+							else
+								writer.Write(string.Format("{0:X2}", b), BoxedTextColor.Comment);
+						}
+						// Most instructions should be at most 5 bytes in length, but use 6 since
+						// ldftn/ldvirtftn are 6 bytes long. The longest instructions are those with
+						// 8 byte operands, ldc.i8 and ldc.r8: 9 bytes.
+						const int MIN_BYTES = 6;
+						for (int i = size; i < MIN_BYTES; i++)
+							writer.Write("  ", BoxedTextColor.Comment);
+					}
+				}
+
+				writer.Write(" */", BoxedTextColor.Comment);
+				writer.Write(" ", BoxedTextColor.Text);
+			}
+			startLocation = writer.NextPosition;
+			writer.Write(DnlibExtensions.OffsetToString(instruction.GetOffset()), new InstructionReference(method, instruction), DecompilerReferenceFlags.Definition, BoxedTextColor.Label);
+			writer.Write(":", BoxedTextColor.Punctuation);
+			writer.Write(" ", BoxedTextColor.Text);
+			writer.Write(instruction.OpCode.Name, instruction.OpCode, DecompilerReferenceFlags.None, BoxedTextColor.OpCode);
+			if (instruction.Operand != null) {
+				int count = OPERAND_ALIGNMENT - instruction.OpCode.Name.Length;
+				if (count <= 0)
+					count = 1;
+				writer.Write(spaces[count], BoxedTextColor.Text);
+				if (instruction.OpCode == OpCodes.Ldtoken) {
+					var member = instruction.Operand as IMemberRef;
+					if (member != null && member.IsMethod) {
+						writer.Write("method", BoxedTextColor.Keyword);
+						writer.Write(" ", BoxedTextColor.Text);
+					}
+					else if (member != null && member.IsField) {
+						writer.Write("field", BoxedTextColor.Keyword);
+						writer.Write(" ", BoxedTextColor.Text);
+					}
+				}
+				WriteOperand(writer, instruction.Operand, method);
+			}
+			if (options != null && options.GetOpCodeDocumentation != null) {
+				var doc = options.GetOpCodeDocumentation(instruction.OpCode);
+				if (doc != null) {
+					writer.Write("\t", BoxedTextColor.Text);
+					writer.Write("// " + doc, BoxedTextColor.Comment);
+				}
 			}
 		}
 		
-		static void WriteLabelList(ITextOutput writer, Instruction[] instructions)
+		static void WriteLabelList(IDecompilerOutput writer, IList<Instruction> instructions, MethodDef method)
 		{
-			writer.Write("(");
-			for(int i = 0; i < instructions.Length; i++) {
-				if(i != 0) writer.Write(", ");
-				WriteOffsetReference(writer, instructions[i]);
+			var bh1 = BracePairHelper.Create(writer, "(", CodeBracesRangeFlags.Parentheses);
+			for(int i = 0; i < instructions.Count; i++) {
+				if (i != 0) {
+					writer.Write(",", BoxedTextColor.Punctuation);
+					writer.Write(" ", BoxedTextColor.Text);
+				}
+				WriteOffsetReference(writer, instructions[i], method);
 			}
-			writer.Write(")");
+			bh1.Write(")");
 		}
 		
 		static string ToInvariantCultureString(object value)
 		{
+			if (value == null)
+				return "<<<NULL>>>";
 			IConvertible convertible = value as IConvertible;
 			return(null != convertible)
 				? convertible.ToString(System.Globalization.CultureInfo.InvariantCulture)
 				: value.ToString();
 		}
 		
-		public static void WriteTo(this MethodReference method, ITextOutput writer)
+		public static void WriteMethodTo(this IMethod method, IDecompilerOutput writer)
 		{
-			if (method.ExplicitThis) {
-				writer.Write("instance explicit ");
+			writer.Write((MethodSig)null, method);
+		}
+
+		public static void Write(this IDecompilerOutput writer, MethodSig sig, IMethod method = null)
+		{
+			if (sig == null && method != null)
+				sig = method.MethodSig;
+			if (sig == null)
+				return;
+			if (sig.ExplicitThis) {
+				writer.Write("instance", BoxedTextColor.Keyword);
+				writer.Write(" ", BoxedTextColor.Text);
+				writer.Write("explicit", BoxedTextColor.Keyword);
+				writer.Write(" ", BoxedTextColor.Text);
 			}
-			else if (method.HasThis) {
-				writer.Write("instance ");
+			else if (sig.HasThis) {
+				writer.Write("instance", BoxedTextColor.Keyword);
+				writer.Write(" ", BoxedTextColor.Text);
 			}
-			method.ReturnType.WriteTo(writer, ILNameSyntax.SignatureNoNamedTypeParameters);
-			writer.Write(' ');
-			if (method.DeclaringType != null) {
-				method.DeclaringType.WriteTo(writer, ILNameSyntax.TypeName);
-				writer.Write("::");
-			}
-			MethodDefinition md = method as MethodDefinition;
-			if (md != null && md.IsCompilerControlled) {
-				writer.WriteReference(Escape(method.Name + "$PST" + method.MetadataToken.ToInt32().ToString("X8")), method);
-			} else {
-				writer.WriteReference(Escape(method.Name), method);
-			}
-			GenericInstanceMethod gim = method as GenericInstanceMethod;
-			if (gim != null) {
-				writer.Write('<');
-				for (int i = 0; i < gim.GenericArguments.Count; i++) {
-					if (i > 0)
-						writer.Write(", ");
-					gim.GenericArguments[i].WriteTo(writer);
+			sig.RetType.WriteTo(writer, ILNameSyntax.SignatureNoNamedTypeParameters);
+			writer.Write(" ", BoxedTextColor.Text);
+			if (method != null) {
+				if (method.DeclaringType != null) {
+					method.DeclaringType.WriteTo(writer, ILNameSyntax.TypeName);
+					writer.Write("::", BoxedTextColor.Operator);
 				}
-				writer.Write('>');
+				MethodDef md = method as MethodDef;
+				if (md != null && md.IsCompilerControlled) {
+					writer.Write(Escape(method.Name + "$PST" + method.MDToken.ToInt32().ToString("X8")), method, DecompilerReferenceFlags.None, TextColorHelper.GetColor(method));
+				}
+				else {
+					writer.Write(Escape(method.Name), method, DecompilerReferenceFlags.None, TextColorHelper.GetColor(method));
+				}
 			}
-			writer.Write("(");
-			var parameters = method.Parameters;
+			MethodSpec gim = method as MethodSpec;
+			if (gim != null && gim.GenericInstMethodSig != null) {
+				var bh1 = BracePairHelper.Create(writer, "<", CodeBracesRangeFlags.AngleBrackets);
+				for (int i = 0; i < gim.GenericInstMethodSig.GenericArguments.Count; i++) {
+					if (i > 0) {
+						writer.Write(",", BoxedTextColor.Punctuation);
+						writer.Write(" ", BoxedTextColor.Text);
+					}
+					gim.GenericInstMethodSig.GenericArguments[i].WriteTo(writer);
+				}
+				bh1.Write(">");
+			}
+			var bh2 = BracePairHelper.Create(writer, "(", CodeBracesRangeFlags.Parentheses);
+			var parameters = sig.GetParameters();
 			for(int i = 0; i < parameters.Count; ++i) {
-				if (i > 0) writer.Write(", ");
-				parameters[i].ParameterType.WriteTo(writer, ILNameSyntax.SignatureNoNamedTypeParameters);
+				if (i > 0) {
+					writer.Write(",", BoxedTextColor.Punctuation);
+					writer.Write(" ", BoxedTextColor.Text);
+				}
+				parameters[i].WriteTo(writer, ILNameSyntax.SignatureNoNamedTypeParameters);
 			}
-			writer.Write(")");
+			bh2.Write(")");
+		}
+
+		public static void WriteTo(this MethodSig sig, IDecompilerOutput writer)
+		{
+			if (sig.ExplicitThis) {
+				writer.Write("instance", BoxedTextColor.Keyword);
+				writer.Write(" ", BoxedTextColor.Text);
+				writer.Write("explicit", BoxedTextColor.Keyword);
+				writer.Write(" ", BoxedTextColor.Text);
+			}
+			else if (sig.HasThis) {
+				writer.Write("instance", BoxedTextColor.Keyword);
+				writer.Write(" ", BoxedTextColor.Text);
+			}
+			sig.RetType.WriteTo(writer, ILNameSyntax.SignatureNoNamedTypeParameters);
+			writer.Write(" ", BoxedTextColor.Text);
+			var bh1 = BracePairHelper.Create(writer, "(", CodeBracesRangeFlags.Parentheses);
+			var parameters = sig.GetParameters();
+			for(int i = 0; i < parameters.Count; ++i) {
+				if (i > 0) {
+					writer.Write(",", BoxedTextColor.Punctuation);
+					writer.Write(" ", BoxedTextColor.Text);
+				}
+				parameters[i].WriteTo(writer, ILNameSyntax.SignatureNoNamedTypeParameters);
+			}
+			bh1.Write(")");
 		}
 		
-		static void WriteTo(this FieldReference field, ITextOutput writer)
+		public static void WriteFieldTo(this IField field, IDecompilerOutput writer)
 		{
-			field.FieldType.WriteTo(writer, ILNameSyntax.SignatureNoNamedTypeParameters);
-			writer.Write(' ');
+			if (field == null || field.FieldSig == null)
+				return;
+			field.FieldSig.Type.WriteTo(writer, ILNameSyntax.SignatureNoNamedTypeParameters);
+			writer.Write(" ", BoxedTextColor.Text);
 			field.DeclaringType.WriteTo(writer, ILNameSyntax.TypeName);
-			writer.Write("::");
-			writer.WriteReference(Escape(field.Name), field);
+			writer.Write("::", BoxedTextColor.Operator);
+			writer.Write(Escape(field.Name), field, DecompilerReferenceFlags.None, TextColorHelper.GetColor(field));
 		}
 		
 		static bool IsValidIdentifierCharacter(char c)
@@ -210,235 +337,432 @@ namespace ICSharpCode.Decompiler.Disassembler
 		{
 			HashSet<string> s = new HashSet<string>(keywords);
 			foreach (var field in typeof(OpCodes).GetFields()) {
-				s.Add(((OpCode)field.GetValue(null)).Name);
+				if (field.FieldType != typeof(OpCode))
+					continue;
+				OpCode opCode = (OpCode)field.GetValue(null);
+				if (opCode.OpCodeType != OpCodeType.Nternal)
+					s.Add(opCode.Name);
 			}
 			return s;
+		}
+
+		internal static bool MustEscape(string identifier) 
+		{
+			return !IsValidIdentifier(identifier) || ilKeywords.Contains(identifier);
 		}
 		
 		public static string Escape(string identifier)
 		{
-			if (IsValidIdentifier(identifier) && !ilKeywords.Contains(identifier)) {
-				return identifier;
+			if (!MustEscape(identifier)) {
+				return IdentifierEscaper.Truncate(identifier);
 			} else {
 				// The ECMA specification says that ' inside SQString should be ecaped using an octal escape sequence,
 				// but we follow Microsoft's ILDasm and use \'.
-				return "'" + NRefactory.CSharp.TextWriterTokenWriter.ConvertString(identifier).Replace("'", "\\'") + "'";
+				return "'" + IdentifierEscaper.Truncate(NRefactory.CSharp.TextWriterTokenWriter.ConvertString(identifier).Replace("'", "\\'")) + "'";
 			}
 		}
 		
-		public static void WriteTo(this TypeReference type, ITextOutput writer, ILNameSyntax syntax = ILNameSyntax.Signature)
+		public static void WriteTo(this TypeSig type, IDecompilerOutput writer, ILNameSyntax syntax = ILNameSyntax.Signature)
 		{
+			type.WriteTo(writer, syntax, 0);
+		}
+
+		const int MAX_CONVERTTYPE_DEPTH = 50;
+		public static void WriteTo(this TypeSig type, IDecompilerOutput writer, ILNameSyntax syntax, int depth)
+		{
+			if (depth++ > MAX_CONVERTTYPE_DEPTH)
+				return;
 			ILNameSyntax syntaxForElementTypes = syntax == ILNameSyntax.SignatureNoNamedTypeParameters ? syntax : ILNameSyntax.Signature;
-			if (type is PinnedType) {
-				((PinnedType)type).ElementType.WriteTo(writer, syntaxForElementTypes);
-				writer.Write(" pinned");
-			} else if (type is ArrayType) {
-				ArrayType at = (ArrayType)type;
-				at.ElementType.WriteTo(writer, syntaxForElementTypes);
-				writer.Write('[');
-				writer.Write(string.Join(", ", at.Dimensions));
-				writer.Write(']');
-			} else if (type is GenericParameter) {
-				writer.Write('!');
-				if (((GenericParameter)type).Owner.GenericParameterType == GenericParameterType.Method)
-					writer.Write('!');
-				if (string.IsNullOrEmpty(type.Name) || type.Name[0] == '!' || syntax == ILNameSyntax.SignatureNoNamedTypeParameters)
-					writer.Write(((GenericParameter)type).Position.ToString());
-				else
-					writer.Write(Escape(type.Name));
-			} else if (type is ByReferenceType) {
-				((ByReferenceType)type).ElementType.WriteTo(writer, syntaxForElementTypes);
-				writer.Write('&');
-			} else if (type is PointerType) {
-				((PointerType)type).ElementType.WriteTo(writer, syntaxForElementTypes);
-				writer.Write('*');
-			} else if (type is GenericInstanceType) {
-				type.GetElementType().WriteTo(writer, syntaxForElementTypes);
-				writer.Write('<');
-				var arguments = ((GenericInstanceType)type).GenericArguments;
-				for (int i = 0; i < arguments.Count; i++) {
-					if (i > 0)
-						writer.Write(", ");
-					arguments[i].WriteTo(writer, syntaxForElementTypes);
+			if (type is PinnedSig) {
+				((PinnedSig)type).Next.WriteTo(writer, syntaxForElementTypes, depth);
+				writer.Write(" ", BoxedTextColor.Text);
+				writer.Write("pinned", BoxedTextColor.Keyword);
+			} else if (type is ArraySig) {
+				ArraySig at = (ArraySig)type;
+				at.Next.WriteTo(writer, syntaxForElementTypes, depth);
+				var bh1 = BracePairHelper.Create(writer, "[", CodeBracesRangeFlags.SquareBrackets);
+				for (int i = 0; i < at.Rank; i++)
+				{
+					if (i != 0) {
+						writer.Write(",", BoxedTextColor.Punctuation);
+						writer.Write(" ", BoxedTextColor.Text);
+					}
+					int? lower = i < at.LowerBounds.Count ? at.LowerBounds[i] : (int?)null;
+					uint? size = i < at.Sizes.Count ? at.Sizes[i] : (uint?)null;
+					if (lower != null)
+					{
+						writer.Write(lower.ToString(), BoxedTextColor.Number);
+						if (size != null) {
+							writer.Write("..", BoxedTextColor.Operator);
+							writer.Write((lower.Value + (int)size.Value - 1).ToString(), BoxedTextColor.Number);
+						}
+						else
+							writer.Write("...", BoxedTextColor.Operator);
+					}
 				}
-				writer.Write('>');
-			} else if (type is OptionalModifierType) {
-				((OptionalModifierType)type).ElementType.WriteTo(writer, syntax);
-				writer.Write(" modopt(");
-				((OptionalModifierType)type).ModifierType.WriteTo(writer, ILNameSyntax.TypeName);
-				writer.Write(") ");
-			} else if (type is RequiredModifierType) {
-				((RequiredModifierType)type).ElementType.WriteTo(writer, syntax);
-				writer.Write(" modreq(");
-				((RequiredModifierType)type).ModifierType.WriteTo(writer, ILNameSyntax.TypeName);
-				writer.Write(") ");
+				bh1.Write("]");
+			} else if (type is SZArraySig) {
+				SZArraySig at = (SZArraySig)type;
+				at.Next.WriteTo(writer, syntaxForElementTypes, depth);
+				var bh1 = BracePairHelper.Create(writer, "[", CodeBracesRangeFlags.SquareBrackets);
+				bh1.Write("]");
+			} else if (type is GenericSig) {
+				if (((GenericSig)type).IsMethodVar)
+					writer.Write("!!", BoxedTextColor.Operator);
+				else
+					writer.Write("!", BoxedTextColor.Operator);
+				string typeName = type.TypeName;
+				if (string.IsNullOrEmpty(typeName) || typeName[0] == '!' || syntax == ILNameSyntax.SignatureNoNamedTypeParameters)
+					writer.Write(((GenericSig)type).Number.ToString(), BoxedTextColor.Number);
+				else
+					writer.Write(Escape(typeName), TextColorHelper.GetColor(type));
+			} else if (type is ByRefSig) {
+				((ByRefSig)type).Next.WriteTo(writer, syntaxForElementTypes, depth);
+				writer.Write("&", BoxedTextColor.Operator);
+			} else if (type is PtrSig) {
+				((PtrSig)type).Next.WriteTo(writer, syntaxForElementTypes, depth);
+				writer.Write("*", BoxedTextColor.Operator);
+			} else if (type is GenericInstSig) {
+				((GenericInstSig)type).GenericType.WriteTo(writer, syntaxForElementTypes, depth);
+				var bh1 = BracePairHelper.Create(writer, "<", CodeBracesRangeFlags.AngleBrackets);
+				var arguments = ((GenericInstSig)type).GenericArguments;
+				for (int i = 0; i < arguments.Count; i++) {
+					if (i > 0) {
+						writer.Write(",", BoxedTextColor.Punctuation);
+						writer.Write(" ", BoxedTextColor.Text);
+					}
+					arguments[i].WriteTo(writer, syntaxForElementTypes, depth);
+				}
+				bh1.Write(">");
+			} else if (type is CModOptSig) {
+				((ModifierSig)type).Next.WriteTo(writer, syntax, depth);
+				writer.Write(" ", BoxedTextColor.Text);
+				writer.Write("modopt", BoxedTextColor.Keyword);
+				var bh1 = BracePairHelper.Create(writer, "(", CodeBracesRangeFlags.Parentheses);
+				((ModifierSig)type).Modifier.WriteTo(writer, ILNameSyntax.TypeName, depth);
+				bh1.Write(")");
+				writer.Write(" ", BoxedTextColor.Text);
+			}
+			else if (type is CModReqdSig) {
+				((ModifierSig)type).Next.WriteTo(writer, syntax, depth);
+				writer.Write(" ", BoxedTextColor.Text);
+				writer.Write("modreq", BoxedTextColor.Keyword);
+				var bh1 = BracePairHelper.Create(writer, "(", CodeBracesRangeFlags.Parentheses);
+				((ModifierSig)type).Modifier.WriteTo(writer, ILNameSyntax.TypeName, depth);
+				bh1.Write(")");
+				writer.Write(" ", BoxedTextColor.Text);
+			}
+			else if (type is TypeDefOrRefSig) {
+				WriteTo(((TypeDefOrRefSig)type).TypeDefOrRef, writer, syntax, depth);
+			} else if (type is FnPtrSig) {
+				WriteTo(type.ToTypeDefOrRef(), writer, syntax, depth);
+			}
+			//TODO: SentinelSig
+		}
+
+		public static void WriteTo(this ITypeDefOrRef type, IDecompilerOutput writer, ILNameSyntax syntax = ILNameSyntax.Signature)
+		{
+			type.WriteTo(writer, syntax, 0);
+		}
+
+		public static void WriteTo(this ITypeDefOrRef type, IDecompilerOutput writer, ILNameSyntax syntax, int depth)
+		{
+			if (depth++ > MAX_CONVERTTYPE_DEPTH || type == null)
+				return;
+			var ts = type as TypeSpec;
+			if (ts != null && !(ts.TypeSig is FnPtrSig)) {
+				WriteTo(((TypeSpec)type).TypeSig, writer, syntax, depth);
+				return;
+			}
+			string typeFullName = type.FullName;
+			string typeName = type.Name.String;
+			if (ts != null) {
+				var fnPtrSig = ts.TypeSig as FnPtrSig;
+				typeFullName = DnlibExtensions.GetFnPtrFullName(fnPtrSig);
+				typeName = DnlibExtensions.GetFnPtrName(fnPtrSig);
+			}
+			TypeSig typeSig = null;
+			string name = type.DefinitionAssembly.IsCorLib() ? PrimitiveTypeName(typeFullName, type.Module, out typeSig) : null;
+			if (syntax == ILNameSyntax.ShortTypeName) {
+				if (name != null)
+					WriteKeyword(writer, name, typeSig.ToTypeDefOrRef());
+				else
+					writer.Write(Escape(typeName), type, DecompilerReferenceFlags.None, TextColorHelper.GetColor(type));
+			} else if ((syntax == ILNameSyntax.Signature || syntax == ILNameSyntax.SignatureNoNamedTypeParameters) && name != null) {
+				WriteKeyword(writer, name, typeSig.ToTypeDefOrRef());
 			} else {
-				string name = PrimitiveTypeName(type.FullName);
-				if (syntax == ILNameSyntax.ShortTypeName) {
-					if (name != null)
-						writer.Write(name);
-					else
-						writer.WriteReference(Escape(type.Name), type);
-				} else if ((syntax == ILNameSyntax.Signature || syntax == ILNameSyntax.SignatureNoNamedTypeParameters) && name != null) {
-					writer.Write(name);
+				if (syntax == ILNameSyntax.Signature || syntax == ILNameSyntax.SignatureNoNamedTypeParameters) {
+					writer.Write(DnlibExtensions.IsValueType(type) ? "valuetype" : "class", BoxedTextColor.Keyword);
+					writer.Write(" ", BoxedTextColor.Text);
+				}
+
+				if (type.DeclaringType != null) {
+					type.DeclaringType.WriteTo(writer, ILNameSyntax.TypeName, depth);
+					writer.Write("/", BoxedTextColor.Operator);
+					writer.Write(Escape(typeName), type, DecompilerReferenceFlags.None, TextColorHelper.GetColor(type));
 				} else {
-					if (syntax == ILNameSyntax.Signature || syntax == ILNameSyntax.SignatureNoNamedTypeParameters)
-						writer.Write(type.IsValueType ? "valuetype " : "class ");
-					
-					if (type.DeclaringType != null) {
-						type.DeclaringType.WriteTo(writer, ILNameSyntax.TypeName);
-						writer.Write('/');
-						writer.WriteReference(Escape(type.Name), type);
-					} else {
-						if (!type.IsDefinition && type.Scope != null && !(type is TypeSpecification))
-							writer.Write("[{0}]", Escape(type.Scope.Name));
-						writer.WriteReference(Escape(type.FullName), type);
+					if (!(type is TypeDef) && type.Scope != null && !(type is TypeSpec)) {
+						var bh1 = BracePairHelper.Create(writer, "[", CodeBracesRangeFlags.SquareBrackets);
+						writer.Write(Escape(type.Scope.GetScopeName()), type.Scope, DecompilerReferenceFlags.None, BoxedTextColor.ILModule);
+						bh1.Write("]");
+					}
+					if (ts != null || MustEscape(typeFullName))
+						writer.Write(Escape(typeFullName), type, DecompilerReferenceFlags.None, TextColorHelper.GetColor(type));
+					else {
+						WriteNamespace(writer, type.Namespace, type.DefinitionAssembly);
+						if (!string.IsNullOrEmpty(type.Namespace))
+							writer.Write(".", BoxedTextColor.Operator);
+						writer.Write(IdentifierEscaper.Escape(type.Name), type, DecompilerReferenceFlags.None, TextColorHelper.GetColor(type));
 					}
 				}
 			}
 		}
-		
-		public static void WriteOperand(ITextOutput writer, object operand)
+
+		internal static void WriteNamespace(IDecompilerOutput writer, string ns, IAssembly nsAsm)
 		{
-			if (operand == null)
-				throw new ArgumentNullException("operand");
-			
+			var sb = Interlocked.CompareExchange(ref cachedStringBuilder, null, cachedStringBuilder) ?? new StringBuilder();
+			sb.Clear();
+			var parts = ns.Split('.');
+			for (int i = 0; i < parts.Length; i++) {
+				if (i > 0) {
+					sb.Append('.');
+					writer.Write(".", BoxedTextColor.Operator);
+				}
+				var nsPart = parts[i];
+				sb.Append(nsPart);
+				if (!string.IsNullOrEmpty(nsPart)) {
+					var nsRef = new NamespaceReference(nsAsm, sb.ToString());
+					writer.Write(IdentifierEscaper.Escape(nsPart), nsRef, DecompilerReferenceFlags.None, BoxedTextColor.Namespace);
+				}
+			}
+			if (sb.Capacity <= 1000)
+				cachedStringBuilder = sb;
+		}
+		static StringBuilder cachedStringBuilder = new StringBuilder();
+
+		internal static void WriteKeyword(IDecompilerOutput writer, string name, ITypeDefOrRef tdr)
+		{
+			var parts = name.Split(' ');
+			for (int i = 0; i < parts.Length; i++) {
+				if (i > 0)
+					writer.Write(" ", BoxedTextColor.Text);
+				if (tdr != null)
+					writer.Write(parts[i], tdr, DecompilerReferenceFlags.None, BoxedTextColor.Keyword);
+				else
+					writer.Write(parts[i], BoxedTextColor.Keyword);
+			}
+		}
+		
+		public static void WriteOperand(IDecompilerOutput writer, object operand, MethodDef method = null)
+		{
 			Instruction targetInstruction = operand as Instruction;
 			if (targetInstruction != null) {
-				WriteOffsetReference(writer, targetInstruction);
+				WriteOffsetReference(writer, targetInstruction, method);
 				return;
 			}
 			
-			Instruction[] targetInstructions = operand as Instruction[];
+			IList<Instruction> targetInstructions = operand as IList<Instruction>;
 			if (targetInstructions != null) {
-				WriteLabelList(writer, targetInstructions);
+				WriteLabelList(writer, targetInstructions, method);
 				return;
 			}
 			
-			VariableReference variableRef = operand as VariableReference;
-			if (variableRef != null) {
-				if (string.IsNullOrEmpty(variableRef.Name))
-					writer.WriteReference(variableRef.Index.ToString(), variableRef);
+			Local variable = operand as Local;
+			if (variable != null) {
+				if (string.IsNullOrEmpty(variable.Name))
+					writer.Write(variable.Index.ToString(), variable, DecompilerReferenceFlags.None, BoxedTextColor.Number);
 				else
-					writer.WriteReference(Escape(variableRef.Name), variableRef);
+					writer.Write(Escape(variable.Name), variable, DecompilerReferenceFlags.None, BoxedTextColor.Local);
 				return;
 			}
 			
-			ParameterReference paramRef = operand as ParameterReference;
+			Parameter paramRef = operand as Parameter;
 			if (paramRef != null) {
-				if (string.IsNullOrEmpty(paramRef.Name))
-					writer.WriteReference(paramRef.Index.ToString(), paramRef);
+				if (string.IsNullOrEmpty(paramRef.Name)) {
+					if (paramRef.IsHiddenThisParameter)
+						writer.Write("<hidden-this>", paramRef, DecompilerReferenceFlags.None, BoxedTextColor.Parameter);
+					else
+						writer.Write(paramRef.MethodSigIndex.ToString(), paramRef, DecompilerReferenceFlags.None, BoxedTextColor.Parameter);
+				}
 				else
-					writer.WriteReference(Escape(paramRef.Name), paramRef);
+					writer.Write(Escape(paramRef.Name), paramRef, DecompilerReferenceFlags.None, BoxedTextColor.Parameter);
 				return;
 			}
 			
-			MethodReference methodRef = operand as MethodReference;
-			if (methodRef != null) {
-				methodRef.WriteTo(writer);
+			MemberRef memberRef = operand as MemberRef;
+			if (memberRef != null) {
+				if (memberRef.IsMethodRef)
+					memberRef.WriteMethodTo(writer);
+				else
+					memberRef.WriteFieldTo(writer);
 				return;
 			}
 			
-			TypeReference typeRef = operand as TypeReference;
+			MethodDef methodDef = operand as MethodDef;
+			if (methodDef != null) {
+				methodDef.WriteMethodTo(writer);
+				return;
+			}
+			
+			FieldDef fieldDef = operand as FieldDef;
+			if (fieldDef != null) {
+				fieldDef.WriteFieldTo(writer);
+				return;
+			}
+			
+			ITypeDefOrRef typeRef = operand as ITypeDefOrRef;
 			if (typeRef != null) {
 				typeRef.WriteTo(writer, ILNameSyntax.TypeName);
 				return;
 			}
 			
-			FieldReference fieldRef = operand as FieldReference;
-			if (fieldRef != null) {
-				fieldRef.WriteTo(writer);
+			IMethod m = operand as IMethod;
+			if (m != null) {
+				m.WriteMethodTo(writer);
+				return;
+			}
+
+			MethodSig sig = operand as MethodSig;
+			if (sig != null) {
+				sig.WriteTo(writer);
 				return;
 			}
 			
 			string s = operand as string;
 			if (s != null) {
-				writer.Write("\"" + NRefactory.CSharp.TextWriterTokenWriter.ConvertString(s) + "\"");
+				int start = writer.NextPosition;
+				writer.Write("\"" + NRefactory.CSharp.TextWriterTokenWriter.ConvertString(s) + "\"", BoxedTextColor.String);
+				int end = writer.NextPosition;
+				writer.AddBracePair(new TextSpan(start, 1), new TextSpan(end - 1, 1), CodeBracesRangeFlags.DoubleQuotes);
 			} else if (operand is char) {
-				writer.Write(((int)(char)operand).ToString());
+				writer.Write(((int)(char)operand).ToString(), BoxedTextColor.Number);
 			} else if (operand is float) {
 				float val = (float)operand;
 				if (val == 0) {
 					if (1 / val == float.NegativeInfinity) {
 						// negative zero is a special case
-						writer.Write('-');
+						writer.Write("-0.0", BoxedTextColor.Number);
 					}
-					writer.Write("0.0");
+					else
+						writer.Write("0.0", BoxedTextColor.Number);
 				} else if (float.IsInfinity(val) || float.IsNaN(val)) {
 					byte[] data = BitConverter.GetBytes(val);
-					writer.Write('(');
+					var bh1 = BracePairHelper.Create(writer, "(", CodeBracesRangeFlags.Parentheses);
 					for (int i = 0; i < data.Length; i++) {
 						if (i > 0)
-							writer.Write(' ');
-						writer.Write(data[i].ToString("X2"));
+							writer.Write(" ", BoxedTextColor.Text);
+						writer.Write(data[i].ToString("X2"), BoxedTextColor.Number);
 					}
-					writer.Write(')');
+					bh1.Write(")");
 				} else {
-					writer.Write(val.ToString("R", System.Globalization.CultureInfo.InvariantCulture));
+					writer.Write(val.ToString("R", System.Globalization.CultureInfo.InvariantCulture), BoxedTextColor.Number);
 				}
 			} else if (operand is double) {
 				double val = (double)operand;
 				if (val == 0) {
 					if (1 / val == double.NegativeInfinity) {
 						// negative zero is a special case
-						writer.Write('-');
+						writer.Write("-0.0", BoxedTextColor.Number);
 					}
-					writer.Write("0.0");
+					else
+						writer.Write("0.0", BoxedTextColor.Number);
 				} else if (double.IsInfinity(val) || double.IsNaN(val)) {
 					byte[] data = BitConverter.GetBytes(val);
-					writer.Write('(');
+					var bh1 = BracePairHelper.Create(writer, "(", CodeBracesRangeFlags.Parentheses);
 					for (int i = 0; i < data.Length; i++) {
 						if (i > 0)
-							writer.Write(' ');
-						writer.Write(data[i].ToString("X2"));
+							writer.Write(" ", BoxedTextColor.Text);
+						writer.Write(data[i].ToString("X2"), BoxedTextColor.Number);
 					}
-					writer.Write(')');
+					bh1.Write(")");
 				} else {
-					writer.Write(val.ToString("R", System.Globalization.CultureInfo.InvariantCulture));
+					writer.Write(val.ToString("R", System.Globalization.CultureInfo.InvariantCulture), BoxedTextColor.Number);
 				}
 			} else if (operand is bool) {
-				writer.Write((bool)operand ? "true" : "false");
+				writer.Write((bool)operand ? "true" : "false", BoxedTextColor.Keyword);
 			} else {
 				s = ToInvariantCultureString(operand);
-				writer.Write(s);
+				writer.Write(s, TextColorHelper.GetColor(operand));
 			}
 		}
 		
-		public static string PrimitiveTypeName(string fullName)
+		public static string PrimitiveTypeName(string fullName, ModuleDef module, out TypeSig typeSig)
 		{
+			var corLibTypes = module == null ? null : module.CorLibTypes;
+			typeSig = null;
 			switch (fullName) {
 				case "System.SByte":
+					if (corLibTypes != null)
+						typeSig = corLibTypes.SByte;
 					return "int8";
 				case "System.Int16":
+					if (corLibTypes != null)
+						typeSig = corLibTypes.Int16;
 					return "int16";
 				case "System.Int32":
+					if (corLibTypes != null)
+						typeSig = corLibTypes.Int32;
 					return "int32";
 				case "System.Int64":
+					if (corLibTypes != null)
+						typeSig = corLibTypes.Int64;
 					return "int64";
 				case "System.Byte":
+					if (corLibTypes != null)
+						typeSig = corLibTypes.Byte;
 					return "uint8";
 				case "System.UInt16":
+					if (corLibTypes != null)
+						typeSig = corLibTypes.UInt16;
 					return "uint16";
 				case "System.UInt32":
+					if (corLibTypes != null)
+						typeSig = corLibTypes.UInt32;
 					return "uint32";
 				case "System.UInt64":
+					if (corLibTypes != null)
+						typeSig = corLibTypes.UInt64;
 					return "uint64";
 				case "System.Single":
+					if (corLibTypes != null)
+						typeSig = corLibTypes.Single;
 					return "float32";
 				case "System.Double":
+					if (corLibTypes != null)
+						typeSig = corLibTypes.Double;
 					return "float64";
 				case "System.Void":
+					if (corLibTypes != null)
+						typeSig = corLibTypes.Void;
 					return "void";
 				case "System.Boolean":
+					if (corLibTypes != null)
+						typeSig = corLibTypes.Boolean;
 					return "bool";
 				case "System.String":
+					if (corLibTypes != null)
+						typeSig = corLibTypes.String;
 					return "string";
 				case "System.Char":
+					if (corLibTypes != null)
+						typeSig = corLibTypes.Char;
 					return "char";
 				case "System.Object":
+					if (corLibTypes != null)
+						typeSig = corLibTypes.Object;
 					return "object";
 				case "System.IntPtr":
+					if (corLibTypes != null)
+						typeSig = corLibTypes.IntPtr;
 					return "native int";
+				case "System.UIntPtr":
+					if (corLibTypes != null)
+						typeSig = corLibTypes.UIntPtr;
+					return "native unsigned int";
+				case "System.TypedReference":
+					if (corLibTypes != null)
+						typeSig = corLibTypes.TypedReference;
+					return "typedref";
 				default:
 					return null;
 			}

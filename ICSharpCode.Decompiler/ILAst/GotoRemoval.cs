@@ -18,16 +18,26 @@
 
 using System;
 using System.Diagnostics;
-using System.IO;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace ICSharpCode.Decompiler.ILAst
-{
+namespace ICSharpCode.Decompiler.ILAst {
 	public class GotoRemoval
 	{
-		Dictionary<ILNode, ILNode> parent = new Dictionary<ILNode, ILNode>();
-		Dictionary<ILNode, ILNode> nextSibling = new Dictionary<ILNode, ILNode>();
+		readonly Dictionary<ILNode, ILNode> parent = new Dictionary<ILNode, ILNode>();
+		readonly Dictionary<ILNode, ILNode> nextSibling = new Dictionary<ILNode, ILNode>();
+		readonly DecompilerContext context;
+
+		public GotoRemoval(DecompilerContext context)
+		{
+			this.context = context;
+		}
+
+		public void Reset()
+		{
+			this.parent.Clear();
+			this.nextSibling.Clear();
+		}
 		
 		public void RemoveGotos(ILBlock method)
 		{
@@ -51,26 +61,44 @@ namespace ICSharpCode.Decompiler.ILAst
 			bool modified;
 			do {
 				modified = false;
-				foreach (ILExpression gotoExpr in method.GetSelfAndChildrenRecursive<ILExpression>(e => e.Code == ILCode.Br || e.Code == ILCode.Leave)) {
+				var list = method.GetSelfAndChildrenRecursive<ILExpression>(e => e.Code == ILCode.Br || e.Code == ILCode.Leave);
+				for (int i = list.Count - 1; i >= 0; i--) {
+					var gotoExpr = list[i];
 					modified |= TrySimplifyGoto(gotoExpr);
 				}
 			} while(modified);
 			
-			RemoveRedundantCode(method);
+			RemoveRedundantCode(method, context);
 		}
 		
-		public static void RemoveRedundantCode(ILBlock method)
+		public static void RemoveRedundantCode(ILBlock method, DecompilerContext context)
 		{
 			// Remove dead lables and nops
 			HashSet<ILLabel> liveLabels = new HashSet<ILLabel>(method.GetSelfAndChildrenRecursive<ILExpression>(e => e.IsBranch()).SelectMany(e => e.GetBranchTargets()));
-			foreach(ILBlock block in method.GetSelfAndChildrenRecursive<ILBlock>()) {
-				block.Body = block.Body.Where(n => !n.Match(ILCode.Nop) && !(n is ILLabel && !liveLabels.Contains((ILLabel)n))).ToList();
+			foreach (ILBlock block in method.GetSelfAndChildrenRecursive<ILBlock>()) {
+				var newBody = new List<ILNode>(block.Body.Count);
+				for (int i = 0; i < block.Body.Count; i++) {
+					var node = block.Body[i];
+					if (node.Match(ILCode.Nop)) {
+						if (context.CalculateBinSpans)
+							Utils.NopMergeBinSpans(block, newBody, i);
+					}
+					else if (node is ILLabel && !liveLabels.Contains((ILLabel)node)) {
+						if (context.CalculateBinSpans)
+							Utils.LabelMergeBinSpans(block, newBody, i);
+					}
+					else
+						newBody.Add(node);
+				}
+				block.Body = newBody;
 			}
 			
 			// Remove redundant continue
 			foreach(ILWhileLoop loop in method.GetSelfAndChildrenRecursive<ILWhileLoop>()) {
 				var body = loop.BodyBlock.Body;
 				if (body.Count > 0 && body.Last().Match(ILCode.LoopContinue)) {
+					if (context.CalculateBinSpans)
+						body[body.Count - 1].AddSelfAndChildrenRecursiveBinSpans(loop.EndBinSpans);
 					body.RemoveAt(body.Count - 1);
 				}
 			}
@@ -86,6 +114,9 @@ namespace ICSharpCode.Decompiler.ILAst
 						if (ilCase.Body[count - 2].IsUnconditionalControlFlow() &&
 						    ilCase.Body[count - 1].Match(ILCode.LoopOrSwitchBreak)) 
 						{
+							var prev = ilCase.Body[count - 2];
+							if (context.CalculateBinSpans)
+								ilCase.Body[count - 1].AddSelfAndChildrenRecursiveBinSpans(prev.EndBinSpans);
 							ilCase.Body.RemoveAt(count - 1);
 						}
 					}
@@ -94,12 +125,21 @@ namespace ICSharpCode.Decompiler.ILAst
 				var defaultCase = ilSwitch.CaseBlocks.SingleOrDefault(cb => cb.Values == null);
 				// If there is no default block, remove empty case blocks
 				if (defaultCase == null || (defaultCase.Body.Count == 1 && defaultCase.Body.Single().Match(ILCode.LoopOrSwitchBreak))) {
-					ilSwitch.CaseBlocks.RemoveAll(b => b.Body.Count == 1 && b.Body.Single().Match(ILCode.LoopOrSwitchBreak));
+					for (int i = ilSwitch.CaseBlocks.Count - 1; i >= 0; i--) {
+						var caseBlock = ilSwitch.CaseBlocks[i];
+						if (caseBlock.Body.Count != 1 || !caseBlock.Body.Single().Match(ILCode.LoopOrSwitchBreak))
+							continue;
+						if (context.CalculateBinSpans)
+							caseBlock.Body[0].AddSelfAndChildrenRecursiveBinSpans(ilSwitch.EndBinSpans);
+						ilSwitch.CaseBlocks.RemoveAt(i);
+					}
 				}
 			}
 			
 			// Remove redundant return at the end of method
 			if (method.Body.Count > 0 && method.Body.Last().Match(ILCode.Ret) && ((ILExpression)method.Body.Last()).Arguments.Count == 0) {
+				if (context.CalculateBinSpans)
+					method.Body[method.Body.Count - 1].AddSelfAndChildrenRecursiveBinSpans(method.EndBinSpans);
 				method.Body.RemoveAt(method.Body.Count - 1);
 			}
 			
@@ -109,6 +149,8 @@ namespace ICSharpCode.Decompiler.ILAst
 				for (int i = 0; i < block.Body.Count - 1;) {
 					if (block.Body[i].IsUnconditionalControlFlow() && block.Body[i+1].Match(ILCode.Ret)) {
 						modified = true;
+						if (context.CalculateBinSpans)
+							block.Body[i + 1].AddSelfAndChildrenRecursiveBinSpans(block.EndBinSpans);
 						block.Body.RemoveAt(i+1);
 					} else {
 						i++;
@@ -117,7 +159,13 @@ namespace ICSharpCode.Decompiler.ILAst
 			}
 			if (modified) {
 				// More removals might be possible
-				new GotoRemoval().RemoveGotos(method);
+				var gr = context.Cache.GetGotoRemoval();
+				try {
+					gr.RemoveGotos(method);
+				}
+				finally {
+					context.Cache.Return(gr);
+				}
 			}
 		}
 		
@@ -151,9 +199,6 @@ namespace ICSharpCode.Decompiler.ILAst
 			if (target == Exit(gotoExpr, new HashSet<ILNode>() { gotoExpr })) {
 				gotoExpr.Code = ILCode.Nop;
 				gotoExpr.Operand = null;
-				if (target is ILExpression)
-					((ILExpression)target).ILRanges.AddRange(gotoExpr.ILRanges);
-				gotoExpr.ILRanges.Clear();
 				return true;
 			}
 			

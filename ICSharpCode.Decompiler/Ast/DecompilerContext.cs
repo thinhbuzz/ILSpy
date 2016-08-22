@@ -16,44 +16,39 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
 using System.Collections.Generic;
 using System.Threading;
+using dnlib.DotNet;
 using ICSharpCode.Decompiler.Ast;
-using ICSharpCode.NRefactory.TypeSystem;
-using ICSharpCode.NRefactory.TypeSystem.Implementation;
-using Mono.Cecil;
 
-namespace ICSharpCode.Decompiler
-{
+namespace ICSharpCode.Decompiler {
 	public class DecompilerContext
 	{
-		public ModuleDefinition CurrentModule;
+		public ModuleDef CurrentModule;
 		public CancellationToken CancellationToken;
-		public TypeDefinition CurrentType;
-		public MethodDefinition CurrentMethod;
+		public TypeDef CurrentType;
+		public MethodDef CurrentMethod;
 		public DecompilerSettings Settings = new DecompilerSettings();
 		public bool CurrentMethodIsAsync;
-		
-//		public ITypeResolveContext TypeResolveContext;
-//		public IProjectContent ProjectContent;
-		
-		public DecompilerContext(ModuleDefinition currentModule)
+		public readonly DecompilerCache Cache;
+		public bool CalculateBinSpans;
+
+		public static DecompilerContext CreateTestContext(ModuleDef currentModule)
 		{
-			if (currentModule == null)
-				throw new ArgumentNullException("currentModule");
+			var ctx = new DecompilerContext(currentModule);
+			ctx.Settings.InitializeForTest();
+			return ctx;
+		}
+
+		public DecompilerContext(ModuleDef currentModule)
+			: this(currentModule, false) {
+		}
+
+		public DecompilerContext(ModuleDef currentModule, bool calculateBinSpans)
+		{
 			this.CurrentModule = currentModule;
-			
-//			this.ProjectContent = new CecilTypeResolveContext(currentModule);
-//			List<ITypeResolveContext> resolveContexts = new List<ITypeResolveContext>();
-//			resolveContexts.Add(this.ProjectContent);
-//			foreach (AssemblyNameReference r in currentModule.AssemblyReferences) {
-//				AssemblyDefinition d = currentModule.AssemblyResolver.Resolve(r);
-//				if (d != null) {
-//					resolveContexts.Add(new CecilTypeResolveContext(d.MainModule));
-//				}
-//			}
-//			this.TypeResolveContext = new CompositeTypeResolveContext(resolveContexts);
+			this.CalculateBinSpans = calculateBinSpans;
+			this.Cache = new DecompilerCache(this);
 		}
 		
 		/// <summary>
@@ -66,6 +61,17 @@ namespace ICSharpCode.Decompiler
 			DecompilerContext ctx = (DecompilerContext)MemberwiseClone();
 			ctx.ReservedVariableNames = new List<string>(ctx.ReservedVariableNames);
 			return ctx;
+		}
+
+		public void Reset()
+		{
+			this.CurrentModule = null;
+			this.CancellationToken = CancellationToken.None;
+			this.CurrentType = null;
+			this.CurrentMethod = null;
+			this.Settings = new DecompilerSettings();
+			this.CurrentMethodIsAsync = false;
+			this.Cache.Reset();
 		}
 	}
 }

@@ -1,12 +1,10 @@
 ﻿// Copyright (c) AlphaSierraPapa for the SharpDevelop Team (for details please see \doc\copyright.txt)
 // This code is distributed under MIT X11 license (for details please see \doc\license.txt)
 
-using System;
 using System.Linq;
 using System.Text;
 
-namespace ICSharpCode.NRefactory.VB.Ast
-{
+namespace ICSharpCode.NRefactory.VB.Ast {
 	/// <summary>
 	/// Description of QualifiedType.
 	/// </summary>
@@ -23,9 +21,13 @@ namespace ICSharpCode.NRefactory.VB.Ast
 			get {
 				return GetChildByRole (Roles.Identifier).Name;
 			}
-			set {
-				SetChildByRole (Roles.Identifier, new Identifier (value, TextLocation.Empty));
-			}
+// 			set {
+// 				SetChildByRole (Roles.Identifier, new Identifier (TextToken.Default, value, TextLocation.Empty));
+// 			}
+		}
+
+		public Identifier NameToken {
+			get { return GetChildByRole (Roles.Identifier); }
 		}
 		
 		public QualifiedType(AstType target, Identifier name)

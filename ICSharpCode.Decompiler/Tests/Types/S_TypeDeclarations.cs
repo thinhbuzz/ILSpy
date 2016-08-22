@@ -1,7 +1,4 @@
-﻿using System;
-
-namespace ClassMultiInterface
-{
+﻿namespace ClassMultiInterface {
 	public interface IA
 	{
 	}

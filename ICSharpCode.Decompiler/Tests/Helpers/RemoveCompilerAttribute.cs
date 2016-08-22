@@ -1,13 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-
+﻿
 using ICSharpCode.Decompiler.Ast.Transforms;
 using ICSharpCode.NRefactory.CSharp;
 
-namespace ICSharpCode.Decompiler.Tests.Helpers
-{
+namespace ICSharpCode.Decompiler.Tests.Helpers {
 	class RemoveCompilerAttribute : DepthFirstAstVisitor<object, object>, IAstTransform
 	{
 		public override object VisitAttribute(NRefactory.CSharp.Attribute attribute, object data)

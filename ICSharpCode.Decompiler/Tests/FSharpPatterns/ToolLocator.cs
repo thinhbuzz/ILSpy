@@ -2,11 +2,8 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
-namespace ICSharpCode.Decompiler.Tests.FSharpPatterns
-{
+namespace ICSharpCode.Decompiler.Tests.FSharpPatterns {
 	public class ToolLocator
 	{
 		public static string FindTool(string fileName)

@@ -4,10 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 
-namespace ICSharpCode.NRefactory.VB.Parser
-{
+namespace ICSharpCode.NRefactory.VB.Parser {
 	public static class Extensions
 	{
 		public static bool IsElement<T>(this IEnumerable<T> items, Func<T, bool> check)

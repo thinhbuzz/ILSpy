@@ -18,17 +18,16 @@
 
 using System;
 using System.Linq;
-using System.Reflection;
+using dnlib.DotNet;
+using dnSpy.Contracts.Text;
 using ICSharpCode.NRefactory.CSharp;
 using ICSharpCode.NRefactory.PatternMatching;
-using Mono.Cecil;
 
-namespace ICSharpCode.Decompiler.Ast.Transforms
-{
+namespace ICSharpCode.Decompiler.Ast.Transforms {
 	sealed class TypePattern : Pattern
 	{
-		readonly string ns;
-		readonly string name;
+		readonly UTF8String ns;
+		readonly UTF8String name;
 		
 		public TypePattern(Type type)
 		{
@@ -49,8 +48,8 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 				if (o == null)
 					return false;
 			}
-			TypeReference tr = o.Annotation<TypeReference>();
-			return tr != null && tr.Namespace == ns && tr.Name == name;
+			ITypeDefOrRef tr = o.Annotation<ITypeDefOrRef>();
+			return tr.Compare(ns, name);
 		}
 		
 		public override string ToString()
@@ -92,8 +91,8 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 		
 		public TypeOfPattern(string groupName)
 		{
-			childNode = new TypePattern(typeof(Type)).ToType().Invoke(
-				"GetTypeFromHandle", new TypeOfExpression(new AnyNode(groupName)).Member("TypeHandle"));
+			childNode = new TypePattern(typeof(Type)).ToType().Invoke2(BoxedTextColor.StaticMethod,
+				"GetTypeFromHandle", new TypeOfExpression(new AnyNode(groupName)).Member("TypeHandle", BoxedTextColor.InstanceProperty));
 		}
 		
 		public override bool DoMatch(INode other, Match match)

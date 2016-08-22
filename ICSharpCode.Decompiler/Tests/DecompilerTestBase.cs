@@ -22,15 +22,13 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
-
+using dnlib.DotNet;
+using dnSpy.Contracts.Decompiler;
 using ICSharpCode.Decompiler.Ast;
 using ICSharpCode.Decompiler.Tests.Helpers;
 using Microsoft.CSharp;
-using Mono.Cecil;
-using NUnit.Framework;
 
-namespace ICSharpCode.Decompiler.Tests
-{
+namespace ICSharpCode.Decompiler.Tests {
 	public abstract class DecompilerTestBase
 	{
 		protected static void ValidateFileRoundtrip(string samplesFileName)
@@ -47,18 +45,18 @@ namespace ICSharpCode.Decompiler.Tests
 		protected static void AssertRoundtripCode(string fileName, bool optimize = false, bool useDebug = false, int compilerVersion = 4)
 		{
 			var code = RemoveIgnorableLines(File.ReadLines(fileName));
-			AssemblyDefinition assembly = CompileLegacy(code, optimize, useDebug, compilerVersion);
+			AssemblyDef assembly = CompileLegacy(code, optimize, useDebug, compilerVersion);
 
-			AstBuilder decompiler = new AstBuilder(new DecompilerContext(assembly.MainModule));
+			AstBuilder decompiler = AstBuilder.CreateAstBuilderTestContext(assembly.ManifestModule);
 			decompiler.AddAssembly(assembly);
 			new Helpers.RemoveCompilerAttribute().Run(decompiler.SyntaxTree);
 
-			StringWriter output = new StringWriter();
-			decompiler.GenerateCode(new PlainTextOutput(output));
+			var output = new StringBuilderDecompilerOutput();
+			decompiler.GenerateCode(output);
 			CodeAssert.AreEqual(code, output.ToString());
 		}
 
-		protected static AssemblyDefinition CompileLegacy(string code, bool optimize, bool useDebug, int compilerVersion)
+		protected static AssemblyDef CompileLegacy(string code, bool optimize, bool useDebug, int compilerVersion)
 		{
 			CSharpCodeProvider provider = new CSharpCodeProvider(new Dictionary<string, string> { { "CompilerVersion", "v" + new Version(compilerVersion, 0) } });
 			CompilerParameters options = new CompilerParameters();
@@ -77,7 +75,7 @@ namespace ICSharpCode.Decompiler.Tests
 					}
 					throw new Exception(b.ToString());
 				}
-				return AssemblyDefinition.ReadAssembly(results.PathToAssembly);
+				return Utils.OpenModule(results.PathToAssembly).Assembly;
 			}
 			finally
 			{

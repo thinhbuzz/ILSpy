@@ -19,14 +19,15 @@
 using System;
 using System.IO;
 using System.Text;
+using dnSpy.Contracts.Decompiler;
+using dnSpy.Contracts.Text;
 
-namespace ICSharpCode.Decompiler
-{
+namespace ICSharpCode.Decompiler {
 	public class TextOutputWriter : TextWriter
 	{
-		readonly ITextOutput output;
+		readonly IDecompilerOutput output;
 		
-		public TextOutputWriter(ITextOutput output)
+		public TextOutputWriter(IDecompilerOutput output)
 		{
 			if (output == null)
 				throw new ArgumentNullException("output");
@@ -37,14 +38,9 @@ namespace ICSharpCode.Decompiler
 			get { return Encoding.UTF8; }
 		}
 		
-		public override void Write(char value)
-		{
-			output.Write(value);
-		}
-		
 		public override void Write(string value)
 		{
-			output.Write(value);
+			output.Write(value, BoxedTextColor.Text);
 		}
 		
 		public override void WriteLine()

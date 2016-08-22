@@ -16,33 +16,48 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 
-using Mono.Cecil;
+using dnlib.DotNet;
 
-namespace ICSharpCode.Decompiler.ILAst
-{
+namespace ICSharpCode.Decompiler.ILAst {
 	public class SimpleControlFlow
 	{
-		Dictionary<ILLabel, int> labelGlobalRefCount = new Dictionary<ILLabel, int>();
-		Dictionary<ILLabel, ILBasicBlock> labelToBasicBlock = new Dictionary<ILLabel, ILBasicBlock>();
-		
+		readonly Dictionary<ILLabel, int> labelGlobalRefCount = new Dictionary<ILLabel, int>();
+		readonly Dictionary<ILLabel, ILBasicBlock> labelToBasicBlock = new Dictionary<ILLabel, ILBasicBlock>();
+		readonly List<ILExpression> List_ILExpression = new List<ILExpression>();
+		readonly List<ILBasicBlock> List_ILBasicBlock = new List<ILBasicBlock>();
+
 		DecompilerContext context;
-		TypeSystem typeSystem;
+		ICorLibTypes corLib;
 		
 		public SimpleControlFlow(DecompilerContext context, ILBlock method)
 		{
+			Initialize(context, method);
+		}
+
+		public void Initialize(DecompilerContext context, ILBlock method)
+		{
+			this.labelGlobalRefCount.Clear();
+			this.labelToBasicBlock.Clear();
 			this.context = context;
-			this.typeSystem = context.CurrentMethod.Module.TypeSystem;
+			this.corLib = context.CurrentMethod.Module.CorLibTypes;
 			
-			foreach(ILLabel target in method.GetSelfAndChildrenRecursive<ILExpression>(e => e.IsBranch()).SelectMany(e => e.GetBranchTargets())) {
-				labelGlobalRefCount[target] = labelGlobalRefCount.GetOrDefault(target) + 1;
+			foreach (var e in method.GetSelfAndChildrenRecursive<ILExpression>(List_ILExpression, e => e.IsBranch())) {
+				foreach (var target in e.GetBranchTargets())
+					labelGlobalRefCount[target] = labelGlobalRefCount.GetOrDefault(target) + 1;
 			}
-			foreach(ILBasicBlock bb in method.GetSelfAndChildrenRecursive<ILBasicBlock>()) {
-				foreach(ILLabel label in bb.GetChildren().OfType<ILLabel>()) {
+			foreach(ILBasicBlock bb in method.GetSelfAndChildrenRecursive<ILBasicBlock>(List_ILBasicBlock)) {
+				int index = 0;
+				for (;;) {
+					var node = bb.GetNext(ref index);
+					if (node == null)
+						break;
+					var label = node as ILLabel;
+					if (label == null)
+						continue;
 					labelToBasicBlock[label] = bb;
 				}
 			}
@@ -77,8 +92,8 @@ namespace ICSharpCode.Decompiler.ILAst
 			{
 				bool isStloc = trueLocVar != null;
 				ILCode opCode = isStloc ? ILCode.Stloc : ILCode.Ret;
-				TypeReference retType = isStloc ? trueLocVar.Type : this.context.CurrentMethod.ReturnType;
-				bool retTypeIsBoolean = TypeAnalysis.IsBoolean(retType);
+				TypeSig retType = isStloc ? trueLocVar.Type : this.context.CurrentMethod.ReturnType;
+				bool retTypeIsBoolean = retType.GetElementType() == ElementType.Boolean;
 				int leftBoolVal;
 				int rightBoolVal;
 				ILExpression newExpr;
@@ -98,16 +113,16 @@ namespace ICSharpCode.Decompiler.ILAst
 					if (leftBoolVal != 0) {
 						newExpr = condExpr;
 					} else {
-						newExpr = new ILExpression(ILCode.LogicNot, null, condExpr) { InferredType = typeSystem.Boolean };
+						newExpr = new ILExpression(ILCode.LogicNot, null, condExpr) { InferredType = corLib.Boolean };
 					}
-				} else if ((retTypeIsBoolean || TypeAnalysis.IsBoolean(falseExpr.InferredType)) && trueExpr.Match(ILCode.Ldc_I4, out leftBoolVal) && (leftBoolVal == 0 || leftBoolVal == 1)) {
+				} else if ((retTypeIsBoolean || falseExpr.InferredType.GetElementType() == ElementType.Boolean) && trueExpr.Match(ILCode.Ldc_I4, out leftBoolVal) && (leftBoolVal == 0 || leftBoolVal == 1)) {
 					// It can be expressed as logical expression
 					if (leftBoolVal != 0) {
 						newExpr = MakeLeftAssociativeShortCircuit(ILCode.LogicOr, condExpr, falseExpr);
 					} else {
 						newExpr = MakeLeftAssociativeShortCircuit(ILCode.LogicAnd, new ILExpression(ILCode.LogicNot, null, condExpr), falseExpr);
 					}
-				} else if ((retTypeIsBoolean || TypeAnalysis.IsBoolean(trueExpr.InferredType)) && falseExpr.Match(ILCode.Ldc_I4, out rightBoolVal) && (rightBoolVal == 0 || rightBoolVal == 1)) {
+				} else if ((retTypeIsBoolean || trueExpr.InferredType.GetElementType() == ElementType.Boolean) && falseExpr.Match(ILCode.Ldc_I4, out rightBoolVal) && (rightBoolVal == 0 || rightBoolVal == 1)) {
 					// It can be expressed as logical expression
 					if (rightBoolVal != 0) {
 						newExpr = MakeLeftAssociativeShortCircuit(ILCode.LogicOr, new ILExpression(ILCode.LogicNot, null, condExpr), trueExpr);
@@ -120,14 +135,41 @@ namespace ICSharpCode.Decompiler.ILAst
 						return false;
 					
 					// Only simplify generated variables
-					if (opCode == ILCode.Stloc && !trueLocVar.IsGenerated)
+					if (opCode == ILCode.Stloc && !trueLocVar.GeneratedByDecompiler)
 						return false;
 					
 					// Create ternary expression
 					newExpr = new ILExpression(ILCode.TernaryOp, null, condExpr, trueExpr, falseExpr);
 				}
 				
-				head.Body.RemoveTail(ILCode.Brtrue, ILCode.Br);
+				var tail = head.Body.RemoveTail(ILCode.Brtrue, ILCode.Br);
+				if (context.CalculateBinSpans) {
+					var listNodes = new List<ILNode>();
+					var newExprNodes = newExpr.GetSelfAndChildrenRecursive<ILNode>(listNodes).ToArray();
+					foreach (var node in labelToBasicBlock[trueLabel].GetSelfAndChildrenRecursive<ILNode>(listNodes).Except(newExprNodes)) {
+						long index = 0;
+						bool done = false;
+						for (;;) {
+							var b = node.GetAllBinSpans(ref index, ref done);
+							if (done)
+								break;
+							newExpr.BinSpans.Add(b);
+						}
+					}
+					foreach (var node in labelToBasicBlock[falseLabel].GetSelfAndChildrenRecursive<ILNode>(listNodes).Except(newExprNodes)) {
+						long index = 0;
+						bool done = false;
+						for (;;) {
+							var b = node.GetAllBinSpans(ref index, ref done);
+							if (done)
+								break;
+							newExpr.BinSpans.Add(b);
+						}
+					}
+					newExpr.BinSpans.AddRange(tail[0].BinSpans);
+					tail[1].AddSelfAndChildrenRecursiveBinSpans(newExpr.BinSpans);
+				}
+
 				head.Body.Add(new ILExpression(opCode, trueLocVar, newExpr));
 				if (isStloc)
 					head.Body.Add(new ILExpression(ILCode.Br, trueFall));
@@ -177,9 +219,28 @@ namespace ICSharpCode.Decompiler.ILAst
 			    body.Contains(rightBB)
 			   )
 			{
-				head.Body.RemoveTail(ILCode.Stloc, ILCode.Brtrue, ILCode.Br);
-				head.Body.Add(new ILExpression(ILCode.Stloc, v, new ILExpression(ILCode.NullCoalescing, null, leftExpr, rightExpr)));
+				var tail = head.Body.RemoveTail(ILCode.Stloc, ILCode.Brtrue, ILCode.Br);
+				ILExpression nullCoal, stloc;
+				head.Body.Add(stloc = new ILExpression(ILCode.Stloc, v, nullCoal = new ILExpression(ILCode.NullCoalescing, null, leftExpr, rightExpr)));
 				head.Body.Add(new ILExpression(ILCode.Br, endBBLabel));
+				if (context.CalculateBinSpans) {
+					tail[0].AddSelfAndChildrenRecursiveBinSpans(stloc.BinSpans);
+					tail[1].AddSelfAndChildrenRecursiveBinSpans(nullCoal.BinSpans);
+					tail[2].AddSelfAndChildrenRecursiveBinSpans(rightExpr.BinSpans);    // br (to rightBB)
+
+					long index = 0;
+					bool done = false;
+					for (;;) {
+						var b = rightBB.GetAllBinSpans(ref index, ref done);
+						if (done)
+							break;
+						rightExpr.BinSpans.Add(b);
+					}
+
+					rightBB.Body[0].AddSelfAndChildrenRecursiveBinSpans(rightExpr.BinSpans);    // label
+					rightExpr.BinSpans.AddRange(rightBB.Body[1].BinSpans);      // stloc: no recursive add
+					rightBB.Body[2].AddSelfAndChildrenRecursiveBinSpans(rightExpr.BinSpans);    // br
+				}
 				
 				body.RemoveOrThrow(labelToBasicBlock[rightBBLabel]);
 				return true;
@@ -220,9 +281,22 @@ namespace ICSharpCode.Decompiler.ILAst
 						} else {
 							logicExpr = MakeLeftAssociativeShortCircuit(ILCode.LogicOr, negate ? condExpr : new ILExpression(ILCode.LogicNot, null, condExpr), nextCondExpr);
 						}
-						head.Body.RemoveTail(ILCode.Brtrue, ILCode.Br);
+						var tail = head.Body.RemoveTail(ILCode.Brtrue, ILCode.Br);
+						if (context.CalculateBinSpans) {
+							nextCondExpr.BinSpans.AddRange(tail[0].BinSpans);   // brtrue
+							nextCondExpr.BinSpans.AddRange(nextBasicBlock.BinSpans);
+							nextBasicBlock.Body[0].AddSelfAndChildrenRecursiveBinSpans(nextCondExpr.BinSpans);  // label
+							nextCondExpr.BinSpans.AddRange(nextBasicBlock.Body[1].BinSpans);    // brtrue
+						}
+
 						head.Body.Add(new ILExpression(ILCode.Brtrue, nextTrueLablel, logicExpr));
-						head.Body.Add(new ILExpression(ILCode.Br, nextFalseLabel));
+						ILExpression brFalseLbl;
+						head.Body.Add(brFalseLbl = new ILExpression(ILCode.Br, nextFalseLabel));
+						if (context.CalculateBinSpans) {
+							nextBasicBlock.Body[2].AddSelfAndChildrenRecursiveBinSpans(brFalseLbl.BinSpans);    // br
+							brFalseLbl.BinSpans.AddRange(nextBasicBlock.EndBinSpans);
+							tail[1].AddSelfAndChildrenRecursiveBinSpans(brFalseLbl.BinSpans); // br
+						}
 						
 						// Remove the inlined branch from scope
 						body.RemoveOrThrow(nextBasicBlock);
@@ -274,7 +348,7 @@ namespace ICSharpCode.Decompiler.ILAst
 			if (labelGlobalRefCount[followingBlock] > 1)
 				return false;
 			
-			MethodReference opFalse;
+			IMethod opFalse;
 			ILExpression opFalseArg;
 			if (!callExpr.Match(ILCode.Call, out opFalse, out opFalseArg))
 				return false;
@@ -300,7 +374,7 @@ namespace ICSharpCode.Decompiler.ILAst
 			if (_targetVar != targetVar || exitLabel != _exitLabel)
 				return false;
 			
-			MethodReference opBitwise;
+			IMethod opBitwise;
 			ILExpression leftVarExpression;
 			ILExpression rightExpression;
 			if (!opBitwiseCallExpr.Match(ILCode.Call, out opBitwise, out leftVarExpression, out rightExpression))
@@ -327,7 +401,9 @@ namespace ICSharpCode.Decompiler.ILAst
 			ILExpression shortCircuitExpr = MakeLeftAssociativeShortCircuit(op, opFalseArg, rightExpression);
 			shortCircuitExpr.Operand = opBitwise;
 			
-			head.Body.RemoveTail(ILCode.Stloc, ILCode.Brtrue, ILCode.Br);
+			var tail = head.Body.RemoveTail(ILCode.Stloc, ILCode.Brtrue, ILCode.Br);
+			//TODO: Keep tail's BinSpans
+			//TODO: Keep BinSpans of other things that are removed by this method
 			head.Body.Add(new ILExpression(ILCode.Stloc, targetVar, shortCircuitExpr));
 			head.Body.Add(new ILExpression(ILCode.Br, exitLabel));
 			body.Remove(followingBasicBlock);
@@ -343,10 +419,12 @@ namespace ICSharpCode.Decompiler.ILAst
 				ILExpression current = right;
 				while(current.Arguments[0].Match(code))
 					current = current.Arguments[0];
-				current.Arguments[0] = new ILExpression(code, null, left, current.Arguments[0]) { InferredType = typeSystem.Boolean };
+				if (context.CalculateBinSpans)
+					current.Arguments[0].AddSelfAndChildrenRecursiveBinSpans(current.BinSpans);
+				current.Arguments[0] = new ILExpression(code, null, left, current.Arguments[0]) { InferredType = corLib.Boolean };
 				return right;
 			} else {
-				return new ILExpression(code, null, left, right) { InferredType = typeSystem.Boolean };
+				return new ILExpression(code, null, left, right) { InferredType = corLib.Boolean };
 			}
 		}
 		
@@ -363,8 +441,19 @@ namespace ICSharpCode.Decompiler.ILAst
 			    !nextBB.Body.OfType<ILTryCatchBlock>().Any()
 			   )
 			{
-				head.Body.RemoveTail(ILCode.Br);
+				var tail = head.Body.RemoveTail(ILCode.Br);
+				if (context.CalculateBinSpans) {
+					tail[0].AddSelfAndChildrenRecursiveBinSpans(nextBB.BinSpans);
+					nextBB.Body[0].AddSelfAndChildrenRecursiveBinSpans(nextBB.BinSpans);
+				}
 				nextBB.Body.RemoveAt(0);  // Remove label
+				if (context.CalculateBinSpans) {
+					if (head.Body.Count > 0)
+						head.Body[head.Body.Count - 1].EndBinSpans.AddRange(nextBB.BinSpans);
+					else
+						head.BinSpans.AddRange(nextBB.BinSpans);
+					head.EndBinSpans.AddRange(nextBB.EndBinSpans);
+				}
 				head.Body.AddRange(nextBB.Body);
 				
 				body.RemoveOrThrow(nextBB);

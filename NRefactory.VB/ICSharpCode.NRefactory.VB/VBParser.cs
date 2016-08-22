@@ -2,15 +2,12 @@
 // This code is distributed under MIT X11 license (for details please see \doc\license.txt)
 
 using System;
-using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 
 using ICSharpCode.NRefactory.VB.Ast;
 using ICSharpCode.NRefactory.VB.Parser;
 
-namespace ICSharpCode.NRefactory.VB
-{
+namespace ICSharpCode.NRefactory.VB {
 	public enum SnippetType
 	{
 		None,

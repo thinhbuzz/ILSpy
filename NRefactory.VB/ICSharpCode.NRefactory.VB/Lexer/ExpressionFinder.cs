@@ -1,13 +1,11 @@
 ﻿// Copyright (c) AlphaSierraPapa for the SharpDevelop Team (for details please see \doc\copyright.txt)
 // This code is distributed under MIT X11 license (for details please see \doc\license.txt)
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 
-namespace ICSharpCode.NRefactory.VB.Parser
-{
+namespace ICSharpCode.NRefactory.VB.Parser {
 	public partial class ExpressionFinder
 	{
 		Stack<Block> stack = new Stack<Block>();

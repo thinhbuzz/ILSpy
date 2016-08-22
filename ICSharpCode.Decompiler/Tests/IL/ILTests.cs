@@ -16,15 +16,13 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
 using System.IO;
+using dnSpy.Contracts.Decompiler;
 using ICSharpCode.Decompiler.Ast;
 using ICSharpCode.Decompiler.Tests.Helpers;
-using Mono.Cecil;
 using NUnit.Framework;
 
-namespace ICSharpCode.Decompiler.Tests
-{
+namespace ICSharpCode.Decompiler.Tests {
 	[TestFixture]
 	public class ILTests
 	{
@@ -39,12 +37,12 @@ namespace ICSharpCode.Decompiler.Tests
 		void Run(string compiledFile, string expectedOutputFile)
 		{
 			string expectedOutput = File.ReadAllText(Path.Combine(path, expectedOutputFile));
-			var assembly = AssemblyDefinition.ReadAssembly(Path.Combine(path, compiledFile));
-			AstBuilder decompiler = new AstBuilder(new DecompilerContext(assembly.MainModule));
+			var assembly = Utils.OpenModule(Path.Combine(path, compiledFile)).Assembly;
+			AstBuilder decompiler = AstBuilder.CreateAstBuilderTestContext(assembly.ManifestModule);
 			decompiler.AddAssembly(assembly);
 			new Helpers.RemoveCompilerAttribute().Run(decompiler.SyntaxTree);
-			StringWriter output = new StringWriter();
-			decompiler.GenerateCode(new PlainTextOutput(output));
+			var output = new StringBuilderDecompilerOutput();
+			decompiler.GenerateCode(output);
 			CodeAssert.AreEqual(expectedOutput, output.ToString());
 		}
 	}
