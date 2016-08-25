@@ -1359,11 +1359,6 @@ namespace ICSharpCode.Decompiler.Ast {
 				return bs;
 
 			case DecompiledBodyKind.Empty:
-				// Could be read only props, so make sure no methods are shown
-				if (methodKind == MethodKind.Property) {
-					builder = null;
-					return null;
-				}
 				bs = new BlockStatement();
 				if (method.IsInstanceConstructor) {
 					var baseCtor = GetBaseConstructorForEmptyBody(method);
