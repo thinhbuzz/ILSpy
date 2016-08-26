@@ -8,6 +8,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using dnlib.DotNet;
 using dnSpy.Contracts.Decompiler;
 using dnSpy.Contracts.Text;
 using ICSharpCode.NRefactory.PatternMatching;
@@ -134,6 +135,17 @@ namespace ICSharpCode.NRefactory.VB {
 				int rightEnd = owner.formatter.NextPosition;
 				owner.formatter.AddBracePair(leftStart, leftEnd, rightStart, rightEnd, flags);
 			}
+		}
+
+		static CodeBracesRangeFlags GetTypeBlockKind(AstNode node) {
+			var td = node.Annotation<TypeDef>();
+			if (td != null) {
+				if (td.IsInterface)
+					return CodeBracesRangeFlags.BlockKind_Interface;
+				if (td.IsValueType)
+					return CodeBracesRangeFlags.BlockKind_ValueType;
+			}
+			return CodeBracesRangeFlags.BlockKind_Type;
 		}
 
 		bool MaybeNewLinesAfterUsings(AstNode node)
@@ -406,7 +418,7 @@ namespace ICSharpCode.NRefactory.VB {
 
 			start = formatter.NextPosition;
 			lastEndBlockOffset = start;
-			formatter.AddBlock(blockStart, formatter.NextPosition, CodeBracesRangeFlags.BlockKind_Type);
+			formatter.AddBlock(blockStart, formatter.NextPosition, GetTypeBlockKind(typeDeclaration));
 			WriteKeyword("End");
 			WriteClassTypeKeyword(typeDeclaration);
 			formatter.AddHighlightedKeywordReference(reference, start, formatter.NextPosition);
@@ -467,7 +479,7 @@ namespace ICSharpCode.NRefactory.VB {
 
 			start = formatter.NextPosition;
 			lastEndBlockOffset = start;
-			formatter.AddBlock(blockStart, formatter.NextPosition, CodeBracesRangeFlags.BlockKind_Type);
+			formatter.AddBlock(blockStart, formatter.NextPosition, CodeBracesRangeFlags.BlockKind_ValueType);
 			WriteKeyword("End");
 			WriteKeyword("Enum");
 			formatter.AddHighlightedKeywordReference(reference, start, formatter.NextPosition);
@@ -701,7 +713,7 @@ namespace ICSharpCode.NRefactory.VB {
 			DebugHidden(constructorDeclaration.Body.HiddenEnd);
 			start = formatter.NextPosition;
 			lastEndBlockOffset = start;
-			formatter.AddBlock(blockStart, formatter.NextPosition, CodeBracesRangeFlags.BlockKind_Method);
+			formatter.AddBlock(blockStart, formatter.NextPosition, CodeBracesRangeFlags.BlockKind_Constructor);
 			WriteKeyword("End");
 			WriteKeyword("Sub");
 			formatter.AddHighlightedKeywordReference(reference, start, formatter.NextPosition);
@@ -1588,7 +1600,7 @@ namespace ICSharpCode.NRefactory.VB {
 			DebugHidden(accessor.Body.HiddenEnd);
 			start = formatter.NextPosition;
 			lastEndBlockOffset = start;
-			formatter.AddBlock(blockStart, formatter.NextPosition, CodeBracesRangeFlags.BlockKind_Method);
+			formatter.AddBlock(blockStart, formatter.NextPosition, CodeBracesRangeFlags.BlockKind_Accessor);
 			WriteKeyword("End");
 
 			if (accessor.Role == PropertyDeclaration.GetterRole) {
@@ -1668,7 +1680,7 @@ namespace ICSharpCode.NRefactory.VB {
 			syncLockStatement.Body.AcceptVisitor(this, data);
 			start = formatter.NextPosition;
 			lastEndBlockOffset = start;
-			formatter.AddBlock(blockStart, formatter.NextPosition, CodeBracesRangeFlags.BlockKind_Other);
+			formatter.AddBlock(blockStart, formatter.NextPosition, CodeBracesRangeFlags.BlockKind_Lock);
 			WriteKeyword("End");
 			WriteKeyword("SyncLock");
 			formatter.AddHighlightedKeywordReference(reference, start, formatter.NextPosition);
@@ -2508,7 +2520,7 @@ namespace ICSharpCode.NRefactory.VB {
 				DebugHidden(operatorDeclaration.Body.HiddenEnd);
 				start = formatter.NextPosition;
 				lastEndBlockOffset = start;
-				formatter.AddBlock(blockStart, formatter.NextPosition, CodeBracesRangeFlags.BlockKind_Method);
+				formatter.AddBlock(blockStart, formatter.NextPosition, CodeBracesRangeFlags.BlockKind_Operator);
 				WriteKeyword("End");
 				WriteKeyword("Operator");
 				formatter.AddHighlightedKeywordReference(reference, start, formatter.NextPosition);
@@ -2769,7 +2781,7 @@ namespace ICSharpCode.NRefactory.VB {
 			DebugHidden(usingStatement.Body.HiddenEnd);
 			start = formatter.NextPosition;
 			lastEndBlockOffset = start;
-			formatter.AddBlock(blockStart, formatter.NextPosition, CodeBracesRangeFlags.BlockKind_Other);
+			formatter.AddBlock(blockStart, formatter.NextPosition, CodeBracesRangeFlags.BlockKind_Using);
 			WriteKeyword("End");
 			WriteKeyword("Using");
 			formatter.AddHighlightedKeywordReference(reference, start, formatter.NextPosition);
@@ -2834,7 +2846,7 @@ namespace ICSharpCode.NRefactory.VB {
 			multiLineLambdaExpression.Body.AcceptVisitor(this, data);
 			start = formatter.NextPosition;
 			lastEndBlockOffset = start;
-			formatter.AddBlock(blockStart, formatter.NextPosition, CodeBracesRangeFlags.BlockKind_Method);
+			formatter.AddBlock(blockStart, formatter.NextPosition, CodeBracesRangeFlags.BlockKind_AnonymousMethod);
 			WriteKeyword("End");
 			if (multiLineLambdaExpression.IsSub)
 				WriteKeyword("Sub");
