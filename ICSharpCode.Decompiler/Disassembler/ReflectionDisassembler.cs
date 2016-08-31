@@ -183,12 +183,13 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			// write method header
 			WriteXmlDocComment(method);
 			AddComment(method);
+			int methodStartPosition = output.NextPosition;
 			output.Write(".method", BoxedTextColor.ILDirective);
 			output.Write(" ", BoxedTextColor.Text);
-			DisassembleMethodInternal(method, addLineSep);
+			DisassembleMethodInternal(method, addLineSep, methodStartPosition);
 		}
 		
-		void DisassembleMethodInternal(MethodDef method, bool addLineSep)
+		void DisassembleMethodInternal(MethodDef method, bool addLineSep, int methodStartPosition)
 		{
 			//    .method public hidebysig  specialname
 			//               instance default class [mscorlib]System.IO.TextWriter get_BaseWriter ()  cil managed
@@ -336,15 +337,17 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			}
 			WriteSecurityDeclarations(method);
 			
+			int methodEndPosition = CloseBlock(bh1, addLineSep, "end of method " + DisassemblerHelpers.Escape(method.DeclaringType.Name) + "::" + DisassemblerHelpers.Escape(method.Name));
+
 			if (method.HasBody) {
-				MethodDebugInfoBuilder builder = new MethodDebugInfoBuilder(method);
+				var builder = new MethodDebugInfoBuilder(method);
+				builder.StartPosition = methodStartPosition;
+				builder.EndPosition = methodEndPosition;
 				methodBodyDisassembler.Disassemble(method, builder);
 				output.AddDebugInfo(builder.Create());
 			}
-			
-			CloseBlock(bh1, addLineSep, "end of method " + DisassemblerHelpers.Escape(method.DeclaringType.Name) + "::" + DisassemblerHelpers.Escape(method.Name));
 		}
-		
+
 		#region Write Security Declarations
 		void WriteSecurityDeclarations(IHasDeclSecurity secDeclProvider)
 		{
@@ -1503,10 +1506,11 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			return bh1;
 		}
 		
-		void CloseBlock(BracePairHelper bh1, bool addLineSep = false, string comment = null)
+		int CloseBlock(BracePairHelper bh1, bool addLineSep = false, string comment = null)
 		{
 			output.DecreaseIndent();
 			bh1.Write("}");
+			int endPosition = output.NextPosition;
 			if (comment != null) {
 				output.Write(" ", BoxedTextColor.Text);
 				output.Write("// " + comment, BoxedTextColor.Comment);
@@ -1514,6 +1518,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			if (addLineSep)
 				output.AddLineSeparator(output.NextPosition);
 			output.WriteLine();
+			return endPosition;
 		}
 		
 		void WriteFlags<T>(T flags, EnumNameCollection<T> flagNames) where T : struct

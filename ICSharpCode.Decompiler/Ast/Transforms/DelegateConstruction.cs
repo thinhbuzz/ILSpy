@@ -173,7 +173,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			subContext.ReservedVariableNames.AddRange(currentlyUsedVariableNames);
 			MethodDebugInfoBuilder builder;
 			BlockStatement body = AstMethodBodyBuilder.CreateMethodBody(method, subContext, ame.Parameters, false, stringBuilder, out builder);
-			body.AddAnnotation(builder);
+			ame.AddAnnotation(builder);
 			TransformationPipeline.RunTransformationsUntil(body, v => v is DelegateConstruction, subContext);
 			body.AcceptVisitor(this, null);
 			
