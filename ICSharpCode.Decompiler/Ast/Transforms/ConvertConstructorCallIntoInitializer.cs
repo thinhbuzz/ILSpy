@@ -108,6 +108,8 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 		
 		void HandleInstanceFieldInitializers(IEnumerable<AstNode> members)
 		{
+			if (!context.Settings.AllowFieldInitializers)
+				return;
 			var instanceCtors = members.OfType<ConstructorDeclaration>().Where(c => (c.Modifiers & Modifiers.Static) == 0).ToArray();
 			var instanceCtorsNotChainingWithThis = instanceCtors.Where(ctor => !thisCallPattern.IsMatch(ctor.Body.Statements.FirstOrDefault())).ToArray();
 			if (instanceCtorsNotChainingWithThis.Length > 0) {
@@ -178,11 +180,13 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 		
 		void HandleStaticFieldInitializers(IEnumerable<AstNode> members)
 		{
+			if (!context.Settings.AllowFieldInitializers)
+				return;
 			// Convert static constructor into field initializers if the class is BeforeFieldInit
 			var staticCtor = members.OfType<ConstructorDeclaration>().FirstOrDefault(c => (c.Modifiers & Modifiers.Static) == Modifiers.Static);
 			if (staticCtor != null) {
 				MethodDef ctorMethodDef = staticCtor.Annotation<MethodDef>();
-				if (ctorMethodDef != null && ctorMethodDef.DeclaringType.IsBeforeFieldInit) {
+				if (ctorMethodDef != null) {
 					var mm = staticCtor.Annotation<MethodDebugInfoBuilder>() ?? staticCtor.Body.Annotation<MethodDebugInfoBuilder>();
 					while (true) {
 						ExpressionStatement es = staticCtor.Body.Statements.FirstOrDefault() as ExpressionStatement;

@@ -1336,7 +1336,12 @@ namespace ICSharpCode.Decompiler.Ast {
 			}
 
 			BlockStatement bs;
-			switch (GetDecompiledBodyKind?.Invoke(this, method) ?? DecompiledBodyKind.Full) {
+			var bodyKind = GetDecompiledBodyKind?.Invoke(this, method) ?? DecompiledBodyKind.Full;
+			// In order for auto events to be optimized from custom to auto events, they must have bodies.
+			// DecompileTypeMethodsTransform has a fix to remove the hidden custom events' bodies.
+			if (bodyKind == DecompiledBodyKind.Empty && methodKind == MethodKind.Event)
+				bodyKind = DecompiledBodyKind.Full;
+			switch (bodyKind) {
 			case DecompiledBodyKind.Full:
 				string msg;
 				try {
@@ -1920,35 +1925,40 @@ namespace ICSharpCode.Decompiler.Ast {
 		static readonly UTF8String systemDiagnosticsString = new UTF8String("System.Diagnostics");
 		static readonly UTF8String debuggerStepThroughAttributeString = new UTF8String("DebuggerStepThroughAttribute");
 		static readonly UTF8String asyncStateMachineAttributeString = new UTF8String("AsyncStateMachineAttribute");
+		static readonly UTF8String debuggerBrowsableAttribute = new UTF8String("DebuggerBrowsableAttribute");
 		static void ConvertCustomAttributes(AstNode attributedNode, IHasCustomAttribute customAttributeProvider, bool sort, StringBuilder sb, string attributeTarget = null)
 		{
 			EntityDeclaration entityDecl = attributedNode as EntityDeclaration;
 			if (customAttributeProvider != null && customAttributeProvider.HasCustomAttributes) {
 				var attributes = new List<ICSharpCode.NRefactory.CSharp.Attribute>();
+				bool isFieldOrEvent = attributedNode is FieldDeclaration || attributedNode is EventDeclaration || attributedNode is CustomEventDeclaration;
 				foreach (var customAttribute in SortCustomAttributes(customAttributeProvider, sort, sb)) {
-					if (customAttribute.AttributeType == null)
+					var attributeType = customAttribute.AttributeType;
+					if (attributeType == null)
 						continue;
-					if (customAttribute.AttributeType.Compare(systemRuntimeCompilerServicesString, extensionAttributeString)) {
+					if (attributeType.Compare(systemRuntimeCompilerServicesString, extensionAttributeString)) {
 						// don't show the ExtensionAttribute (it's converted to the 'this' modifier)
 						continue;
 					}
-					if (customAttribute.AttributeType.Compare(systemString, paramArrayAttributeString)) {
+					if (attributeType.Compare(systemString, paramArrayAttributeString)) {
 						// don't show the ParamArrayAttribute (it's converted to the 'params' modifier)
 						continue;
 					}
 					// if the method is async, remove [DebuggerStepThrough] and [Async
 					if (entityDecl != null && entityDecl.HasModifier(Modifiers.Async)) {
-						if (customAttribute.AttributeType.Compare(systemDiagnosticsString, debuggerStepThroughAttributeString)) {
+						if (attributeType.Compare(systemDiagnosticsString, debuggerStepThroughAttributeString)) {
 							continue;
 						}
-						if (customAttribute.AttributeType.Compare(systemRuntimeCompilerServicesString, asyncStateMachineAttributeString)) {
+						if (attributeType.Compare(systemRuntimeCompilerServicesString, asyncStateMachineAttributeString)) {
 							continue;
 						}
 					}
+					if (isFieldOrEvent && attributeType.Compare(systemDiagnosticsString, debuggerBrowsableAttribute))
+						continue;
 					
 					var attribute = new ICSharpCode.NRefactory.CSharp.Attribute();
 					attribute.AddAnnotation(customAttribute);
-					attribute.Type = ConvertType(customAttribute.AttributeType, sb);
+					attribute.Type = ConvertType(attributeType, sb);
 					attributes.Add(attribute);
 					
 					SimpleType st = attribute.Type as SimpleType;
@@ -1965,7 +1975,7 @@ namespace ICSharpCode.Decompiler.Ast {
 						}
 					}
 					if (customAttribute.HasNamedArguments) {
-						TypeDef resolvedAttributeType = customAttribute.AttributeType.ResolveTypeDef();
+						TypeDef resolvedAttributeType = attributeType.ResolveTypeDef();
 						foreach (var propertyNamedArg in customAttribute.Properties) {
 							var propertyReference = resolvedAttributeType != null ? resolvedAttributeType.Properties.FirstOrDefault(pr => pr.Name == propertyNamedArg.Name) : null;
 							var propertyName = IdentifierExpression.Create(propertyNamedArg.Name, TextColorHelper.GetColor((object)propertyReference ?? BoxedTextColor.InstanceProperty), true).WithAnnotation(propertyReference);
