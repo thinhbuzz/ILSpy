@@ -336,14 +336,18 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				WriteParameterAttributes(p.MethodSigIndex + 1, p);
 			}
 			WriteSecurityDeclarations(method);
-			
+
+			MethodDebugInfoBuilder builder = null;
+			if (method.HasBody) {
+				builder = new MethodDebugInfoBuilder(method);
+				builder.StartPosition = methodStartPosition;
+				methodBodyDisassembler.Disassemble(method, builder);
+			}
+
 			int methodEndPosition = CloseBlock(bh1, addLineSep, "end of method " + DisassemblerHelpers.Escape(method.DeclaringType.Name) + "::" + DisassemblerHelpers.Escape(method.Name));
 
 			if (method.HasBody) {
-				var builder = new MethodDebugInfoBuilder(method);
-				builder.StartPosition = methodStartPosition;
 				builder.EndPosition = methodEndPosition;
-				methodBodyDisassembler.Disassemble(method, builder);
 				output.AddDebugInfo(builder.Create());
 			}
 		}
