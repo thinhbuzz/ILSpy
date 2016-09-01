@@ -1656,7 +1656,7 @@ namespace ICSharpCode.NRefactory.VB {
 			StartNode(localDeclarationStatement);
 			
 			DebugStart(localDeclarationStatement);
-			if (localDeclarationStatement.ModifierToken != null && !localDeclarationStatement.ModifierToken.IsNull)
+			if (!(localDeclarationStatement.Parent is UsingStatement) && localDeclarationStatement.ModifierToken != null && !localDeclarationStatement.ModifierToken.IsNull)
 				WriteModifiers(new [] { localDeclarationStatement.ModifierToken });
 			WriteCommaSeparatedList(localDeclarationStatement.Variables);
 			DebugEnd(localDeclarationStatement);
