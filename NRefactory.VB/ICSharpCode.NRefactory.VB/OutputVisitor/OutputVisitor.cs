@@ -144,6 +144,8 @@ namespace ICSharpCode.NRefactory.VB {
 					return CodeBracesRangeFlags.BlockKind_Interface;
 				if (td.IsValueType)
 					return CodeBracesRangeFlags.BlockKind_ValueType;
+				if (td.DeclaringType == null && td.IsSealed && td.IsAbstract)
+					return CodeBracesRangeFlags.BlockKind_Module;
 			}
 			return CodeBracesRangeFlags.BlockKind_Type;
 		}
