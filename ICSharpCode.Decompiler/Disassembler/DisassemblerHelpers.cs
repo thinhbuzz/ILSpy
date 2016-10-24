@@ -136,7 +136,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			writer.Write(":", BoxedTextColor.Punctuation);
 			writer.Write(" ", BoxedTextColor.Text);
 			writer.Write(instruction.OpCode.Name, instruction.OpCode, DecompilerReferenceFlags.None, BoxedTextColor.OpCode);
-			if (instruction.Operand != null) {
+			if (ShouldHaveOperand(instruction)) {
 				int count = OPERAND_ALIGNMENT - instruction.OpCode.Name.Length;
 				if (count <= 0)
 					count = 1;
@@ -160,6 +160,33 @@ namespace ICSharpCode.Decompiler.Disassembler {
 					writer.Write("\t", BoxedTextColor.Text);
 					writer.Write("// " + doc, BoxedTextColor.Comment);
 				}
+			}
+		}
+
+		static bool ShouldHaveOperand(Instruction instr)
+		{
+			switch (instr.OpCode.OperandType) {
+			case OperandType.InlineBrTarget:
+			case OperandType.InlineField:
+			case OperandType.InlineI:
+			case OperandType.InlineI8:
+			case OperandType.InlineMethod:
+			case OperandType.InlineR:
+			case OperandType.InlineSig:
+			case OperandType.InlineString:
+			case OperandType.InlineSwitch:
+			case OperandType.InlineTok:
+			case OperandType.InlineType:
+			case OperandType.InlineVar:
+			case OperandType.ShortInlineBrTarget:
+			case OperandType.ShortInlineI:
+			case OperandType.ShortInlineR:
+			case OperandType.ShortInlineVar:
+				return true;
+			case OperandType.InlineNone:
+			case OperandType.InlinePhi:
+			default:
+				return false;
 			}
 		}
 		
@@ -681,8 +708,12 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			} else if (operand is bool) {
 				writer.Write((bool)operand ? "true" : "false", BoxedTextColor.Keyword);
 			} else {
-				s = ToInvariantCultureString(operand);
-				writer.Write(s, TextColorHelper.GetColor(operand));
+				if (operand == null)
+					writer.Write("<null>", BoxedTextColor.Error);
+				else {
+					s = ToInvariantCultureString(operand);
+					writer.Write(s, TextColorHelper.GetColor(operand));
+				}
 			}
 		}
 		
