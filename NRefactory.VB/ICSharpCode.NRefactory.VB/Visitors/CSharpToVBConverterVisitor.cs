@@ -1845,6 +1845,11 @@ namespace ICSharpCode.NRefactory.VB.Visitors {
 					if (ifaceProp.Name != prop.Name)
 						continue;
 					var ifaceMethodSig = GetMethodBaseSig(ii.Interface, ifaceProp.PropertySig);
+					// mcs doesn't set HasThis if it's an instance property
+					if (ifaceMethodSig.HasThis != prop.PropertySig.HasThis) {
+						ifaceMethodSig = new MethodSig(ifaceMethodSig.CallingConvention, ifaceMethodSig.GenParamCount, ifaceMethodSig.RetType, ifaceMethodSig.Params, ifaceMethodSig.ParamsAfterSentinel);
+						ifaceMethodSig.HasThis = prop.PropertySig.HasThis;
+					}
 					if (!comparer.Equals(ifaceMethodSig, prop.PropertySig))
 						continue;
 					yield return new ImplementsResult(ii.Interface, ifaceProp.Name, ifaceProp);
