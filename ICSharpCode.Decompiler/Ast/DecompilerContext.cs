@@ -19,11 +19,13 @@
 using System.Collections.Generic;
 using System.Threading;
 using dnlib.DotNet;
+using dnSpy.Contracts.Decompiler;
 using ICSharpCode.Decompiler.Ast;
 
 namespace ICSharpCode.Decompiler {
 	public class DecompilerContext
 	{
+		public MetadataTextColorProvider MetadataTextColorProvider;
 		public ModuleDef CurrentModule;
 		public CancellationToken CancellationToken;
 		public TypeDef CurrentType;
@@ -40,15 +42,16 @@ namespace ICSharpCode.Decompiler {
 			return ctx;
 		}
 
-		public DecompilerContext(ModuleDef currentModule)
-			: this(currentModule, false) {
+		public DecompilerContext(ModuleDef currentModule, MetadataTextColorProvider metadataTextColorProvider = null)
+			: this(currentModule, metadataTextColorProvider, false) {
 		}
 
-		public DecompilerContext(ModuleDef currentModule, bool calculateBinSpans)
+		public DecompilerContext(ModuleDef currentModule, MetadataTextColorProvider metadataTextColorProvider, bool calculateBinSpans)
 		{
 			this.CurrentModule = currentModule;
 			this.CalculateBinSpans = calculateBinSpans;
 			this.Cache = new DecompilerCache(this);
+			this.MetadataTextColorProvider = metadataTextColorProvider ?? CSharpMetadataTextColorProvider.Instance;
 		}
 		
 		/// <summary>

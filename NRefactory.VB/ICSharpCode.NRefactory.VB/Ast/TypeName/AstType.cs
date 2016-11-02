@@ -124,44 +124,5 @@ namespace ICSharpCode.NRefactory.VB.Ast {
 		{
 			return new TypeReferenceExpression { Type = this }.Invoke(null, methodName, typeArguments, arguments);
 		}
-		
-		public static AstType Create(Type type)
-		{
-			switch (Type.GetTypeCode(type)) {
-				case TypeCode.Object:
-					return new PrimitiveType("Object");
-				case TypeCode.Boolean:
-					return new PrimitiveType("Boolean");
-				case TypeCode.Char:
-					return new PrimitiveType("Char");
-				case TypeCode.SByte:
-					return new PrimitiveType("SByte");
-				case TypeCode.Byte:
-					return new PrimitiveType("Byte");
-				case TypeCode.Int16:
-					return new PrimitiveType("Short");
-				case TypeCode.UInt16:
-					return new PrimitiveType("UShort");
-				case TypeCode.Int32:
-					return new PrimitiveType("Integer");
-				case TypeCode.UInt32:
-					return new PrimitiveType("UInteger");
-				case TypeCode.Int64:
-					return new PrimitiveType("Long");
-				case TypeCode.UInt64:
-					return new PrimitiveType("ULong");
-				case TypeCode.Single:
-					return new PrimitiveType("Single");
-				case TypeCode.Double:
-					return new PrimitiveType("Double");
-				case TypeCode.Decimal:
-					return new PrimitiveType("Decimal");
-				case TypeCode.String:
-					return new PrimitiveType("String");
-				case TypeCode.DateTime:
-					return new PrimitiveType("Date");
-			}
-			return SimpleType.CreateWithColor(TextColorHelper.GetColor(type), type.FullName); // TODO: implement this correctly
-		}
 	}
 }

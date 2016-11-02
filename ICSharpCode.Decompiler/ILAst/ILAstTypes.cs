@@ -375,7 +375,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				else if (ExceptionType != null) {
 					output.Write("catch", BoxedTextColor.Keyword);
 					output.Write(" ", BoxedTextColor.Text);
-					output.Write(ExceptionType.FullName, ExceptionType, DecompilerReferenceFlags.None, TextColorHelper.GetColor(ExceptionType));
+					output.Write(ExceptionType.FullName, ExceptionType, DecompilerReferenceFlags.None, CSharpMetadataTextColorProvider.Instance.GetColor(ExceptionType));
 					if (ExceptionVariable != null) {
 						output.Write(" ", BoxedTextColor.Text);
 						output.Write(ExceptionVariable.Name, ExceptionVariable, DecompilerReferenceFlags.None, BoxedTextColor.Local);
@@ -711,12 +711,12 @@ namespace ICSharpCode.Decompiler.ILAst {
 						method.DeclaringType.WriteTo(output, ILNameSyntax.ShortTypeName);
 						output.Write("::", BoxedTextColor.Operator);
 					}
-					output.Write(method.Name, method, DecompilerReferenceFlags.None, TextColorHelper.GetColor(method));
+					output.Write(method.Name, method, DecompilerReferenceFlags.None, CSharpMetadataTextColorProvider.Instance.GetColor(method));
 				} else if (Operand is IField) {
 					IField field = (IField)Operand;
 					field.DeclaringType.WriteTo(output, ILNameSyntax.ShortTypeName);
 					output.Write("::", BoxedTextColor.Operator);
-					output.Write(field.Name, field, DecompilerReferenceFlags.None, TextColorHelper.GetColor(field));
+					output.Write(field.Name, field, DecompilerReferenceFlags.None, CSharpMetadataTextColorProvider.Instance.GetColor(field));
 				} else if (Operand is ILVariable) {
 					var ilvar = (ILVariable)Operand;
 					output.Write(ilvar.Name, Operand, DecompilerReferenceFlags.None, ilvar.IsParameter ? BoxedTextColor.Parameter : BoxedTextColor.Local);

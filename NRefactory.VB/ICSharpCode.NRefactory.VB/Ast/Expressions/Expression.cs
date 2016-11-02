@@ -98,11 +98,6 @@ namespace ICSharpCode.NRefactory.VB.Ast {
 		{
 			return new CastExpression { CastType = CastType.CType, Type = type,  Expression = this };
 		}
-		
-		public CastExpression CastTo(Type type)
-		{
-			return new CastExpression { CastType = CastType.CType, Type = AstType.Create(type),  Expression = this };
-		}
 		#endregion
 	}
 }

@@ -679,7 +679,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 							tokenKind = ilv.IsParameter ? BoxedTextColor.Parameter : BoxedTextColor.Local;
 						var locParam = v.Annotation<IVariable>();
 						if (tokenKind == null && locParam != null)
-							tokenKind = TextColorHelper.GetColor(locParam);
+							tokenKind = context.MetadataTextColorProvider.GetColor(locParam);
 						AssignmentExpression assign = new AssignmentExpression(IdentifierExpression.Create(v.Name, tokenKind ?? BoxedTextColor.Local), v.Initializer.Detach());
 						// move annotations from v to assign:
 						assign.CopyAnnotationsFrom(v);
@@ -1131,7 +1131,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			}
 			ed.ReturnType = ev.ReturnType.Detach();
 			ed.Modifiers = ev.Modifiers;
-			ed.Variables.Add(new VariableInitializer(TextColorHelper.GetColor(ev.Annotation<EventDef>()), ev.Name));
+			ed.Variables.Add(new VariableInitializer(context.MetadataTextColorProvider.GetColor(ev.Annotation<EventDef>()), ev.Name));
 			ed.CopyAnnotationsFrom(ev);
 
 			// Keep the token comments
@@ -1158,7 +1158,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				FieldDef field = eventDef.DeclaringType.Fields.FirstOrDefault(f => f.Name == ev.Name);
 				if (field != null) {
 					ed.AddAnnotation(field);
-					AstBuilder.ConvertAttributes(ed, field, context.Settings.SortCustomAttributes, stringBuilder, "field");
+					AstBuilder.ConvertAttributes(context.MetadataTextColorProvider, ed, field, context.Settings.SortCustomAttributes, stringBuilder, "field");
 				}
 			}
 			

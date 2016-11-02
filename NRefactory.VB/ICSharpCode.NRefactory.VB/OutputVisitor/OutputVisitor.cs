@@ -541,7 +541,7 @@ namespace ICSharpCode.NRefactory.VB {
 		{
 			StartNode(identifier);
 			WriteIdentifier(identifier);
-			WriteTypeCharacter(identifier.TypeCharacter, TextColorHelper.GetColor(identifier.Annotation<object>()));
+			WriteTypeCharacter(identifier.TypeCharacter, VisualBasicMetadataTextColorProvider.Instance.GetColor(identifier.Annotation<object>()));
 			return EndNode(identifier);
 		}
 		
@@ -876,7 +876,7 @@ namespace ICSharpCode.NRefactory.VB {
 			
 			qualifiedType.Target.AcceptVisitor(this, data);
 			WriteToken(".", AstNode.Roles.Dot, BoxedTextColor.Operator);
-			WriteIdentifier(qualifiedType.Name, TextColorHelper.GetColor(qualifiedType.NameToken.Annotation<object>() ?? qualifiedType.Annotation<object>()), null, qualifiedType.NameToken.Annotation<NamespaceReference>());
+			WriteIdentifier(qualifiedType.Name, VisualBasicMetadataTextColorProvider.Instance.GetColor(qualifiedType.NameToken.Annotation<object>() ?? qualifiedType.Annotation<object>()), null, qualifiedType.NameToken.Annotation<NamespaceReference>());
 			WriteTypeArguments(qualifiedType.TypeArguments, CodeBracesRangeFlags.Parentheses);
 			
 			return EndNode(qualifiedType);
@@ -915,7 +915,7 @@ namespace ICSharpCode.NRefactory.VB {
 				// It's the empty string. Don't call WriteIdentifier() since it will write "<<EMPTY_NAME>>"
 			}
 			else
-				WriteIdentifier(simpleType.Identifier, TextColorHelper.GetColor(simpleType.IdentifierToken.Annotation<object>() ?? simpleType.Annotation<object>()), null, simpleType.IdentifierToken.Annotation<NamespaceReference>());
+				WriteIdentifier(simpleType.Identifier, VisualBasicMetadataTextColorProvider.Instance.GetColor(simpleType.IdentifierToken.Annotation<object>() ?? simpleType.Annotation<object>()), null, simpleType.IdentifierToken.Annotation<NamespaceReference>());
 			WriteTypeArguments(simpleType.TypeArguments, CodeBracesRangeFlags.Parentheses);
 			
 			return EndNode(simpleType);
@@ -1127,7 +1127,7 @@ namespace ICSharpCode.NRefactory.VB {
 		
 		void WriteIdentifier(Identifier identifier, Role<Identifier> identifierRole = null)
 		{
-			var data = TextColorHelper.GetColor(identifier.Annotation<object>());
+			var data = VisualBasicMetadataTextColorProvider.Instance.GetColor(identifier.Annotation<object>());
 			if (BoxedTextColor.Keyword.Equals(data)) {
 				var ilv = identifier.Annotation<Decompiler.ILAst.ILVariable>();
 				if ((ilv != null && ilv.IsParameter) || identifier.Parent is ParameterDeclaration)
@@ -1360,7 +1360,7 @@ namespace ICSharpCode.NRefactory.VB {
 					lastWritten = LastWritten.Other;
 				}
 				WriteSpecialsUpToNode(ident);
-				formatter.WriteIdentifier(ident.Name, TextColorHelper.GetColor(ident.Annotation<object>()));
+				formatter.WriteIdentifier(ident.Name, VisualBasicMetadataTextColorProvider.Instance.GetColor(ident.Annotation<object>()));
 				lastWritten = LastWritten.KeywordOrIdentifier;
 			}
 		}
@@ -1539,11 +1539,11 @@ namespace ICSharpCode.NRefactory.VB {
 				} else if (val is long || val is ulong) {
 					b.Append("L");
 				}
-				formatter.WriteToken(b.ToString(), TextColorHelper.GetColor(val));
+				formatter.WriteToken(b.ToString(), VisualBasicMetadataTextColorProvider.Instance.GetColor(val));
 				// needs space if identifier follows number; this avoids mistaking the following identifier as type suffix
 				lastWritten = LastWritten.KeywordOrIdentifier;
 			} else {
-				formatter.WriteToken(val.ToString(), TextColorHelper.GetColor(val));
+				formatter.WriteToken(val.ToString(), VisualBasicMetadataTextColorProvider.Instance.GetColor(val));
 				lastWritten = LastWritten.Other;
 			}
 		}

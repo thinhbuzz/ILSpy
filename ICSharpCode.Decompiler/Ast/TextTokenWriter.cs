@@ -50,7 +50,7 @@ namespace ICSharpCode.Decompiler.Ast {
 		public override void WriteIdentifier(Identifier identifier, object data)
 		{
 			if (BoxedTextColor.Text.Equals(data))
-				data = TextColorHelper.GetColor(identifier.AnnotationVT<TextColor>() ?? identifier.Annotation<object>());
+				data = context.MetadataTextColorProvider.GetColor(identifier.AnnotationVT<TextColor>() ?? identifier.Annotation<object>());
 
 			var escapedName = IdentifierEscaper.Escape(identifier.Name);
 			if (!BoxedTextColor.Keyword.Equals(data) && (identifier.IsVerbatim || CSharpOutputVisitor.IsKeyword(identifier.Name, identifier))) {

@@ -243,10 +243,10 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				}
 				MethodDef md = method as MethodDef;
 				if (md != null && md.IsCompilerControlled) {
-					writer.Write(Escape(method.Name + "$PST" + method.MDToken.ToInt32().ToString("X8")), method, DecompilerReferenceFlags.None, TextColorHelper.GetColor(method));
+					writer.Write(Escape(method.Name + "$PST" + method.MDToken.ToInt32().ToString("X8")), method, DecompilerReferenceFlags.None, CSharpMetadataTextColorProvider.Instance.GetColor(method));
 				}
 				else {
-					writer.Write(Escape(method.Name), method, DecompilerReferenceFlags.None, TextColorHelper.GetColor(method));
+					writer.Write(Escape(method.Name), method, DecompilerReferenceFlags.None, CSharpMetadataTextColorProvider.Instance.GetColor(method));
 				}
 			}
 			MethodSpec gim = method as MethodSpec;
@@ -307,7 +307,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			writer.Write(" ", BoxedTextColor.Text);
 			field.DeclaringType.WriteTo(writer, ILNameSyntax.TypeName);
 			writer.Write("::", BoxedTextColor.Operator);
-			writer.Write(Escape(field.Name), field, DecompilerReferenceFlags.None, TextColorHelper.GetColor(field));
+			writer.Write(Escape(field.Name), field, DecompilerReferenceFlags.None, CSharpMetadataTextColorProvider.Instance.GetColor(field));
 		}
 		
 		static bool IsValidIdentifierCharacter(char c)
@@ -442,7 +442,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				if (string.IsNullOrEmpty(typeName) || typeName[0] == '!' || syntax == ILNameSyntax.SignatureNoNamedTypeParameters)
 					writer.Write(((GenericSig)type).Number.ToString(), BoxedTextColor.Number);
 				else
-					writer.Write(Escape(typeName), TextColorHelper.GetColor(type));
+					writer.Write(Escape(typeName), CSharpMetadataTextColorProvider.Instance.GetColor(type));
 			} else if (type is ByRefSig) {
 				((ByRefSig)type).Next.WriteTo(writer, syntaxForElementTypes, depth);
 				writer.Write("&", BoxedTextColor.Operator);
@@ -514,7 +514,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				if (name != null)
 					WriteKeyword(writer, name, typeSig.ToTypeDefOrRef());
 				else
-					writer.Write(Escape(typeName), type, DecompilerReferenceFlags.None, TextColorHelper.GetColor(type));
+					writer.Write(Escape(typeName), type, DecompilerReferenceFlags.None, CSharpMetadataTextColorProvider.Instance.GetColor(type));
 			} else if ((syntax == ILNameSyntax.Signature || syntax == ILNameSyntax.SignatureNoNamedTypeParameters) && name != null) {
 				WriteKeyword(writer, name, typeSig.ToTypeDefOrRef());
 			} else {
@@ -526,7 +526,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				if (type.DeclaringType != null) {
 					type.DeclaringType.WriteTo(writer, ILNameSyntax.TypeName, depth);
 					writer.Write("/", BoxedTextColor.Operator);
-					writer.Write(Escape(typeName), type, DecompilerReferenceFlags.None, TextColorHelper.GetColor(type));
+					writer.Write(Escape(typeName), type, DecompilerReferenceFlags.None, CSharpMetadataTextColorProvider.Instance.GetColor(type));
 				} else {
 					if (!(type is TypeDef) && type.Scope != null && !(type is TypeSpec)) {
 						var bh1 = BracePairHelper.Create(writer, "[", CodeBracesRangeFlags.SquareBrackets);
@@ -534,12 +534,12 @@ namespace ICSharpCode.Decompiler.Disassembler {
 						bh1.Write("]");
 					}
 					if (ts != null || MustEscape(typeFullName))
-						writer.Write(Escape(typeFullName), type, DecompilerReferenceFlags.None, TextColorHelper.GetColor(type));
+						writer.Write(Escape(typeFullName), type, DecompilerReferenceFlags.None, CSharpMetadataTextColorProvider.Instance.GetColor(type));
 					else {
 						WriteNamespace(writer, type.Namespace, type.DefinitionAssembly);
 						if (!string.IsNullOrEmpty(type.Namespace))
 							writer.Write(".", BoxedTextColor.Operator);
-						writer.Write(IdentifierEscaper.Escape(type.Name), type, DecompilerReferenceFlags.None, TextColorHelper.GetColor(type));
+						writer.Write(IdentifierEscaper.Escape(type.Name), type, DecompilerReferenceFlags.None, CSharpMetadataTextColorProvider.Instance.GetColor(type));
 					}
 				}
 			}
@@ -712,7 +712,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 					writer.Write("<null>", BoxedTextColor.Error);
 				else {
 					s = ToInvariantCultureString(operand);
-					writer.Write(s, TextColorHelper.GetColor(operand));
+					writer.Write(s, CSharpMetadataTextColorProvider.Instance.GetColor(operand));
 				}
 			}
 		}

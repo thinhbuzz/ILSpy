@@ -157,7 +157,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			ame.CopyAnnotationsFrom(objectCreateExpression); // copy BinSpans etc.
 			ame.RemoveAnnotations<IMethod>(); // remove reference to delegate ctor
 			ame.AddAnnotation(method); // add reference to anonymous method
-			ame.Parameters.AddRange(AstBuilder.MakeParameters(method, context.Settings.SortCustomAttributes, stringBuilder, isLambda: true));
+			ame.Parameters.AddRange(AstBuilder.MakeParameters(context.MetadataTextColorProvider, method, context.Settings.SortCustomAttributes, stringBuilder, isLambda: true));
 			ame.HasParameterList = true;
 			
 			// rename variables so that they don't conflict with the parameters:

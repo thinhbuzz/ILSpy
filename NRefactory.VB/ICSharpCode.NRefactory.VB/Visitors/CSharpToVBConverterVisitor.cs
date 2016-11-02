@@ -2035,7 +2035,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors {
 				
 				ConvertNodes(operatorDeclaration.Attributes.Where(section => section.AttributeTarget != "return"), m.Attributes);
 				ConvertNodes(operatorDeclaration.ModifierTokens, m.ModifierTokens);
-				m.Name = Identifier.Create(TextColorHelper.GetColor((object)operatorDeclaration.Annotation<dnlib.DotNet.IMethod>() ?? BoxedTextColor.InstanceMethod), operatorDeclaration.OperatorType == CSharp.OperatorType.Increment ? "op_Increment" : "op_Decrement");
+				m.Name = Identifier.Create(VisualBasicMetadataTextColorProvider.Instance.GetColor((object)operatorDeclaration.Annotation<dnlib.DotNet.IMethod>() ?? BoxedTextColor.InstanceMethod), operatorDeclaration.OperatorType == CSharp.OperatorType.Increment ? "op_Increment" : "op_Decrement");
 				ConvertNodes(operatorDeclaration.Parameters, m.Parameters);
 				ConvertNodes(operatorDeclaration.Attributes.Where(section => section.AttributeTarget == "return"), m.ReturnTypeAttributes);
 				m.ReturnType = (AstType)operatorDeclaration.ReturnType.AcceptVisitor(this, data);

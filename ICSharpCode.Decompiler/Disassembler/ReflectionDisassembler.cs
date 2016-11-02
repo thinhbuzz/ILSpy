@@ -289,9 +289,9 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			}
 			
 			if (method.IsCompilerControlled) {
-				output.Write(DisassemblerHelpers.Escape(method.Name + "$PST" + method.MDToken.ToInt32().ToString("X8")), method, DecompilerReferenceFlags.Definition, TextColorHelper.GetColor(method));
+				output.Write(DisassemblerHelpers.Escape(method.Name + "$PST" + method.MDToken.ToInt32().ToString("X8")), method, DecompilerReferenceFlags.Definition, CSharpMetadataTextColorProvider.Instance.GetColor(method));
 			} else {
-				output.Write(DisassemblerHelpers.Escape(method.Name), method, DecompilerReferenceFlags.Definition, TextColorHelper.GetColor(method));
+				output.Write(DisassemblerHelpers.Escape(method.Name), method, DecompilerReferenceFlags.Definition, CSharpMetadataTextColorProvider.Instance.GetColor(method));
 			}
 			
 			WriteTypeParameters(output, method);
@@ -1045,7 +1045,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			}
 			field.FieldType.WriteTo(output);
 			output.Write(" ", BoxedTextColor.Text);
-			output.Write(DisassemblerHelpers.Escape(field.Name), field, DecompilerReferenceFlags.Definition, TextColorHelper.GetColor(field));
+			output.Write(DisassemblerHelpers.Escape(field.Name), field, DecompilerReferenceFlags.Definition, CSharpMetadataTextColorProvider.Instance.GetColor(field));
 			if ((field.Attributes & FieldAttributes.HasFieldRVA) == FieldAttributes.HasFieldRVA) {
 				output.Write(" ", BoxedTextColor.Text);
 				output.Write("at", BoxedTextColor.Keyword);
@@ -1095,7 +1095,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			}
 			property.PropertySig.GetRetType().WriteTo(output);
 			output.Write(" ", BoxedTextColor.Text);
-			output.Write(DisassemblerHelpers.Escape(property.Name), property, DecompilerReferenceFlags.Definition, TextColorHelper.GetColor(property));
+			output.Write(DisassemblerHelpers.Escape(property.Name), property, DecompilerReferenceFlags.Definition, CSharpMetadataTextColorProvider.Instance.GetColor(property));
 			
 			var bh1 = BracePairHelper.Create(output, "(", CodeBracesRangeFlags.Parentheses);
 			var parameters = new List<Parameter>(property.GetParameters());
@@ -1171,7 +1171,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			WriteFlags(ev.Attributes, eventAttributes);
 			ev.EventType.WriteTo(output, ILNameSyntax.TypeName);
 			output.Write(" ", BoxedTextColor.Text);
-			output.Write(DisassemblerHelpers.Escape(ev.Name), ev, DecompilerReferenceFlags.Definition, TextColorHelper.GetColor(ev));
+			output.Write(DisassemblerHelpers.Escape(ev.Name), ev, DecompilerReferenceFlags.Definition, CSharpMetadataTextColorProvider.Instance.GetColor(ev));
 
 			if (full) {
 				var bh1 = OpenBlock(false, CodeBracesRangeFlags.EventBraces);
@@ -1304,7 +1304,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				DisassemblerHelpers.WriteNamespace(output, ns, type.DefinitionAssembly);
 				output.Write(".", BoxedTextColor.Operator);
 			}
-			output.Write(DisassemblerHelpers.Escape(type.Name.String), type, DecompilerReferenceFlags.Definition, TextColorHelper.GetColor(type));
+			output.Write(DisassemblerHelpers.Escape(type.Name.String), type, DecompilerReferenceFlags.Definition, CSharpMetadataTextColorProvider.Instance.GetColor(type));
 		}
 
 		public void DisassembleType(TypeDef type, bool addLineSep = true)
@@ -1457,7 +1457,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 					} else if (gp.IsCovariant) {
 						output.Write("+", BoxedTextColor.Operator);
 					}
-					output.Write(DisassemblerHelpers.Escape(gp.Name), TextColorHelper.GetColor(gp));
+					output.Write(DisassemblerHelpers.Escape(gp.Name), CSharpMetadataTextColorProvider.Instance.GetColor(gp));
 				}
 				bh2.Write(">");
 			}
@@ -1692,14 +1692,14 @@ namespace ICSharpCode.Decompiler.Disassembler {
 						output.Write("forwarder", BoxedTextColor.Keyword);
 						output.Write(" ", BoxedTextColor.Text);
 					}
-					output.Write(exportedType.DeclaringType != null ? exportedType.TypeName.String : exportedType.FullName, TextColorHelper.GetColor(exportedType));
+					output.Write(exportedType.DeclaringType != null ? exportedType.TypeName.String : exportedType.FullName, CSharpMetadataTextColorProvider.Instance.GetColor(exportedType));
 					var bh1 = OpenBlock(false, CodeBracesRangeFlags.OtherBlockBraces);
 					if (exportedType.DeclaringType != null) {
 						output.Write(".class", BoxedTextColor.ILDirective);
 						output.Write(" ", BoxedTextColor.Text);
 						output.Write("extern", BoxedTextColor.Keyword);
 						output.Write(" ", BoxedTextColor.Text);
-						output.WriteLine(DisassemblerHelpers.Escape(exportedType.DeclaringType.FullName), TextColorHelper.GetColor(exportedType.DeclaringType));
+						output.WriteLine(DisassemblerHelpers.Escape(exportedType.DeclaringType.FullName), CSharpMetadataTextColorProvider.Instance.GetColor(exportedType.DeclaringType));
 					}
 					else {
 						output.Write(".assembly", BoxedTextColor.ILDirective);
