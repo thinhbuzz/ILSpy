@@ -101,7 +101,12 @@ namespace ICSharpCode.Decompiler.Disassembler {
 
 				if (options.ShowTokenAndRvaComments) {
 					ulong fileOffset = (ulong)baseOffs + instruction.Offset;
-					writer.Write(string.Format("0x{0:X8}", fileOffset), new AddressReference(options.OwnerModule == null ? null : options.OwnerModule.Location, false, fileOffset, (ulong)instruction.GetSize()), DecompilerReferenceFlags.None, BoxedTextColor.Comment);
+					var hexOffsetString = string.Format("0x{0:X8}", fileOffset);
+					bool orig = byteReader?.IsOriginalBytes == true;
+					if (orig)
+						writer.Write(hexOffsetString, new AddressReference(options.OwnerModule == null ? null : options.OwnerModule.Location, false, fileOffset, (ulong)instruction.GetSize()), DecompilerReferenceFlags.None, BoxedTextColor.Comment);
+					else
+						writer.Write(hexOffsetString, BoxedTextColor.Comment);
 					needSpace = true;
 				}
 
