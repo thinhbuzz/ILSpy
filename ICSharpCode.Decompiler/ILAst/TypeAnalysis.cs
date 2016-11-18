@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using dnlib.DotNet;
 using dnSpy.Contracts.Decompiler;
 
@@ -249,6 +250,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		/// <returns>The inferred type</returns>
 		TypeSig InferTypeForExpression(ILExpression expr, TypeSig expectedType, bool forceInferChildren = false)
 		{
+			RuntimeHelpers.EnsureSufficientExecutionStack();
 			if (expectedType != null && !IsSameType(expr.ExpectedType, expectedType)) {
 				expr.ExpectedType = expectedType;
 				if (expr.Code != ILCode.Stloc) // stloc is special case and never gets re-evaluated
@@ -261,6 +263,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		
 		TypeSig DoInferTypeForExpression(ILExpression expr, TypeSig expectedType, bool forceInferChildren = false)
 		{
+			RuntimeHelpers.EnsureSufficientExecutionStack();
 			switch (expr.Code) {
 					#region Logical operators
 				case ILCode.LogicNot:
@@ -891,6 +894,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		
 		TypeSig HandleConversion(int targetBitSize, bool targetSigned, ILExpression arg, TypeSig expectedType, TypeSig targetType)
 		{
+			RuntimeHelpers.EnsureSufficientExecutionStack();
 			if (targetBitSize >= NativeInt && expectedType is PtrSig) {
 				InferTypeForExpression(arg, expectedType);
 				return expectedType;
@@ -958,11 +962,13 @@ namespace ICSharpCode.Decompiler.ILAst {
 		
 		TypeSig InferArgumentsInBinaryOperator(ILExpression expr, bool? isSigned, TypeSig expectedType)
 		{
+			RuntimeHelpers.EnsureSufficientExecutionStack();
 			return InferBinaryArguments(expr.Arguments[0], expr.Arguments[1], expectedType);
 		}
 		
 		TypeSig InferArgumentsInAddition(ILExpression expr, bool? isSigned, TypeSig expectedType)
 		{
+			RuntimeHelpers.EnsureSufficientExecutionStack();
 			ILExpression left = expr.Arguments[0];
 			ILExpression right = expr.Arguments[1];
 			TypeSig leftPreferred = DoInferTypeForExpression(left, expectedType);
@@ -994,6 +1000,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		
 		TypeSig InferArgumentsInSubtraction(ILExpression expr, bool? isSigned, TypeSig expectedType)
 		{
+			RuntimeHelpers.EnsureSufficientExecutionStack();
 			ILExpression left = expr.Arguments[0];
 			ILExpression right = expr.Arguments[1];
 			TypeSig leftPreferred = DoInferTypeForExpression(left, expectedType);
@@ -1023,6 +1030,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 		TypeSig InferBinaryArguments(ILExpression left, ILExpression right, TypeSig expectedType, bool forceInferChildren = false, TypeSig leftPreferred = null, TypeSig rightPreferred = null)
 		{
+			RuntimeHelpers.EnsureSufficientExecutionStack();
 			if (leftPreferred == null) leftPreferred = DoInferTypeForExpression(left, expectedType, forceInferChildren);
 			if (rightPreferred == null) rightPreferred = DoInferTypeForExpression(right, expectedType, forceInferChildren);
 			if (IsSameType(leftPreferred, rightPreferred)) {
