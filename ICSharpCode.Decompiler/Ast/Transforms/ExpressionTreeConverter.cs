@@ -249,8 +249,10 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			activeLambdas.Push(lambda);
 			Expression convertedBody = Convert(body);
 			activeLambdas.Pop();
-			if (convertedBody == null)
+			if (convertedBody == null) {
+				lambda.Parameters.Clear();
 				return null;
+			}
 			lambda.Body = convertedBody;
 			return lambda;
 		}
