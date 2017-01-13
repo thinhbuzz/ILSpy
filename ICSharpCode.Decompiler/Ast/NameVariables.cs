@@ -282,10 +282,12 @@ namespace ICSharpCode.Decompiler.Ast
 				case ILCode.CallvirtGetter:
 				case ILCode.CallSetter:
 				case ILCode.CallvirtSetter:
+				case ILCode.CallReadOnlySetter:
 					IMethod methodRef = (IMethod)parent.Operand;
 					if (methodRef.MethodSig.GetParameters().Count == 1 && i == parent.Arguments.Count - 1) {
 						// argument might be value of a setter
-						if (methodRef.Name.StartsWith("set_", StringComparison.OrdinalIgnoreCase)) {
+						if (methodRef.Name.StartsWith("set_", StringComparison.OrdinalIgnoreCase) ||
+							(parent.Code == ILCode.CallReadOnlySetter && methodRef.Name.StartsWith("get_", StringComparison.OrdinalIgnoreCase))) {
 							return CleanUpVariableName(methodRef.Name.Substring(4));
 						} else if (methodRef.Name.StartsWith("Set", StringComparison.OrdinalIgnoreCase) && methodRef.Name.String.Length >= 4 && char.IsUpper(methodRef.Name.String[3])) {
 							return CleanUpVariableName(methodRef.Name.Substring(3));

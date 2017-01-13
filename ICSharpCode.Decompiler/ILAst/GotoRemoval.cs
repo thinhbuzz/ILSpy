@@ -39,7 +39,19 @@ namespace ICSharpCode.Decompiler.ILAst {
 			this.nextSibling.Clear();
 		}
 		
-		public void RemoveGotos(ILBlock method)
+		public static void RemoveGotos(DecompilerContext context, ILBlock method)
+		{
+			var gr = context.Cache.GetGotoRemoval();
+			try {
+				gr.RemoveGotosCore(method);
+			}
+			finally {
+				context.Cache.Return(gr);
+			}
+			RemoveRedundantCode(method, context);
+		}
+
+		void RemoveGotosCore(ILBlock method)
 		{
 			// Build the navigation data
 			parent[method] = null;
@@ -67,8 +79,6 @@ namespace ICSharpCode.Decompiler.ILAst {
 					modified |= TrySimplifyGoto(gotoExpr);
 				}
 			} while(modified);
-			
-			RemoveRedundantCode(method, context);
 		}
 		
 		public static void RemoveRedundantCode(ILBlock method, DecompilerContext context)
@@ -159,13 +169,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			}
 			if (modified) {
 				// More removals might be possible
-				var gr = context.Cache.GetGotoRemoval();
-				try {
-					gr.RemoveGotos(method);
-				}
-				finally {
-					context.Cache.Return(gr);
-				}
+				RemoveGotos(context, method);
 			}
 		}
 		

@@ -1420,6 +1420,8 @@ namespace ICSharpCode.NRefactory.VB.Visitors {
 				clause.ExceptionType = (AstType)catchClause.Type.AcceptVisitor(this, data);
 			if (!catchClause.VariableNameToken.IsNull)
 				clause.ExceptionVariable = Identifier.Create(catchClause.VariableNameToken.Annotations, catchClause.VariableName);
+			if (!catchClause.Condition.IsNull)
+				clause.WhenExpression = (Expression)catchClause.Condition.AcceptVisitor(this, data);
 			ConvertNodes(catchClause.Body.Statements, clause.Statements);
 			
 			return EndNode(catchClause, clause);
@@ -2207,6 +2209,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors {
 				decl.Modifiers |= Modifiers.Iterator;
 			}
 
+			ConvertNodes(propertyDeclaration.Variables, decl.Variables);
 			ConvertNodes(provider.GetParametersForProperty(propertyDeclaration), decl.Parameters);
 			
 			return EndNode(propertyDeclaration, decl);

@@ -11,7 +11,11 @@ namespace ICSharpCode.NRefactory.VB.Ast
 		
 		public static readonly Role<Accessor> GetterRole = new Role<Accessor>("Getter", Accessor.Null);
 		public static readonly Role<Accessor> SetterRole = new Role<Accessor>("Setter", Accessor.Null);
-		
+
+		public AstNodeCollection<VariableDeclarator> Variables {
+			get { return GetChildrenByRole(VariableDeclarator.VariableDeclaratorRole); }
+		}
+
 		public Identifier Name {
 			get { return GetChildByRole(Roles.Identifier); }
 			set { SetChildByRole(Roles.Identifier, value); }

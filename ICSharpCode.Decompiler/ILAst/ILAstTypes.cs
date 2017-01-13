@@ -123,6 +123,14 @@ namespace ICSharpCode.Decompiler.ILAst {
 		{
 			return null;
 		}
+
+		public bool HasChildren {
+			get {
+				foreach (var c in GetChildren())
+					return true;
+				return false;
+			}
+		}
 		
 		public ILNode GetChildren()
 		{
@@ -199,9 +207,17 @@ namespace ICSharpCode.Decompiler.ILAst {
 				builder.Add(new SourceStatement(binSpan, new TextSpan(startLoc, endLoc - startLoc)));
 		}
 
-		protected void WriteHiddenStart(IDecompilerOutput output, MethodDebugInfoBuilder builder, IEnumerable<BinSpan> extraBinSpans = null)
+		protected struct BraceInfo {
+			public int Start { get; }
+			public BraceInfo(int start) {
+				Start = start;
+			}
+		}
+
+		protected BraceInfo WriteHiddenStart(IDecompilerOutput output, MethodDebugInfoBuilder builder, IEnumerable<BinSpan> extraBinSpans = null)
 		{
 			var location = output.NextPosition;
+			var start = output.NextPosition;
 			output.Write("{", BoxedTextColor.Punctuation);
 			var ilr = new List<BinSpan>(BinSpans);
 			if (extraBinSpans != null)
@@ -209,13 +225,16 @@ namespace ICSharpCode.Decompiler.ILAst {
 			UpdateDebugInfo(builder, location, output.NextPosition, ilr);
 			output.WriteLine();
 			output.IncreaseIndent();
+			return new BraceInfo(start);
 		}
 
-		protected void WriteHiddenEnd(IDecompilerOutput output, MethodDebugInfoBuilder builder)
+		protected void WriteHiddenEnd(IDecompilerOutput output, MethodDebugInfoBuilder builder, BraceInfo info)
 		{
 			output.DecreaseIndent();
 			var location = output.NextPosition;
+			var end = output.NextPosition;
 			output.Write("}", BoxedTextColor.Punctuation);
+			output.AddBracePair(new TextSpan(info.Start, 1), new TextSpan(end, 1), CodeBracesRangeFlags.MethodBraces);
 			UpdateDebugInfo(builder, location, output.NextPosition, EndBinSpans);
 			output.WriteLine();
 		}
@@ -274,19 +293,23 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 		internal void WriteTo(IDecompilerOutput output, MethodDebugInfoBuilder builder, IEnumerable<BinSpan> binSpans)
 		{
-			WriteHiddenStart(output, builder, binSpans);
+			var info = WriteHiddenStart(output, builder, binSpans);
 			foreach(ILNode child in this.GetChildren()) {
 				child.WriteTo(output, builder);
 				if (!child.WritesNewLine)
 					output.WriteLine();
 			}
-			WriteHiddenEnd(output, builder);
+			WriteHiddenEnd(output, builder, info);
 		}
 	}
 	
 	public class ILBlock: ILBlockBase
 	{
 		public ILExpression EntryGoto;
+		
+		public ILBlock()
+		{
+		}
 		
 		public ILBlock(params ILNode[] body) : base(body)
 		{
@@ -334,12 +357,16 @@ namespace ICSharpCode.Decompiler.ILAst {
 	
 	public class ILTryCatchBlock: ILNode
 	{
-		public class CatchBlock: ILBlock
-		{
-			public bool IsFilter;
+		public abstract class CatchBlockBase: ILBlock {
 			public TypeSig ExceptionType;
 			public ILVariable ExceptionVariable;
 			public List<BinSpan> StlocBinSpans = new List<BinSpan>(1);
+
+			protected CatchBlockBase(bool calculateBinSpans, List<ILNode> body) {
+				this.Body = body;
+				if (calculateBinSpans && body.Count > 0 && body[0].Match(ILCode.Pop))
+					body[0].AddSelfAndChildrenRecursiveBinSpans(StlocBinSpans);
+			}
 
 			public override BinSpan GetAllBinSpans(ref long index, ref bool done) {
 				if (index < BinSpans.Count)
@@ -352,58 +379,55 @@ namespace ICSharpCode.Decompiler.ILAst {
 				done = true;
 				return default(BinSpan);
 			}
+		}
+		public class CatchBlock: CatchBlockBase
+		{
+			public FilterILBlock FilterBlock;
 
-			public CatchBlock()
+			public CatchBlock(bool calculateBinSpans, List<ILNode> body) : base(calculateBinSpans, body)
 			{
-			}
-
-			public CatchBlock(bool calculateBinSpans, List<ILNode> body)
-			{
-				this.Body = body;
-				if (calculateBinSpans && body.Count > 0 && body[0].Match(ILCode.Pop))
-					body[0].AddSelfAndChildrenRecursiveBinSpans(StlocBinSpans);
 			}
 			
 			public override void WriteTo(IDecompilerOutput output, MethodDebugInfoBuilder builder)
 			{
+				FilterBlock?.WriteTo(output, builder);
 				var startLoc = output.NextPosition;
-				if (IsFilter) {
-					output.Write("filter", BoxedTextColor.Keyword);
-					output.Write(" ", BoxedTextColor.Text);
-					output.Write(ExceptionVariable.Name, ExceptionVariable, DecompilerReferenceFlags.None, BoxedTextColor.Local);
-				}
-				else if (ExceptionType != null) {
+				if (ExceptionType != null) {
 					output.Write("catch", BoxedTextColor.Keyword);
 					output.Write(" ", BoxedTextColor.Text);
 					output.Write(ExceptionType.FullName, ExceptionType, DecompilerReferenceFlags.None, CSharpMetadataTextColorProvider.Instance.GetColor(ExceptionType));
 					if (ExceptionVariable != null) {
 						output.Write(" ", BoxedTextColor.Text);
-						output.Write(ExceptionVariable.Name, ExceptionVariable, DecompilerReferenceFlags.None, BoxedTextColor.Local);
+						output.Write(ExceptionVariable.Name, (object)ExceptionVariable.OriginalVariable ?? (object)ExceptionVariable.OriginalParameter ?? ExceptionVariable, DecompilerReferenceFlags.Local | DecompilerReferenceFlags.Definition, BoxedTextColor.Local);
 					}
 				}
 				else {
 					output.Write("handler", BoxedTextColor.Keyword);
-					output.Write(" ", BoxedTextColor.Text);
-					output.Write(ExceptionVariable.Name, ExceptionVariable, DecompilerReferenceFlags.None, BoxedTextColor.Local);
+					if (ExceptionVariable != null) {
+						output.Write(" ", BoxedTextColor.Text);
+						output.Write(ExceptionVariable.Name, (object)ExceptionVariable.OriginalVariable ?? (object)ExceptionVariable.OriginalParameter ?? ExceptionVariable, DecompilerReferenceFlags.Local | DecompilerReferenceFlags.Definition, BoxedTextColor.Local);
+					}
 				}
 				UpdateDebugInfo(builder, startLoc, output.NextPosition, StlocBinSpans);
 				output.Write(" ", BoxedTextColor.Text);
 				base.WriteTo(output, builder);
 			}
 		}
-		public class FilterILBlock: CatchBlock
+		public class FilterILBlock: CatchBlockBase
 		{
-			public FilterILBlock()
+			public FilterILBlock(bool calculateBinSpans, List<ILNode> body) : base(calculateBinSpans, body)
 			{
-				IsFilter = true;
 			}
 
-			public CatchBlock HandlerBlock;
-			
 			public override void WriteTo(IDecompilerOutput output, MethodDebugInfoBuilder builder)
 			{
+				output.Write("filter", BoxedTextColor.Keyword);
+				if (ExceptionVariable != null) {
+					output.Write(" ", BoxedTextColor.Text);
+					output.Write(ExceptionVariable.Name, (object)ExceptionVariable.OriginalVariable ?? (object)ExceptionVariable.OriginalParameter ?? ExceptionVariable, DecompilerReferenceFlags.Local | DecompilerReferenceFlags.Definition, BoxedTextColor.Local);
+					output.Write(" ", BoxedTextColor.Text);
+				}
 				base.WriteTo(output, builder);
-				HandlerBlock.WriteTo(output, builder);
 			}
 		}
 		
@@ -411,7 +435,6 @@ namespace ICSharpCode.Decompiler.ILAst {
 		public List<CatchBlock> CatchBlocks;
 		public ILBlock          FinallyBlock;
 		public ILBlock          FaultBlock;
-		public FilterILBlock    FilterBlock;
 		
 		internal override ILNode GetNext(ref int index)
 		{
@@ -420,27 +443,26 @@ namespace ICSharpCode.Decompiler.ILAst {
 				if (this.TryBlock != null)
 					return this.TryBlock;
 			}
-			if (index <= this.CatchBlocks.Count)
-				return this.CatchBlocks[index++ - 1];
-			if (index == this.CatchBlocks.Count + 1) {
+			int b = 1 + this.CatchBlocks.Count * 2;
+			if (index < b) {
+				var cb = this.CatchBlocks[(index - 1) / 2];
+				index++;
+				if ((index & 1) == 0) {
+					if (cb.FilterBlock != null)
+						return cb.FilterBlock;
+					index++;
+				}
+				return cb;
+			}
+			if (index == b) {
 				index++;
 				if (this.FaultBlock != null)
 					return this.FaultBlock;
 			}
-			if (index == this.CatchBlocks.Count + 2) {
+			if (index == b + 1) {
 				index++;
 				if (this.FinallyBlock != null)
 					return this.FinallyBlock;
-			}
-			if (index == this.CatchBlocks.Count + 3) {
-				index++;
-				if (this.FilterBlock != null)
-					return this.FilterBlock;
-			}
-			if (index == this.CatchBlocks.Count + 4) {
-				index++;
-				if (this.FilterBlock != null && this.FilterBlock.HandlerBlock != null)
-					return this.FilterBlock.HandlerBlock;
 			}
 			return null;
 		}
@@ -462,11 +484,6 @@ namespace ICSharpCode.Decompiler.ILAst {
 				output.Write("finally", BoxedTextColor.Keyword);
 				output.Write(" ", BoxedTextColor.Text);
 				FinallyBlock.WriteTo(output, builder);
-			}
-			if (FilterBlock != null) {
-				output.Write("filter", BoxedTextColor.Keyword);
-				output.Write(" ", BoxedTextColor.Text);
-				FilterBlock.WriteTo(output, builder);
 			}
 		}
 	}
@@ -518,7 +535,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 	{
 		public ILCode Code { get; set; }
 		public object Operand { get; set; }
-		public List<ILExpression> Arguments { get; set; }
+		public List<ILExpression> Arguments { get; }
 		public ILExpressionPrefix[] Prefixes { get; set; }
 		
 		public TypeSig ExpectedType { get; set; }
@@ -527,8 +544,6 @@ namespace ICSharpCode.Decompiler.ILAst {
 		public override bool SafeToAddToEndBinSpans {
 			get { return true; }
 		}
-		
-		public static readonly object AnyOperand = new object();
 		
 		public ILExpression(ILCode code, object operand, List<ILExpression> args)
 		{
@@ -590,17 +605,6 @@ namespace ICSharpCode.Decompiler.ILAst {
 			this.Arguments = new List<ILExpression>(args);
 		}
 		
-		public void AddPrefix(ILExpressionPrefix prefix)
-		{
-			ILExpressionPrefix[] arr = this.Prefixes;
-			if (arr == null)
-				arr = new ILExpressionPrefix[1];
-			else
-				Array.Resize(ref arr, arr.Length + 1);
-			arr[arr.Length - 1] = prefix;
-			this.Prefixes = arr;
-		}
-		
 		public ILExpressionPrefix GetPrefix(ILCode code)
 		{
 			var prefixes = this.Prefixes;
@@ -632,16 +636,26 @@ namespace ICSharpCode.Decompiler.ILAst {
 			} else if (this.Operand is ILLabel[]) {
 				return (ILLabel[])this.Operand;
 			} else {
-				return new ILLabel[] { };
+				return Array.Empty<ILLabel>();
 			}
 		}
-		
+
+		void WriteExpectedType(IDecompilerOutput output) {
+			var parenStart = output.NextPosition;
+			output.Write("[", BoxedTextColor.Punctuation);
+			output.Write("exp", BoxedTextColor.Keyword);
+			output.Write(":", BoxedTextColor.Punctuation);
+			ExpectedType.WriteTo(output, ILNameSyntax.ShortTypeName);
+			output.Write("]", BoxedTextColor.Punctuation);
+			output.AddBracePair(new TextSpan(parenStart, 1), new TextSpan(output.Length - 1, 1), CodeBracesRangeFlags.SquareBrackets);
+		}
+
 		public override void WriteTo(IDecompilerOutput output, MethodDebugInfoBuilder builder)
 		{
 			var startLoc = output.NextPosition;
 			if (Operand is ILVariable && ((ILVariable)Operand).GeneratedByDecompiler) {
 				if (Code == ILCode.Stloc && this.InferredType == null) {
-					output.Write(((ILVariable)Operand).Name, Operand, DecompilerReferenceFlags.None, ((ILVariable)Operand).IsParameter ? BoxedTextColor.Parameter : BoxedTextColor.Local);
+					output.Write(((ILVariable)Operand).Name, Operand, DecompilerReferenceFlags.Local, ((ILVariable)Operand).IsParameter ? BoxedTextColor.Parameter : BoxedTextColor.Local);
 					output.Write(" ", BoxedTextColor.Text);
 					output.Write("=", BoxedTextColor.Operator);
 					output.Write(" ", BoxedTextColor.Text);
@@ -649,17 +663,12 @@ namespace ICSharpCode.Decompiler.ILAst {
 					UpdateDebugInfo(builder, startLoc, output.NextPosition, this.GetSelfAndChildrenRecursiveBinSpans());
 					return;
 				} else if (Code == ILCode.Ldloc) {
-					output.Write(((ILVariable)Operand).Name, Operand, DecompilerReferenceFlags.None, ((ILVariable)Operand).IsParameter ? BoxedTextColor.Parameter : BoxedTextColor.Local);
+					output.Write(((ILVariable)Operand).Name, Operand, DecompilerReferenceFlags.Local, ((ILVariable)Operand).IsParameter ? BoxedTextColor.Parameter : BoxedTextColor.Local);
 					if (this.InferredType != null) {
 						output.Write(":", BoxedTextColor.Punctuation);
 						this.InferredType.WriteTo(output, ILNameSyntax.ShortTypeName);
-						if (this.ExpectedType != null && this.ExpectedType.FullName != this.InferredType.FullName) {
-							output.Write("[", BoxedTextColor.Punctuation);
-							output.Write("exp", BoxedTextColor.Keyword);
-							output.Write(":", BoxedTextColor.Punctuation);
-							this.ExpectedType.WriteTo(output, ILNameSyntax.ShortTypeName);
-							output.Write("]", BoxedTextColor.Punctuation);
-						}
+						if (this.ExpectedType != null && this.ExpectedType.FullName != this.InferredType.FullName)
+							WriteExpectedType(output);
 					}
 					UpdateDebugInfo(builder, startLoc, output.NextPosition, this.GetSelfAndChildrenRecursiveBinSpans());
 					return;
@@ -668,34 +677,27 @@ namespace ICSharpCode.Decompiler.ILAst {
 			
 			if (this.Prefixes != null) {
 				foreach (var prefix in this.Prefixes) {
-					output.Write(prefix.Code.GetName() + ".", BoxedTextColor.OpCode);
+					var prefixName = prefix.Code.GetName() + ".";
+					output.Write(prefixName, prefixName, DecompilerReferenceFlags.Local, BoxedTextColor.OpCode);
 					output.Write(" ", BoxedTextColor.Text);
 				}
 			}
 			
-			output.Write(Code.GetName(), BoxedTextColor.OpCode);
+			var codeName = Code.GetName();
+			output.Write(codeName, codeName, DecompilerReferenceFlags.Local, BoxedTextColor.OpCode);
 			if (this.InferredType != null) {
 				output.Write(":", BoxedTextColor.Punctuation);
 				this.InferredType.WriteTo(output, ILNameSyntax.ShortTypeName);
-				if (this.ExpectedType != null && this.ExpectedType.FullName != this.InferredType.FullName) {
-					output.Write("[", BoxedTextColor.Punctuation);
-					output.Write("exp", BoxedTextColor.Keyword);
-					output.Write(":", BoxedTextColor.Punctuation);
-					this.ExpectedType.WriteTo(output, ILNameSyntax.ShortTypeName);
-					output.Write("]", BoxedTextColor.Punctuation);
-				}
-			} else if (this.ExpectedType != null) {
-				output.Write("[", BoxedTextColor.Punctuation);
-				output.Write("exp", BoxedTextColor.Keyword);
-				output.Write(":", BoxedTextColor.Punctuation);
-				this.ExpectedType.WriteTo(output, ILNameSyntax.ShortTypeName);
-				output.Write("]", BoxedTextColor.Punctuation);
-			}
+				if (this.ExpectedType != null && this.ExpectedType.FullName != this.InferredType.FullName)
+					WriteExpectedType(output);
+			} else if (this.ExpectedType != null)
+				WriteExpectedType(output);
+			var parenStart = output.NextPosition;
 			output.Write("(", BoxedTextColor.Punctuation);
 			bool first = true;
 			if (Operand != null) {
 				if (Operand is ILLabel) {
-					output.Write(((ILLabel)Operand).Name, Operand, DecompilerReferenceFlags.None, BoxedTextColor.Label);
+					output.Write(((ILLabel)Operand).Name, Operand, DecompilerReferenceFlags.Local, BoxedTextColor.Label);
 				} else if (Operand is ILLabel[]) {
 					ILLabel[] labels = (ILLabel[])Operand;
 					for (int i = 0; i < labels.Length; i++) {
@@ -703,9 +705,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 							output.Write(",", BoxedTextColor.Punctuation);
 							output.Write(" ", BoxedTextColor.Text);
 						}
-						output.Write(labels[i].Name, labels[i], DecompilerReferenceFlags.None, BoxedTextColor.Label);
+						output.Write(labels[i].Name, labels[i], DecompilerReferenceFlags.Local, BoxedTextColor.Label);
 					}
-				} else if (Operand is IMethod && (Operand as IMethod).MethodSig != null) {
+				} else if ((Operand as IMethod)?.MethodSig != null) {
 					IMethod method = (IMethod)Operand;
 					if (method.DeclaringType != null) {
 						method.DeclaringType.WriteTo(output, ILNameSyntax.ShortTypeName);
@@ -719,7 +721,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					output.Write(field.Name, field, DecompilerReferenceFlags.None, CSharpMetadataTextColorProvider.Instance.GetColor(field));
 				} else if (Operand is ILVariable) {
 					var ilvar = (ILVariable)Operand;
-					output.Write(ilvar.Name, Operand, DecompilerReferenceFlags.None, ilvar.IsParameter ? BoxedTextColor.Parameter : BoxedTextColor.Local);
+					output.Write(ilvar.Name, Operand, DecompilerReferenceFlags.Local, ilvar.IsParameter ? BoxedTextColor.Parameter : BoxedTextColor.Local);
 				} else {
 					DisassemblerHelpers.WriteOperand(output, Operand);
 				}
@@ -734,6 +736,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				first = false;
 			}
 			output.Write(")", BoxedTextColor.Punctuation);
+			output.AddBracePair(new TextSpan(parenStart, 1), new TextSpan(output.Length - 1, 1), CodeBracesRangeFlags.Parentheses);
 			UpdateDebugInfo(builder, startLoc, output.NextPosition, this.GetSelfAndChildrenRecursiveBinSpans());
 		}
 	}
@@ -763,10 +766,12 @@ namespace ICSharpCode.Decompiler.ILAst {
 			var startLoc = output.NextPosition;
 			output.Write("loop", BoxedTextColor.Keyword);
 			output.Write(" ", BoxedTextColor.Text);
+			var parenStart = output.NextPosition;
 			output.Write("(", BoxedTextColor.Punctuation);
 			if (this.Condition != null)
 				this.Condition.WriteTo(output, null);
 			output.Write(")", BoxedTextColor.Punctuation);
+			output.AddBracePair(new TextSpan(parenStart, 1), new TextSpan(output.Length - 1, 1), CodeBracesRangeFlags.Parentheses);
 			var binSpans = new List<BinSpan>(BinSpans);
 			if (this.Condition != null)
 				this.Condition.AddSelfAndChildrenRecursiveBinSpans(binSpans);
@@ -807,9 +812,11 @@ namespace ICSharpCode.Decompiler.ILAst {
 			var startLoc = output.NextPosition;
 			output.Write("if", BoxedTextColor.Keyword);
 			output.Write(" ", BoxedTextColor.Text);
+			var parenStart = output.NextPosition;
 			output.Write("(", BoxedTextColor.Punctuation);
 			Condition.WriteTo(output, null);
 			output.Write(")", BoxedTextColor.Punctuation);
+			output.AddBracePair(new TextSpan(parenStart, 1), new TextSpan(output.Length - 1, 1), CodeBracesRangeFlags.Parentheses);
 			var binSpans = new List<BinSpan>(BinSpans);
 			Condition.AddSelfAndChildrenRecursiveBinSpans(binSpans);
 			UpdateDebugInfo(builder, startLoc, output.NextPosition, binSpans);
@@ -887,18 +894,20 @@ namespace ICSharpCode.Decompiler.ILAst {
 			var startLoc = output.NextPosition;
 			output.Write("switch", BoxedTextColor.Keyword);
 			output.Write(" ", BoxedTextColor.Text);
+			var parenStart = output.NextPosition;
 			output.Write("(", BoxedTextColor.Punctuation);
 			Condition.WriteTo(output, null);
 			output.Write(")", BoxedTextColor.Punctuation);
+			output.AddBracePair(new TextSpan(parenStart, 1), new TextSpan(output.Length - 1, 1), CodeBracesRangeFlags.Parentheses);
 			var binSpans = new List<BinSpan>(BinSpans);
 			Condition.AddSelfAndChildrenRecursiveBinSpans(binSpans);
 			UpdateDebugInfo(builder, startLoc, output.NextPosition, binSpans);
 			output.Write(" ", BoxedTextColor.Text);
-			WriteHiddenStart(output, builder);
+			var info = WriteHiddenStart(output, builder);
 			foreach (CaseBlock caseBlock in this.CaseBlocks) {
 				caseBlock.WriteTo(output, builder);
 			}
-			WriteHiddenEnd(output, builder);
+			WriteHiddenEnd(output, builder, info);
 		}
 	}
 	
@@ -924,6 +933,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			var startLoc = output.NextPosition;
 			output.Write("fixed", BoxedTextColor.Keyword);
 			output.Write(" ", BoxedTextColor.Text);
+			var parenStart = output.NextPosition;
 			output.Write("(", BoxedTextColor.Punctuation);
 			for (int i = 0; i < this.Initializers.Count; i++) {
 				if (i > 0) {
@@ -933,6 +943,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				this.Initializers[i].WriteTo(output, null);
 			}
 			output.Write(")", BoxedTextColor.Punctuation);
+			output.AddBracePair(new TextSpan(parenStart, 1), new TextSpan(output.Length - 1, 1), CodeBracesRangeFlags.Parentheses);
 			var binSpans = new List<BinSpan>(BinSpans);
 			foreach (var i in Initializers)
 				i.AddSelfAndChildrenRecursiveBinSpans(binSpans);

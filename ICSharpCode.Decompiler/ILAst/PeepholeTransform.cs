@@ -434,6 +434,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				case ILCode.Stobj:
 				case ILCode.CallSetter:
 				case ILCode.CallvirtSetter:
+				case ILCode.CallReadOnlySetter:
 					break;
 				default:
 					if (!store.Code.IsStoreToArray())
@@ -644,7 +645,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					// non-static getters would have the 'this' argument
 					if (exprInit.Arguments.Count != 0)
 						return false;
-					if (storeInstruction != ILCode.CallSetter)
+					if (storeInstruction != ILCode.CallSetter && storeInstruction != ILCode.CallReadOnlySetter)
 						return false;
 					if (!IsGetterSetterPair(exprInit.Operand, nextExpr.Operand))
 						return false;

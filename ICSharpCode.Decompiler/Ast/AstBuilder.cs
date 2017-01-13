@@ -79,6 +79,7 @@ namespace ICSharpCode.Decompiler.Ast {
 		bool transformationsHaveRun;
 		readonly StringBuilder stringBuilder;// PERF: prevent extra created strings
 		readonly char[] commentBuffer;// PERF: prevent extra created strings
+		internal AutoPropertyProvider AutoPropertyProvider { get; } = new AutoPropertyProvider();
 
 		// "0x" + hexChars(uint)
 		const int COMMENT_BUFFER_LENGTH = 2 + 8;
@@ -110,6 +111,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			this.astNamespaces.Clear();
 			this.stringBuilder.Clear();
 			this.context.Reset();
+			this.AutoPropertyProvider.Reset();
 		}
 
 		public static bool MemberIsHidden(IMemberRef member, DecompilerSettings settings)
@@ -134,6 +136,8 @@ namespace ICSharpCode.Decompiler.Ast {
 					if (settings.YieldReturn && YieldReturnDecompiler.IsCompilerGeneratorEnumerator(type))
 						return true;
 					if (settings.AsyncAwait && AsyncDecompiler.IsCompilerGeneratedStateMachine(type))
+						return true;
+					if (type.IsDynamicCallSiteContainerType())
 						return true;
 				} else if (type.IsCompilerGenerated()) {
 					if (type.Name.StartsWith("<PrivateImplementationDetails>", StringComparison.Ordinal))
@@ -180,7 +184,7 @@ namespace ICSharpCode.Decompiler.Ast {
 
 		static bool IsClosureType(TypeDef type)
 		{
-			return type.HasGeneratedName() && type.IsCompilerGenerated() && (type.Name.Contains("DisplayClass") || type.Name.Contains("AnonStorey"));
+			return type.HasGeneratedName() && type.IsCompilerGenerated() && (type.Name == "<>c" || type.Name.StartsWith("<>c__") || type.Name.Contains("DisplayClass") || type.Name.Contains("AnonStorey"));
 		}
 		
 		/// <summary>
@@ -244,11 +248,11 @@ namespace ICSharpCode.Decompiler.Ast {
 			}
 			
 			if (decompileAsm && moduleDefinition.Assembly != null) {
-				ConvertCustomAttributes(Context.MetadataTextColorProvider, syntaxTree, moduleDefinition.Assembly, context.Settings.SortCustomAttributes, stringBuilder, "assembly");
+				ConvertCustomAttributes(Context.MetadataTextColorProvider, syntaxTree, moduleDefinition.Assembly, context.Settings, stringBuilder, "assembly");
 				ConvertSecurityAttributes(Context.MetadataTextColorProvider, syntaxTree, moduleDefinition.Assembly, stringBuilder, "assembly");
 			}
 			if (decompileMod) {
-				ConvertCustomAttributes(Context.MetadataTextColorProvider, syntaxTree, moduleDefinition, context.Settings.SortCustomAttributes, stringBuilder, "module");
+				ConvertCustomAttributes(Context.MetadataTextColorProvider, syntaxTree, moduleDefinition, context.Settings, stringBuilder, "module");
 				AddTypeForwarderAttributes(syntaxTree, moduleDefinition, "assembly");
 			}
 			
@@ -436,7 +440,7 @@ namespace ICSharpCode.Decompiler.Ast {
 						}
 					} else {
 						EnumMemberDeclaration enumMember = new EnumMemberDeclaration();
-						ConvertCustomAttributes(Context.MetadataTextColorProvider, enumMember, field, context.Settings.SortCustomAttributes, stringBuilder);
+						ConvertCustomAttributes(Context.MetadataTextColorProvider, enumMember, field, context.Settings, stringBuilder);
 						enumMember.AddAnnotation(field);
 						enumMember.NameToken = Identifier.Create(CleanName(field.Name)).WithAnnotation(field);
 						var constant = field.Constant == null ? null : field.Constant.Value;
@@ -463,7 +467,7 @@ namespace ICSharpCode.Decompiler.Ast {
 				foreach (var m in typeDef.Methods) {
 					if (m.Name == "Invoke") {
 						dd.ReturnType = ConvertType(m.ReturnType, stringBuilder, m.Parameters.ReturnParameter.ParamDef);
-						dd.Parameters.AddRange(MakeParameters(Context.MetadataTextColorProvider, m, context.Settings.SortCustomAttributes, stringBuilder));
+						dd.Parameters.AddRange(MakeParameters(Context.MetadataTextColorProvider, m, context.Settings, stringBuilder));
 						ConvertAttributes(dd, m.Parameters.ReturnParameter, m.Module);
 						AddComment(dd, m, "Invoke");
 					}
@@ -1036,7 +1040,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			astMethod.ReturnType = ConvertType(methodDef.ReturnType, stringBuilder, methodDef.Parameters.ReturnParameter.ParamDef);
 			astMethod.NameToken = Identifier.Create(CleanName(methodDef.Name)).WithAnnotation(methodDef);
 			astMethod.TypeParameters.AddRange(MakeTypeParameters(methodDef.GenericParameters));
-			astMethod.Parameters.AddRange(MakeParameters(Context.MetadataTextColorProvider, methodDef, context.Settings.SortCustomAttributes, stringBuilder));
+			astMethod.Parameters.AddRange(MakeParameters(Context.MetadataTextColorProvider, methodDef, context.Settings, stringBuilder));
 			bool createMethodBody = false;
 			// constraints for override and explicit interface implementation methods are inherited from the base method, so they cannot be specified directly
 			if (!methodDef.IsVirtual || (methodDef.IsNewSlot && !methodDef.IsPrivate)) astMethod.Constraints.AddRange(MakeConstraints(methodDef.GenericParameters));
@@ -1105,7 +1109,7 @@ namespace ICSharpCode.Decompiler.Ast {
 					tp.Variance = VarianceModifier.Contravariant;
 				else if (gp.IsCovariant)
 					tp.Variance = VarianceModifier.Covariant;
-				ConvertCustomAttributes(Context.MetadataTextColorProvider, tp, gp, context.Settings.SortCustomAttributes, stringBuilder);
+				ConvertCustomAttributes(Context.MetadataTextColorProvider, tp, gp, context.Settings, stringBuilder);
 				yield return tp;
 			}
 		}
@@ -1148,7 +1152,7 @@ namespace ICSharpCode.Decompiler.Ast {
 				astMethod.Modifiers &= ~Modifiers.VisibilityMask;
 			}
 			astMethod.NameToken = Identifier.Create(CleanName(methodDef.DeclaringType.Name)).WithAnnotation(methodDef.DeclaringType);
-			astMethod.Parameters.AddRange(MakeParameters(Context.MetadataTextColorProvider, methodDef, context.Settings.SortCustomAttributes, stringBuilder));
+			astMethod.Parameters.AddRange(MakeParameters(Context.MetadataTextColorProvider, methodDef, context.Settings, stringBuilder));
 			MethodDebugInfoBuilder builder;
 			astMethod.Body = CreateMethodBody(methodDef, astMethod.Parameters, false, MethodKind.Method, out builder);
 			astMethod.AddAnnotation(builder);
@@ -1227,7 +1231,7 @@ namespace ICSharpCode.Decompiler.Ast {
 				ConvertAttributes(astProp.Setter, propDef.SetMethod);
 				Parameter lastParam = propDef.SetMethod.Parameters.SkipNonNormal().LastOrDefault();
 				if (lastParam != null) {
-					ConvertCustomAttributes(Context.MetadataTextColorProvider, astProp.Setter, lastParam.ParamDef, context.Settings.SortCustomAttributes, stringBuilder, "param");
+					ConvertCustomAttributes(Context.MetadataTextColorProvider, astProp.Setter, lastParam.ParamDef, context.Settings, stringBuilder, "param");
 					if (lastParam.HasParamDef && lastParam.ParamDef.HasMarshalType) {
 						astProp.Setter.Attributes.Add(new AttributeSection(ConvertMarshalInfo(lastParam.ParamDef, propDef.Module, stringBuilder)) { AttributeTarget = "param" });
 					}
@@ -1236,7 +1240,7 @@ namespace ICSharpCode.Decompiler.Ast {
 				if ((setterModifiers & Modifiers.VisibilityMask) != (astProp.Modifiers & Modifiers.VisibilityMask))
 					astProp.Setter.Modifiers = setterModifiers & Modifiers.VisibilityMask;
 			}
-			ConvertCustomAttributes(Context.MetadataTextColorProvider, astProp, propDef, context.Settings.SortCustomAttributes, stringBuilder);
+			ConvertCustomAttributes(Context.MetadataTextColorProvider, astProp, propDef, context.Settings, stringBuilder);
 
 			EntityDeclaration member = astProp;
 			if(propDef.IsIndexer())
@@ -1262,7 +1266,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			astIndexer.ReturnType = astProp.ReturnType.Detach();
 			astIndexer.Getter = astProp.Getter.Detach();
 			astIndexer.Setter = astProp.Setter.Detach();
-			astIndexer.Parameters.AddRange(MakeParameters(Context.MetadataTextColorProvider, propDef.GetParameters().ToList(), context.Settings.SortCustomAttributes, stringBuilder));
+			astIndexer.Parameters.AddRange(MakeParameters(Context.MetadataTextColorProvider, propDef.GetParameters().ToList(), context.Settings, stringBuilder));
 			return astIndexer;
 		}
 		
@@ -1271,7 +1275,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			if (eventDef.AddMethod != null && eventDef.AddMethod.IsAbstract) {
 				// An abstract event cannot be custom
 				EventDeclaration astEvent = new EventDeclaration();
-				ConvertCustomAttributes(Context.MetadataTextColorProvider, astEvent, eventDef, context.Settings.SortCustomAttributes, stringBuilder);
+				ConvertCustomAttributes(Context.MetadataTextColorProvider, astEvent, eventDef, context.Settings, stringBuilder);
 				astEvent.AddAnnotation(eventDef);
 				astEvent.Variables.Add(new VariableInitializer(eventDef, CleanName(eventDef.Name)));
 				astEvent.ReturnType = ConvertType(eventDef.EventType, stringBuilder, eventDef);
@@ -1285,7 +1289,7 @@ namespace ICSharpCode.Decompiler.Ast {
 				return astEvent;
 			} else {
 				CustomEventDeclaration astEvent = new CustomEventDeclaration();
-				ConvertCustomAttributes(Context.MetadataTextColorProvider, astEvent, eventDef, context.Settings.SortCustomAttributes, stringBuilder);
+				ConvertCustomAttributes(Context.MetadataTextColorProvider, astEvent, eventDef, context.Settings, stringBuilder);
 				astEvent.AddAnnotation(eventDef);
 				astEvent.NameToken = Identifier.Create(CleanName(eventDef.Name)).WithAnnotation(eventDef);
 				astEvent.ReturnType = ConvertType(eventDef.EventType, stringBuilder, eventDef);
@@ -1355,7 +1359,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			case DecompiledBodyKind.Full:
 				string msg;
 				try {
-					return AstMethodBodyBuilder.CreateMethodBody(method, context, parameters, valueParameterIsKeyword, stringBuilder, out builder);
+					return AstMethodBodyBuilder.CreateMethodBody(method, context, AutoPropertyProvider, parameters, valueParameterIsKeyword, stringBuilder, out builder);
 				}
 				catch (OperationCanceledException) {
 					throw;
@@ -1475,7 +1479,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			if (fieldDef.HasConstant) {
 				initializer.Initializer = CreateExpressionForConstant(fieldDef.Constant.Value, fieldDef.FieldType, stringBuilder, fieldDef.DeclaringType.IsEnum);
 			}
-			ConvertAttributes(Context.MetadataTextColorProvider, astField, fieldDef, context.Settings.SortCustomAttributes, stringBuilder);
+			ConvertAttributes(Context.MetadataTextColorProvider, astField, fieldDef, context.Settings, stringBuilder);
 			SetNewModifier(astField);
 			AddComment(astField, fieldDef);
 			return astField;
@@ -1536,9 +1540,9 @@ namespace ICSharpCode.Decompiler.Ast {
 			}
 		}
 		
-		public static IEnumerable<ParameterDeclaration> MakeParameters(MetadataTextColorProvider metadataTextColorProvider, MethodDef method, bool sortCAs, StringBuilder sb, bool isLambda = false)
+		public static IEnumerable<ParameterDeclaration> MakeParameters(MetadataTextColorProvider metadataTextColorProvider, MethodDef method, DecompilerSettings settings, StringBuilder sb, bool isLambda = false)
 		{
-			var parameters = MakeParameters(metadataTextColorProvider, method.Parameters, sortCAs, sb, isLambda);
+			var parameters = MakeParameters(metadataTextColorProvider, method.Parameters, settings, sb, isLambda);
 			if (method.CallingConvention == dnlib.DotNet.CallingConvention.VarArg ||
 				method.CallingConvention == dnlib.DotNet.CallingConvention.NativeVarArg) {
 				var pd = new ParameterDeclaration {
@@ -1551,7 +1555,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			}
 		}
 		
-		static IEnumerable<ParameterDeclaration> MakeParameters(MetadataTextColorProvider metadataTextColorProvider, IEnumerable<Parameter> paramCol, bool sortCAs, StringBuilder sb, bool isLambda = false)
+		static IEnumerable<ParameterDeclaration> MakeParameters(MetadataTextColorProvider metadataTextColorProvider, IEnumerable<Parameter> paramCol, DecompilerSettings settings, StringBuilder sb, bool isLambda = false)
 		{
 			foreach (Parameter paramDef in paramCol) {
 				if (paramDef.IsHiddenThisParameter)
@@ -1579,7 +1583,7 @@ namespace ICSharpCode.Decompiler.Ast {
 					astParam.DefaultExpression = CreateExpressionForConstant(c == null ? null : c.Value, paramDef.Type, sb);
 				}
 				
-				ConvertCustomAttributes(metadataTextColorProvider, astParam, paramDef.ParamDef, sortCAs, sb);
+				ConvertCustomAttributes(metadataTextColorProvider, astParam, paramDef.ParamDef, settings, sb);
 				ModuleDef module = paramDef.Method == null ? null : paramDef.Method.Module;
 				if (module != null && paramDef.HasParamDef && paramDef.ParamDef.HasMarshalType) {
 					astParam.Attributes.Add(new AttributeSection(ConvertMarshalInfo(paramDef.ParamDef, module, sb)));
@@ -1598,7 +1602,7 @@ namespace ICSharpCode.Decompiler.Ast {
 		#region ConvertAttributes
 		void ConvertAttributes(EntityDeclaration attributedNode, TypeDef typeDef)
 		{
-			ConvertCustomAttributes(Context.MetadataTextColorProvider, attributedNode, typeDef, context.Settings.SortCustomAttributes, stringBuilder);
+			ConvertCustomAttributes(Context.MetadataTextColorProvider, attributedNode, typeDef, context.Settings, stringBuilder);
 			ConvertSecurityAttributes(Context.MetadataTextColorProvider, attributedNode, typeDef, stringBuilder);
 			
 			// Handle the non-custom attributes:
@@ -1689,7 +1693,7 @@ namespace ICSharpCode.Decompiler.Ast {
 		
 		void ConvertAttributes(EntityDeclaration attributedNode, MethodDef methodDef)
 		{
-			ConvertCustomAttributes(Context.MetadataTextColorProvider, attributedNode, methodDef, context.Settings.SortCustomAttributes, stringBuilder);
+			ConvertCustomAttributes(Context.MetadataTextColorProvider, attributedNode, methodDef, context.Settings, stringBuilder);
 			ConvertSecurityAttributes(Context.MetadataTextColorProvider, attributedNode, methodDef, stringBuilder);
 			
 			MethodImplAttributes implAttributes = methodDef.ImplAttributes & ~MethodImplAttributes.CodeTypeMask;
@@ -1792,16 +1796,16 @@ namespace ICSharpCode.Decompiler.Ast {
 		
 		void ConvertAttributes(EntityDeclaration attributedNode, Parameter methodReturnType, ModuleDef module)
 		{
-			ConvertCustomAttributes(Context.MetadataTextColorProvider, attributedNode, methodReturnType.ParamDef, context.Settings.SortCustomAttributes, stringBuilder, "return");
+			ConvertCustomAttributes(Context.MetadataTextColorProvider, attributedNode, methodReturnType.ParamDef, context.Settings, stringBuilder, "return");
 			if (methodReturnType.HasParamDef && methodReturnType.ParamDef.HasMarshalType) {
 				var marshalInfo = ConvertMarshalInfo(methodReturnType.ParamDef, module, stringBuilder);
 				attributedNode.Attributes.Add(new AttributeSection(marshalInfo) { AttributeTarget = "return" });
 			}
 		}
 		
-		internal static void ConvertAttributes(MetadataTextColorProvider metadataTextColorProvider, EntityDeclaration attributedNode, FieldDef fieldDef, bool sort, StringBuilder sb, string attributeTarget = null)
+		internal static void ConvertAttributes(MetadataTextColorProvider metadataTextColorProvider, EntityDeclaration attributedNode, FieldDef fieldDef, DecompilerSettings settings, StringBuilder sb, string attributeTarget = null)
 		{
-			ConvertCustomAttributes(metadataTextColorProvider, attributedNode, fieldDef, sort, sb);
+			ConvertCustomAttributes(metadataTextColorProvider, attributedNode, fieldDef, settings, sb);
 			
 			#region FieldOffsetAttribute
 			if (fieldDef.HasLayoutInfo && fieldDef.FieldOffset.HasValue) {
@@ -1935,14 +1939,20 @@ namespace ICSharpCode.Decompiler.Ast {
 		static readonly UTF8String systemDiagnosticsString = new UTF8String("System.Diagnostics");
 		static readonly UTF8String debuggerStepThroughAttributeString = new UTF8String("DebuggerStepThroughAttribute");
 		static readonly UTF8String asyncStateMachineAttributeString = new UTF8String("AsyncStateMachineAttribute");
-		static readonly UTF8String debuggerBrowsableAttribute = new UTF8String("DebuggerBrowsableAttribute");
-		static void ConvertCustomAttributes(MetadataTextColorProvider metadataTextColorProvider, AstNode attributedNode, IHasCustomAttribute customAttributeProvider, bool sort, StringBuilder sb, string attributeTarget = null)
+		static readonly UTF8String debuggerBrowsableAttributeString = new UTF8String("DebuggerBrowsableAttribute");
+		static readonly UTF8String iteratorStateMachineAttributeString = new UTF8String("IteratorStateMachineAttribute");
+		static void ConvertCustomAttributes(MetadataTextColorProvider metadataTextColorProvider, AstNode attributedNode, IHasCustomAttribute customAttributeProvider, DecompilerSettings settings, StringBuilder sb, string attributeTarget = null)
 		{
-			EntityDeclaration entityDecl = attributedNode as EntityDeclaration;
 			if (customAttributeProvider != null && customAttributeProvider.HasCustomAttributes) {
+				EntityDeclaration entityDecl = attributedNode as EntityDeclaration;
 				var attributes = new List<ICSharpCode.NRefactory.CSharp.Attribute>();
 				bool isFieldOrEvent = attributedNode is FieldDeclaration || attributedNode is EventDeclaration || attributedNode is CustomEventDeclaration;
-				foreach (var customAttribute in SortCustomAttributes(customAttributeProvider, sort, sb)) {
+				bool isParameter = attributedNode is ParameterDeclaration;
+				bool isMethod = attributedNode is MethodDeclaration || attributedNode is Accessor;
+				bool onePerLine = attributeTarget == "module" || attributeTarget == "assembly" ||
+					// Params ignore the option
+					(settings.OneCustomAttributePerLine && entityDecl != null);
+				foreach (var customAttribute in SortCustomAttributes(customAttributeProvider, settings.SortCustomAttributes, sb)) {
 					var attributeType = customAttribute.AttributeType;
 					if (attributeType == null)
 						continue;
@@ -1956,14 +1966,14 @@ namespace ICSharpCode.Decompiler.Ast {
 					}
 					// if the method is async, remove [DebuggerStepThrough] and [Async
 					if (entityDecl != null && entityDecl.HasModifier(Modifiers.Async)) {
-						if (attributeType.Compare(systemDiagnosticsString, debuggerStepThroughAttributeString)) {
+						if (attributeType.Compare(systemDiagnosticsString, debuggerStepThroughAttributeString))
 							continue;
-						}
-						if (attributeType.Compare(systemRuntimeCompilerServicesString, asyncStateMachineAttributeString)) {
-							continue;
-						}
 					}
-					if (isFieldOrEvent && attributeType.Compare(systemDiagnosticsString, debuggerBrowsableAttribute))
+					if (isFieldOrEvent && attributeType.Compare(systemDiagnosticsString, debuggerBrowsableAttributeString))
+						continue;
+					if (isParameter && attributeType.Compare(systemRuntimeCompilerServicesString, dynamicAttributeString))
+						continue;
+					if (isMethod && (attributeType.Compare(systemRuntimeCompilerServicesString, iteratorStateMachineAttributeString) || attributeType.Compare(systemRuntimeCompilerServicesString, asyncStateMachineAttributeString)))
 						continue;
 					
 					var attribute = new ICSharpCode.NRefactory.CSharp.Attribute();
@@ -2002,7 +2012,7 @@ namespace ICSharpCode.Decompiler.Ast {
 					}
 				}
 
-				if (attributeTarget == "module" || attributeTarget == "assembly") {
+				if (onePerLine) {
 					// use separate section for each attribute
 					foreach (var attribute in attributes) {
 						var section = new AttributeSection();

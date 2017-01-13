@@ -174,7 +174,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 		static IEnumerable<TypeDef> GetTypes(List<AssemblyDef> asms)
 		{
 			if (asms.Count == 0)
-				return new TypeDef[0];
+				return Array.Empty<TypeDef>();
 			if (asms.Count == 1) {
 				if (asms[0].Modules.Count == 1)
 					return asms[0].ManifestModule.Types;

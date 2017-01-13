@@ -405,11 +405,15 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				}
 			}
 			MethodDef methodDef = mr.Resolve();
-			if (methodDef != null && methodDef.IsGetter) {
-				PropertyDef indexer = AstMethodBodyBuilder.GetIndexer(methodDef);
-				if (indexer != null)
-					return new IndexerExpression(mre.Target.Detach(), arguments).WithAnnotation(indexer);
+			if (methodDef != null) {
+				if (methodDef.IsGetter) {
+					PropertyDef indexer = AstMethodBodyBuilder.GetIndexer(methodDef);
+					if (indexer != null)
+						return new IndexerExpression(mre.Target.Detach(), arguments).WithAnnotation(indexer);
+				}
 			}
+			else if (mr.Name == "get_Item")
+				return new IndexerExpression(mre.Target.Detach(), arguments).WithAnnotation(mr);
 			return new InvocationExpression(mre, arguments).WithAnnotation(mr);
 		}
 		

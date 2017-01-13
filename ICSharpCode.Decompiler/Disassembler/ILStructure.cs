@@ -86,14 +86,15 @@ namespace ICSharpCode.Decompiler.Disassembler {
 		public ILStructure(CilBody body)
 			: this(ILStructureType.Root, 0, body.GetCodeSize())
 		{
+			uint codeSize = (uint)body.GetCodeSize();
 			// Build the tree of exception structures:
 			for (int i = 0; i < body.ExceptionHandlers.Count; i++) {
 				ExceptionHandler eh = body.ExceptionHandlers[i];
 				if (!body.ExceptionHandlers.Take(i).Any(oldEh => oldEh.TryStart == eh.TryStart && oldEh.TryEnd == eh.TryEnd))
-					AddNestedStructure(new ILStructure(ILStructureType.Try, (int)eh.TryStart.GetOffset(), (int)eh.TryEnd.GetOffset(), eh));
+					AddNestedStructure(new ILStructure(ILStructureType.Try, (int)eh.TryStart.GetOffset(), (int)(eh.TryEnd?.Offset ?? codeSize), eh));
 				if (eh.HandlerType == ExceptionHandlerType.Filter)
 					AddNestedStructure(new ILStructure(ILStructureType.Filter, (int)eh.FilterStart.GetOffset(), (int)eh.HandlerStart.GetOffset(), eh));
-				AddNestedStructure(new ILStructure(ILStructureType.Handler, (int)eh.HandlerStart.GetOffset(), eh.HandlerEnd == null ? body.GetCodeSize() : (int)eh.HandlerEnd.GetOffset(), eh));
+				AddNestedStructure(new ILStructure(ILStructureType.Handler, (int)eh.HandlerStart.GetOffset(), (int)(eh.HandlerEnd?.Offset ?? codeSize), eh));
 			}
 			// Very simple loop detection: look for backward branches
 			List<KeyValuePair<Instruction, Instruction>> allBranches = FindAllBranches(body);

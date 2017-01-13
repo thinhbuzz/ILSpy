@@ -52,12 +52,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 			foreach(ILBasicBlock bb in method.GetSelfAndChildrenRecursive<ILBasicBlock>(List_ILBasicBlock)) {
 				int index = 0;
 				for (;;) {
-					var node = bb.GetNext(ref index);
-					if (node == null)
-						break;
-					var label = node as ILLabel;
+					var label = bb.GetNext(ref index) as ILLabel;
 					if (label == null)
-						continue;
+						break;
 					labelToBasicBlock[label] = bb;
 				}
 			}

@@ -45,14 +45,16 @@ namespace ICSharpCode.Decompiler.ILAst
 		FieldDef currentField;
 		Dictionary<FieldDef, ILVariable> fieldToParameterMap = new Dictionary<FieldDef, ILVariable>();
 		List<ILNode> newBody;
-		
+		AutoPropertyProvider autoPropertyProvider;
+
 		#region Run() method
-		public static void Run(DecompilerContext context, ILBlock method, List<ILNode> list_ILNode, Func<ILBlock, ILInlining> getILInlining)
+		public static void Run(DecompilerContext context, ILBlock method, AutoPropertyProvider autoPropertyProvider, List<ILNode> list_ILNode, Func<ILBlock, ILInlining> getILInlining)
 		{
 			if (!context.Settings.YieldReturn)
 				return; // abort if enumerator decompilation is disabled
 			var yrd = new YieldReturnDecompiler();
 			yrd.context = context;
+			yrd.autoPropertyProvider = autoPropertyProvider;
 			if (!yrd.MatchEnumeratorCreationPattern(method))
 				return;
 			yrd.enumeratorType = yrd.enumeratorCtor.DeclaringType;
@@ -233,7 +235,7 @@ namespace ICSharpCode.Decompiler.ILAst
 
 			var optimizer = this.context.Cache.GetILAstOptimizer();
 			try {
-				optimizer.Optimize(context, ilMethod, ILAstOptimizationStep.YieldReturn);
+				optimizer.Optimize(context, ilMethod, autoPropertyProvider, ILAstOptimizationStep.YieldReturn);
 			}
 			finally {
 				this.context.Cache.Return(optimizer);

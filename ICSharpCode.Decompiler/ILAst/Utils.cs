@@ -26,6 +26,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				case ILCode.Callvirt:
 				case ILCode.CallvirtGetter:
 				case ILCode.CallvirtSetter:
+				case ILCode.CallReadOnlySetter:
 					node = prev;
 					break;
 				}

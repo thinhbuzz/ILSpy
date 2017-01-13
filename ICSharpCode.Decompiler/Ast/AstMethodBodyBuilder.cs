@@ -41,11 +41,13 @@ namespace ICSharpCode.Decompiler.Ast {
 		ICorLibTypes corLib;
 		DecompilerContext context;
 		bool valueParameterIsKeyword;
+		AutoPropertyProvider autoPropertyProvider;
 		readonly HashSet<ILVariable> localVariablesToDefine = new HashSet<ILVariable>(); // local variables that are missing a definition
 		readonly List<ILExpression> ILExpression_List = new List<ILExpression>();
 
 		public void Reset()
 		{
+			autoPropertyProvider = null;
 			localVariablesToDefine.Clear();
 			ILExpression_List.Clear();
 		}
@@ -58,9 +60,10 @@ namespace ICSharpCode.Decompiler.Ast {
 		/// <param name="parameters">Parameter declarations of the method being decompiled.
 		/// These are used to update the parameter names when the decompiler generates names for the parameters.</param>
 		/// <returns>Block for the method body</returns>
-		public static BlockStatement CreateMethodBody(MethodDef methodDef,
+		internal static BlockStatement CreateMethodBody(MethodDef methodDef,
 		                                              DecompilerContext context,
-		                                              IEnumerable<ParameterDeclaration> parameters,
+													  AutoPropertyProvider autoPropertyProvider,
+													  IEnumerable<ParameterDeclaration> parameters,
 													  bool valueParameterIsKeyword,
 													  StringBuilder sb,
 													  out MethodDebugInfoBuilder stmtsBuilder)
@@ -76,6 +79,7 @@ namespace ICSharpCode.Decompiler.Ast {
 				builder.context = context;
 				builder.corLib = methodDef.Module.CorLibTypes;
 				builder.valueParameterIsKeyword = valueParameterIsKeyword;
+				builder.autoPropertyProvider = autoPropertyProvider;
 				if (Debugger.IsAttached) {
 					return builder.CreateMethodBody(parameters, out stmtsBuilder);
 				} else {
@@ -108,12 +112,12 @@ namespace ICSharpCode.Decompiler.Ast {
 				ilMethod.Body = astBuilder.Build(methodDef, true, context);
 
 				context.CancellationToken.ThrowIfCancellationRequested();
-				var bodyGraph = context.Cache.GetILAstOptimizer();
+				var optimizer = context.Cache.GetILAstOptimizer();
 				try {
-					bodyGraph.Optimize(context, ilMethod);
+					optimizer.Optimize(context, ilMethod, autoPropertyProvider);
 				}
 				finally {
-					context.Cache.Return(bodyGraph);
+					context.Cache.Return(optimizer);
 				}
 				context.CancellationToken.ThrowIfCancellationRequested();
 
@@ -155,7 +159,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			return astBlock;
 		}
 		
-		List<SourceLocal> sourceLocalsList = new List<SourceLocal>();
+		readonly List<SourceLocal> sourceLocalsList = new List<SourceLocal>();
 		SourceLocal[] CreateSourceLocals(IEnumerable<ILVariable> variables) {
 			foreach (var v in variables) {
 				if (v.OriginalVariable != null) {
@@ -167,6 +171,36 @@ namespace ICSharpCode.Decompiler.Ast {
 			var array = sourceLocalsList.ToArray();
 			sourceLocalsList.Clear();
 			return array;
+		}
+
+		Ast.Expression TransformBlockExpression(ILTryCatchBlock.FilterILBlock block) {
+			if (block == null)
+				return null;
+			var expr = TryTransformBlockExpression(block);
+			if (expr != null) {
+				if (context.CalculateBinSpans && block.StlocBinSpans.Count != 0)
+					expr.AddAnnotation(block.StlocBinSpans);
+				return expr;
+			}
+			// Show something...
+			var body = TransformBlock(block);
+			body.InsertChildAfter(null, new Comment(" Failed to create a 'catch-when' expression"), Roles.Comment);
+			return new AnonymousMethodExpression { Body = body };
+		}
+
+		Ast.Expression TryTransformBlockExpression(ILTryCatchBlock.FilterILBlock block)
+		{
+			var body = block.Body;
+			if (body.Count != 1)
+				return null;
+			var expr = body[0] as ILExpression;
+			if (expr == null)
+				return null;
+
+			if (context.CalculateBinSpans)
+				expr.BinSpans.AddRange(body[0].BinSpans);
+
+			return TransformExpression(expr) as Ast.Expression;
 		}
 
 		Ast.BlockStatement TransformBlock(ILBlock block)
@@ -263,14 +297,18 @@ namespace ICSharpCode.Decompiler.Ast {
 					if (catchClause.ExceptionVariable == null
 					    && (catchClause.ExceptionType == null || catchClause.ExceptionType.GetElementType() == ElementType.Object))
 					{
-						tryCatchStmt.CatchClauses.Add(new Ast.CatchClause { Body = TransformBlock(catchClause) }.WithAnnotation(catchClause.StlocBinSpans));
+						tryCatchStmt.CatchClauses.Add(new Ast.CatchClause {
+							Body = TransformBlock(catchClause),
+							Condition = TransformBlockExpression(catchClause.FilterBlock),
+						}.WithAnnotation(!context.CalculateBinSpans ? null : catchClause.StlocBinSpans));
 					} else {
 						tryCatchStmt.CatchClauses.Add(
 							new Ast.CatchClause {
 								Type = AstBuilder.ConvertType(catchClause.ExceptionType, stringBuilder),
 								VariableNameToken = catchClause.ExceptionVariable == null ? null : Identifier.Create(catchClause.ExceptionVariable.Name).WithAnnotation(GetParameterColor(catchClause.ExceptionVariable)),
-								Body = TransformBlock(catchClause)
-							}.WithAnnotation(catchClause.ExceptionVariable).WithAnnotation(catchClause.StlocBinSpans));
+								Body = TransformBlock(catchClause),
+								Condition = TransformBlockExpression(catchClause.FilterBlock),
+							}.WithAnnotation(catchClause.ExceptionVariable).WithAnnotation(!context.CalculateBinSpans ? null : catchClause.StlocBinSpans));
 					}
 				}
 				if (tryCatchNode.FinallyBlock != null)
@@ -279,6 +317,7 @@ namespace ICSharpCode.Decompiler.Ast {
 					CatchClause cc = new CatchClause();
 					cc.Body = TransformBlock(tryCatchNode.FaultBlock);
 					cc.Body.Add(new ThrowStatement()); // rethrow
+					cc.InsertChildAfter(new Comment(" This is a fault block"), null, Roles.Comment);
 					tryCatchStmt.CatchClauses.Add(cc);
 				}
 				return tryCatchStmt;
@@ -719,6 +758,8 @@ namespace ICSharpCode.Decompiler.Ast {
 				case ILCode.CallGetter:
 				case ILCode.CallSetter:
 					return TransformCall(false, byteCode, args);
+				case ILCode.CallReadOnlySetter:// Never virtual since it's really a store to a field
+					return TransformCall(false, byteCode, args, MethodSemanticsAttributes.Setter);
 				case ILCode.Callvirt:
 				case ILCode.CallvirtGetter:
 				case ILCode.CallvirtSetter:
@@ -748,7 +789,7 @@ namespace ICSharpCode.Decompiler.Ast {
 					case ILCode.Endfilter:   return InlineAssembly(byteCode, args);
 					case ILCode.Endfinally:  return null;
 					case ILCode.Initblk:     return InlineAssembly(byteCode, args);
-					case ILCode.Initobj:      return InlineAssembly(byteCode, args);
+					case ILCode.Initobj:     return InlineAssembly(byteCode, args);
 				case ILCode.DefaultValue:
 					return MakeDefaultValue((operand as ITypeDefOrRef).ToTypeSig());
 					case ILCode.Jmp: return InlineAssembly(byteCode, args);
@@ -843,7 +884,7 @@ namespace ICSharpCode.Decompiler.Ast {
 					{
 						PtrSig ptrType = byteCode.InferredType as PtrSig;
 						TypeSig type;
-						if (ptrType != null) {
+						if (ptrType != null && ptrType.Next.GetElementType() != ElementType.Void) {
 							type = ptrType.Next;
 						} else {
 							type = corLib.Byte;
@@ -878,7 +919,7 @@ namespace ICSharpCode.Decompiler.Ast {
 						});
 					case ILCode.Newobj: {
 						ITypeDefOrRef declaringType = ((IMethod)operand).DeclaringType;
-						if (declaringType.TryGetSZArraySig() != null || declaringType.TryGetArraySig() != null) {
+						if ((declaringType as TypeSpec)?.TypeSig.RemovePinnedAndModifiers() is ArraySigBase) {
 							ComposedType ct = AstBuilder.ConvertType(declaringType, stringBuilder) as ComposedType;
 							if (ct != null && ct.ArraySpecifiers.Count >= 1) {
 								var ace = new Ast.ArrayCreateExpression();
@@ -891,7 +932,7 @@ namespace ICSharpCode.Decompiler.Ast {
 						}
 						if (declaringType.IsAnonymousType()) {
 							MethodDef ctor = ((IMethod)operand).Resolve();
-							if (methodDef != null) {
+							if (ctor != null) {
 								AnonymousTypeCreateExpression atce = new AnonymousTypeCreateExpression();
 								if (CanInferAnonymousTypePropertyNamesFromArguments(args, ctor.Parameters)) {
 									atce.Initializers.AddRange(args);
@@ -918,7 +959,7 @@ namespace ICSharpCode.Decompiler.Ast {
 					case ILCode.Pop: return arg1;
 					case ILCode.Readonly: return InlineAssembly(byteCode, args);
 				case ILCode.Ret:
-					if (methodDef.ReturnType.GetFullName() != "System.Void") {
+					if (methodDef.ReturnType.RemovePinnedAndModifiers().GetElementType() != ElementType.Void) {
 						return new Ast.ReturnStatement { Expression = arg1 };
 					} else {
 						return new Ast.ReturnStatement();
@@ -957,6 +998,8 @@ namespace ICSharpCode.Decompiler.Ast {
 									}.CopyAnnotationsFrom(mre));
 							} else {
 								m = collectionInitializerPattern.Match(args[i]);
+								if (!m.Success)
+									m = staticCollectionInitializerPattern.Match(args[i]);
 								if (m.Success) {
 									if (m.Get("arg").Count() == 1) {
 										initializer.Elements.Add(m.Get<Expression>("arg").Single().Detach());
@@ -973,11 +1016,12 @@ namespace ICSharpCode.Decompiler.Ast {
 							}
 						}
 						ObjectCreateExpression oce = arg1 as ObjectCreateExpression;
-						DefaultValueExpression dve = arg1 as DefaultValueExpression;
 						if (oce != null) {
 							oce.Initializer = initializer;
 							return oce;
-						} else if (dve != null) {
+						}
+						DefaultValueExpression dve = arg1 as DefaultValueExpression;
+						if (dve != null) {
 							oce = new ObjectCreateExpression(dve.Type.Detach());
 							oce.CopyAnnotationsFrom(dve);
 							oce.Initializer = initializer;
@@ -1035,9 +1079,21 @@ namespace ICSharpCode.Decompiler.Ast {
 		static readonly AstNode collectionInitializerPattern = new InvocationExpression {
 			Target = new MemberReferenceExpression {
 				Target = new InitializedObjectExpression(),
+				TypeArguments = { new Repeat(new AnyNode()) },
 				MemberName = "Add"
 			},
 			Arguments = { new Repeat(new AnyNode("arg")) }
+		};
+		
+		static readonly AstNode staticCollectionInitializerPattern = new InvocationExpression {
+			Target = new MemberReferenceExpression {
+				Target = new TypeReferenceExpression {
+					Type = new AnyNode(),
+				},
+				TypeArguments = { new Repeat(new AnyNode()) },
+				MemberName = "Add"
+			},
+			Arguments = { new AnyNode(), new Repeat(new AnyNode("arg")) }
 		};
 		
 		sealed class InitializedObjectExpression : IdentifierExpression
@@ -1072,7 +1128,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			return new DefaultValueExpression { Type = AstBuilder.ConvertType(type, stringBuilder) };
 		}
 		
-		AstNode TransformCall(bool isVirtual, ILExpression byteCode, List<Ast.Expression> args)
+		AstNode TransformCall(bool isVirtual, ILExpression byteCode, List<Ast.Expression> args, MethodSemanticsAttributes? forceSemAttr = null)
 		{
 			IMethod method = (IMethod)byteCode.Operand;
 			MethodDef methodDef = method.Resolve();
@@ -1131,31 +1187,53 @@ namespace ICSharpCode.Decompiler.Ast {
 			} else if (method.Name == "Set" && (method.DeclaringType.TryGetArraySig() != null || method.DeclaringType.TryGetSZArraySig() != null) && methodArgs.Count > 2) {
 				return new AssignmentExpression(target.Indexer(methodArgs.GetRange(0, methodArgs.Count - 1)), methodArgs.Last());
 			}
-			
+
 			// Test whether the method is an accessor:
-			if (methodDef != null) {
-				if (methodArgs.Count == 0 && methodDef.IsGetter) {
+			var semAttr = forceSemAttr ?? methodDef?.SemanticsAttributes ?? GetMethodSemanticsAttributes(method);
+			if (semAttr != MethodSemanticsAttributes.None) {
+				if (methodArgs.Count == 0 && (semAttr & MethodSemanticsAttributes.Getter) != 0) {
+					if (methodDef == null)
+						return target.Member(method.Name.Substring(4), method).WithAnnotation(method);
 					foreach (var prop in methodDef.DeclaringType.Properties) {
 						if (prop.GetMethod == methodDef)
 							return target.Member(prop.Name, prop).WithAnnotation(prop).WithAnnotation(method);
 					}
-				} else if (methodDef.IsGetter) { // with parameters
+				} else if ((semAttr & MethodSemanticsAttributes.Getter) != 0) { // with parameters
+					if (methodDef == null && method.Name == "get_Item")
+						return target.Indexer(methodArgs).WithAnnotation(method);
 					PropertyDef indexer = GetIndexer(methodDef);
 					if (indexer != null)
 						return target.Indexer(methodArgs).WithAnnotation(indexer).WithAnnotation(method);
-				} else if (methodArgs.Count == 1 && methodDef.IsSetter) {
-					foreach (var prop in methodDef.DeclaringType.Properties) {
-						if (prop.SetMethod == methodDef)
-							return new Ast.AssignmentExpression(target.Member(prop.Name, prop).WithAnnotation(prop).WithAnnotation(method), methodArgs[0]);
+				} else if (methodArgs.Count == 1 && (semAttr & MethodSemanticsAttributes.Setter) != 0) {
+					if (methodDef == null)
+						return new Ast.AssignmentExpression(target.Member(method.Name.Substring(4), method).WithAnnotation(method), methodArgs[0]);
+					if (forceSemAttr != null) {// read-only property, the method is actually the getter since there's no setter
+						foreach (var prop in methodDef.DeclaringType.Properties) {
+							if (prop.GetMethod == methodDef)
+								return new Ast.AssignmentExpression(target.Member(prop.Name, prop).WithAnnotation(prop).WithAnnotation(method), methodArgs[0]);
+						}
 					}
-				} else if (methodArgs.Count > 1 && methodDef.IsSetter) {
+					else {
+						foreach (var prop in methodDef.DeclaringType.Properties) {
+							if (prop.SetMethod == methodDef)
+								return new Ast.AssignmentExpression(target.Member(prop.Name, prop).WithAnnotation(prop).WithAnnotation(method), methodArgs[0]);
+						}
+					}
+				} else if (methodArgs.Count > 1 && (semAttr & MethodSemanticsAttributes.Setter) != 0) {
 					PropertyDef indexer = GetIndexer(methodDef);
-					if (indexer != null)
+					if (indexer != null || (methodDef == null && method.Name == "set_Item"))
 						return new AssignmentExpression(
 							target.Indexer(methodArgs.GetRange(0, methodArgs.Count - 1)).WithAnnotation(indexer).WithAnnotation(method),
 							methodArgs[methodArgs.Count - 1]
 						);
-				} else if (methodArgs.Count == 1 && methodDef.IsAddOn) {
+				} else if (methodArgs.Count == 1 && (semAttr & MethodSemanticsAttributes.AddOn) != 0) {
+					if (methodDef == null) {
+						return new Ast.AssignmentExpression {
+							Left = target.Member(method.Name.Substring(4), method).WithAnnotation(method),
+							Operator = AssignmentOperatorType.Add,
+							Right = methodArgs[0]
+						};
+					}
 					foreach (var ev in methodDef.DeclaringType.Events) {
 						if (ev.AddMethod == methodDef) {
 							return new Ast.AssignmentExpression {
@@ -1165,7 +1243,14 @@ namespace ICSharpCode.Decompiler.Ast {
 							};
 						}
 					}
-				} else if (methodArgs.Count == 1 && methodDef.IsRemoveOn) {
+				} else if (methodArgs.Count == 1 && (semAttr & MethodSemanticsAttributes.RemoveOn) != 0) {
+					if (methodDef == null) {
+						return new Ast.AssignmentExpression {
+							Left = target.Member(method.Name.Substring(7), method).WithAnnotation(method),
+							Operator = AssignmentOperatorType.Subtract,
+							Right = methodArgs[0]
+						};
+					}
 					foreach (var ev in methodDef.DeclaringType.Events) {
 						if (ev.RemoveMethod == methodDef) {
 							return new Ast.AssignmentExpression {
@@ -1175,16 +1260,32 @@ namespace ICSharpCode.Decompiler.Ast {
 							};
 						}
 					}
-				} else if (methodDef.Name == "Invoke" && methodDef.DeclaringType.BaseType != null && methodDef.DeclaringType.BaseType.FullName == "System.MulticastDelegate") {
-					AdjustArgumentsForMethodCall(method, methodArgs);
-					return target.Invoke(methodArgs).WithAnnotation(method);
 				}
+			} else if (methodDef != null && methodDef.Name == nameInvoke && methodDef.DeclaringType.BaseType != null && methodDef.DeclaringType.BaseType.FullName == "System.MulticastDelegate") {
+				AdjustArgumentsForMethodCall(method, methodArgs);
+				return target.Invoke(methodArgs).WithAnnotation(method);
 			}
 			// Default invocation
 			AdjustArgumentsForMethodCall(methodDef ?? method, methodArgs);
 			return target.Invoke(methodDef ?? method, method.Name, ConvertTypeArguments(method), methodArgs).WithAnnotation(method);
 		}
-		
+		static readonly UTF8String nameInvoke = new UTF8String("Invoke");
+
+		static MethodSemanticsAttributes GetMethodSemanticsAttributes(IMethod method) {
+			if (method == null)
+				return MethodSemanticsAttributes.None;
+			string name = method.Name;
+			if (name.StartsWith("get_"))
+				return MethodSemanticsAttributes.Getter;
+			if (name.StartsWith("set_"))
+				return MethodSemanticsAttributes.Setter;
+			if (name.StartsWith("add_"))
+				return MethodSemanticsAttributes.AddOn;
+			if (name.StartsWith("remove_"))
+				return MethodSemanticsAttributes.RemoveOn;
+			return MethodSemanticsAttributes.None;
+		}
+
 		static Expression UnpackDirectionExpression(Expression target)
 		{
 			if (target is DirectionExpression) {
@@ -1213,6 +1314,8 @@ namespace ICSharpCode.Decompiler.Ast {
 		static readonly UTF8String defaultMemberAttributeString = new UTF8String("DefaultMemberAttribute");
 		internal static PropertyDef GetIndexer(MethodDef method)
 		{
+			if (method == null)
+				return null;
 			TypeDef typeDef = method.DeclaringType;
 			UTF8String indexerName = null;
 			foreach (var ca in typeDef.CustomAttributes) {
@@ -1344,7 +1447,7 @@ namespace ICSharpCode.Decompiler.Ast {
 					new PtrSig(((ByRefSig)actualType).Next),
 					reqType);
 			} else if (actualType is PtrSig && reqType is ByRefSig) {
-				expr = Convert(expr, actualType, new PtrSig(((ByRefSig)reqType).Next));
+				expr = Convert(expr, actualType, new PtrSig(reqType.Next));
 				return new DirectionExpression {
 					FieldDirection = FieldDirection.Ref,
 					Expression = new UnaryOperatorExpression(UnaryOperatorType.Dereference, expr)
@@ -1355,18 +1458,16 @@ namespace ICSharpCode.Decompiler.Ast {
 				else
 					return expr;
 			} else {
-				bool actualIsIntegerOrEnum = TypeAnalysis.IsIntegerOrEnum(actualType);
-				bool requiredIsIntegerOrEnum = TypeAnalysis.IsIntegerOrEnum(reqType);
-				
 				if (reqType.GetElementType() == ElementType.Boolean) {
 					if (actualType.GetElementType() == ElementType.Boolean)
 						return expr;
-					if (actualIsIntegerOrEnum) {
+					if (TypeAnalysis.IsIntegerOrEnum(actualType)) {
 						return new BinaryOperatorExpression(expr, BinaryOperatorType.InEquality, AstBuilder.MakePrimitive(0, actualType.ToTypeDefOrRef(), stringBuilder));
 					} else {
 						return new BinaryOperatorExpression(expr, BinaryOperatorType.InEquality, new NullReferenceExpression());
 					}
 				}
+				bool requiredIsIntegerOrEnum = TypeAnalysis.IsIntegerOrEnum(reqType);
 				if (actualType.GetElementType() == ElementType.Boolean && requiredIsIntegerOrEnum) {
 					return new ConditionalExpression {
 						Condition = expr,
@@ -1380,7 +1481,7 @@ namespace ICSharpCode.Decompiler.Ast {
 					return expr.CastTo(AstBuilder.ConvertType(actualType, stringBuilder));
 				}
 				
-				bool actualIsPrimitiveType = actualIsIntegerOrEnum
+				bool actualIsPrimitiveType = TypeAnalysis.IsIntegerOrEnum(actualType)
 					|| actualType.GetElementType() == ElementType.R4 || actualType.GetElementType() == ElementType.R8;
 				bool requiredIsPrimitiveType = requiredIsIntegerOrEnum
 					|| reqType.GetElementType() == ElementType.R4 || reqType.GetElementType() == ElementType.R8;

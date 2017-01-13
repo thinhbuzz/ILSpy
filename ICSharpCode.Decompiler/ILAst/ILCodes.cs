@@ -306,6 +306,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 		CallSetter,
 		/// <summary>Calls the setter of a instance property (or indexer)</summary>
 		CallvirtSetter,
+		/// <summary>Store to a read-only property. There's no setter, so the operand is the getter</summary>
+		CallReadOnlySetter,
 		/// <summary>Simulates getting the address of the argument instruction.</summary>
 		/// <remarks>
 		/// Used for postincrement for properties, and to represent the Address() method on multi-dimensional arrays.
@@ -397,7 +399,25 @@ namespace ICSharpCode.Decompiler.ILAst {
 					return false;
 			}
 		}
-		
+
+		static object boxedInt32_M1 = -1;
+		static object boxedInt32_0 = 0;
+		static object boxedInt32_1 = 1;
+		static object boxedInt32_2 = 2;
+		static object boxedInt32_3 = 3;
+		static object boxedInt32_4 = 4;
+		static object boxedInt32_5 = 5;
+		static object boxedInt32_6 = 6;
+		static object boxedInt32_7 = 7;
+		static object boxedInt32_8 = 8;
+		static object[] boxedSBytes_Int32;
+
+		static ILCodeUtil() {
+			boxedSBytes_Int32 = new object[256];
+			for (int i = 0; i < 256; i++)
+				boxedSBytes_Int32[i] = (int)(sbyte)(i + sbyte.MinValue);
+		}
+
 		public static void ExpandMacro(ref ILCode code, ref object operand, MethodDef method)
 		{
 			var methodBody = method.Body;
@@ -420,17 +440,17 @@ namespace ICSharpCode.Decompiler.ILAst {
 					case ILCode.Ldloc_S:   code = ILCode.Ldloc; break;
 					case ILCode.Ldloca_S:  code = ILCode.Ldloca; break;
 					case ILCode.Stloc_S:   code = ILCode.Stloc; break;
-					case ILCode.Ldc_I4_M1: code = ILCode.Ldc_I4; operand = -1; break;
-					case ILCode.Ldc_I4_0:  code = ILCode.Ldc_I4; operand = 0; break;
-					case ILCode.Ldc_I4_1:  code = ILCode.Ldc_I4; operand = 1; break;
-					case ILCode.Ldc_I4_2:  code = ILCode.Ldc_I4; operand = 2; break;
-					case ILCode.Ldc_I4_3:  code = ILCode.Ldc_I4; operand = 3; break;
-					case ILCode.Ldc_I4_4:  code = ILCode.Ldc_I4; operand = 4; break;
-					case ILCode.Ldc_I4_5:  code = ILCode.Ldc_I4; operand = 5; break;
-					case ILCode.Ldc_I4_6:  code = ILCode.Ldc_I4; operand = 6; break;
-					case ILCode.Ldc_I4_7:  code = ILCode.Ldc_I4; operand = 7; break;
-					case ILCode.Ldc_I4_8:  code = ILCode.Ldc_I4; operand = 8; break;
-					case ILCode.Ldc_I4_S:  code = ILCode.Ldc_I4; operand = (int) (sbyte) operand; break;
+					case ILCode.Ldc_I4_M1: code = ILCode.Ldc_I4; operand = boxedInt32_M1; break;
+					case ILCode.Ldc_I4_0:  code = ILCode.Ldc_I4; operand = boxedInt32_0; break;
+					case ILCode.Ldc_I4_1:  code = ILCode.Ldc_I4; operand = boxedInt32_1; break;
+					case ILCode.Ldc_I4_2:  code = ILCode.Ldc_I4; operand = boxedInt32_2; break;
+					case ILCode.Ldc_I4_3:  code = ILCode.Ldc_I4; operand = boxedInt32_3; break;
+					case ILCode.Ldc_I4_4:  code = ILCode.Ldc_I4; operand = boxedInt32_4; break;
+					case ILCode.Ldc_I4_5:  code = ILCode.Ldc_I4; operand = boxedInt32_5; break;
+					case ILCode.Ldc_I4_6:  code = ILCode.Ldc_I4; operand = boxedInt32_6; break;
+					case ILCode.Ldc_I4_7:  code = ILCode.Ldc_I4; operand = boxedInt32_7; break;
+					case ILCode.Ldc_I4_8:  code = ILCode.Ldc_I4; operand = boxedInt32_8; break;
+					case ILCode.Ldc_I4_S:  code = ILCode.Ldc_I4; operand = boxedSBytes_Int32[(sbyte) operand - sbyte.MinValue]; break;
 					case ILCode.Br_S:      code = ILCode.Br; break;
 					case ILCode.Brfalse_S: code = ILCode.Brfalse; break;
 					case ILCode.Brtrue_S:  code = ILCode.Brtrue; break;

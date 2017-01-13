@@ -854,6 +854,8 @@ namespace ICSharpCode.NRefactory.VB {
 				formatter.AddHighlightedKeywordReference(reference, start, formatter.NextPosition);
 			}
 			SaveDeclarationOffset();
+			if (propertyDeclaration.Variables.Any())
+				WriteCommaSeparatedList(propertyDeclaration.Variables);
 			NewLine();
 			
 			return EndNode(propertyDeclaration);
@@ -1749,9 +1751,11 @@ namespace ICSharpCode.NRefactory.VB {
 				catchBlock.ExceptionType.AcceptVisitor(this, data);
 			}
 			if (!catchBlock.WhenExpression.IsNull) {
+				Space();
 				start = formatter.NextPosition;
 				WriteKeyword("When");
 				formatter.AddHighlightedKeywordReference(currentTryReference, start, formatter.NextPosition);
+				Space();
 				catchBlock.WhenExpression.AcceptVisitor(this, data);
 			}
 			DebugEnd(catchBlock);
@@ -2700,20 +2704,31 @@ namespace ICSharpCode.NRefactory.VB {
 		public object VisitVariableDeclaratorWithTypeAndInitializer(VariableDeclaratorWithTypeAndInitializer variableDeclaratorWithTypeAndInitializer, object data)
 		{
 			StartNode(variableDeclaratorWithTypeAndInitializer);
-			
-			if (lastWritten != LastWritten.Whitespace)
-				Space();
-			DebugStart(variableDeclaratorWithTypeAndInitializer);
-			WriteCommaSeparatedList(variableDeclaratorWithTypeAndInitializer.Identifiers);
-			if (lastWritten != LastWritten.Whitespace)
-				Space();
-			WriteKeyword("As");
-			variableDeclaratorWithTypeAndInitializer.Type.AcceptVisitor(this, data);
-			if (!variableDeclaratorWithTypeAndInitializer.Initializer.IsNull) {
-				Space();
+
+			bool ownerIsProp = variableDeclaratorWithTypeAndInitializer.Parent is PropertyDeclaration;
+			if (ownerIsProp) {
+				if (lastWritten != LastWritten.Whitespace)
+					Space();
 				WriteToken("=", VariableDeclarator.Roles.Assign, BoxedTextColor.Operator);
 				Space();
+				DebugStart(variableDeclaratorWithTypeAndInitializer);
 				variableDeclaratorWithTypeAndInitializer.Initializer.AcceptVisitor(this, data);
+			}
+			else {
+				if (lastWritten != LastWritten.Whitespace)
+					Space();
+				DebugStart(variableDeclaratorWithTypeAndInitializer);
+				WriteCommaSeparatedList(variableDeclaratorWithTypeAndInitializer.Identifiers);
+				if (lastWritten != LastWritten.Whitespace)
+					Space();
+				WriteKeyword("As");
+				variableDeclaratorWithTypeAndInitializer.Type.AcceptVisitor(this, data);
+				if (!variableDeclaratorWithTypeAndInitializer.Initializer.IsNull) {
+					Space();
+					WriteToken("=", VariableDeclarator.Roles.Assign, BoxedTextColor.Operator);
+					Space();
+					variableDeclaratorWithTypeAndInitializer.Initializer.AcceptVisitor(this, data);
+				}
 			}
 			DebugEnd(variableDeclaratorWithTypeAndInitializer);
 			

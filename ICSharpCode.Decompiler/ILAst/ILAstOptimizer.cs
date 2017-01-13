@@ -22,14 +22,17 @@ using System.Linq;
 using ICSharpCode.NRefactory.Utils;
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
+using System.Diagnostics;
 
 namespace ICSharpCode.Decompiler.ILAst {
 	public enum ILAstOptimizationStep
 	{
+		RemoveVisualBasicCompilerCode,
 		RemoveRedundantCode,
 		ReduceBranchInstructionSet,
 		InlineVariables,
 		CopyPropagation,
+		ConvertFieldAccessesToPropertyMethodCalls,
 		YieldReturn,
 		AsyncAwait,
 		PropertyAccessInstructions,
@@ -59,6 +62,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 		RemoveEndFinally,
 		RemoveRedundantCode2,
 		GotoRemoval,
+		FixRoslynStaticDelegates,
+		FixFilters,
 		DuplicateReturns,
 		GotoRemoval2,
 		ReduceIfNesting,
@@ -80,6 +85,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 		ILBlock method;
 
 		// PERF: Cache used lists used in Optimize() instead of creating new ones all the time
+		readonly List<ILTryCatchBlock.CatchBlockBase> Optimize_List_CatchBlockBase;
+		readonly List<ILTryCatchBlock.CatchBlock> Optimize_List_CatchBlocks;
 		readonly List<ILBlock> Optimize_List_ILBlock;
 		readonly List<ILNode> Optimize_List_ILNode;
 		readonly List<ILExpression> Optimize_List_ILExpression;
@@ -87,10 +94,13 @@ namespace ICSharpCode.Decompiler.ILAst {
 		readonly Dictionary<ILLabel, int> Optimize_Dict_ILLabel_Int32;
 		readonly Dictionary<Local, ILVariable> Optimize_Dict_Local_ILVariable;
 		readonly Dictionary<ILLabel, ILNode> Optimize_Dict_ILLabel_ILNode;
+		bool hasFilters;
 
 		public ILAstOptimizer()
 		{
 			this.del_getILInlining = GetILInlining;
+			this.Optimize_List_CatchBlockBase = new List<ILTryCatchBlock.CatchBlockBase>();
+			this.Optimize_List_CatchBlocks = new List<ILTryCatchBlock.CatchBlock>();
 			this.Optimize_List_ILBlock = new List<ILBlock>();
 			this.Optimize_List_ILNode = new List<ILNode>();
 			this.Optimize_List_ILExpression = new List<ILExpression>();
@@ -106,6 +116,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 			this.corLib = null;
 			this.method = null;
 			this.nextLabelIndex = 0;
+			this.Optimize_List_CatchBlockBase.Clear();
+			this.Optimize_List_CatchBlocks.Clear();
 			this.Optimize_List_ILBlock.Clear();
 			this.Optimize_List_ILNode.Clear();
 			this.Optimize_List_ILExpression.Clear();
@@ -113,7 +125,16 @@ namespace ICSharpCode.Decompiler.ILAst {
 			this.Optimize_Dict_ILLabel_Int32.Clear();
 			this.Optimize_Dict_Local_ILVariable.Clear();
 			this.Optimize_Dict_ILLabel_ILNode.Clear();
+			hasFilters = false;
+			readOnlyPropTempLocalNameCounter = 0;
 		}
+
+		TypeAnalysis GetTypeAnalysis() {
+			if (cached_TypeAnalysis == null)
+				cached_TypeAnalysis = new TypeAnalysis();
+			return cached_TypeAnalysis;
+		}
+		TypeAnalysis cached_TypeAnalysis;
 
 		SimpleControlFlow GetSimpleControlFlow(DecompilerContext context, ILBlock method)
 		{
@@ -128,9 +149,14 @@ namespace ICSharpCode.Decompiler.ILAst {
 		ILInlining GetILInlining(ILBlock method)
 		{
 			if (cached_ILInlining == null)
-				cached_ILInlining = new ILInlining(context, method);
-			else
-				cached_ILInlining.Initialize(method);
+				cached_ILInlining = new ILInlining(context);
+			cached_ILInlining.Initialize(method);
+			return cached_ILInlining;
+		}
+		ILInlining GetILInlining(List<ILNode> body, int start, int count) {
+			if (cached_ILInlining == null)
+				cached_ILInlining = new ILInlining(context);
+			cached_ILInlining.Initialize(body, start, count);
 			return cached_ILInlining;
 		}
 		ILInlining cached_ILInlining;
@@ -155,14 +181,20 @@ namespace ICSharpCode.Decompiler.ILAst {
 		}
 		LoopsAndConditions cached_LoopsAndConditions;
 
+		public void Optimize(DecompilerContext context, ILBlock method, ILAstOptimizationStep abortBeforeStep = ILAstOptimizationStep.None) =>
+			Optimize(context, method, null, abortBeforeStep);
+
 		readonly Func<ILBlock, ILInlining> del_getILInlining;
-		public void Optimize(DecompilerContext context, ILBlock method, ILAstOptimizationStep abortBeforeStep = ILAstOptimizationStep.None)
+		internal void Optimize(DecompilerContext context, ILBlock method, AutoPropertyProvider autoPropertyProvider, ILAstOptimizationStep abortBeforeStep = ILAstOptimizationStep.None)
 		{
 			this.context = context;
 			this.corLib = context.CurrentMethod.Module.CorLibTypes;
 			this.method = method;
 
 			try {
+				if (abortBeforeStep == ILAstOptimizationStep.RemoveVisualBasicCompilerCode) return;
+				if (IsVisualBasicModule())
+					RemoveVisualBasicCompilerCode(method);
 
 				if (abortBeforeStep == ILAstOptimizationStep.RemoveRedundantCode) return;
 				RemoveRedundantCode(context, method, Optimize_List_ILExpression, Optimize_List_ILBlock, Optimize_Dict_ILLabel_Int32);
@@ -179,12 +211,16 @@ namespace ICSharpCode.Decompiler.ILAst {
 				ILInlining inlining1 = GetILInlining(method);
 				inlining1.InlineAllVariables();
 
+				if (abortBeforeStep == ILAstOptimizationStep.ConvertFieldAccessesToPropertyMethodCalls) return;
+				if (context.CurrentMethod.IsConstructor)
+					ConvertFieldAccessesToPropertyMethodCalls(method, autoPropertyProvider);
+
 				if (abortBeforeStep == ILAstOptimizationStep.CopyPropagation) return;
 				inlining1.CopyPropagation(Optimize_List_ILNode);
 
 				if (abortBeforeStep == ILAstOptimizationStep.YieldReturn) return;
-				YieldReturnDecompiler.Run(context, method, Optimize_List_ILNode, del_getILInlining);
-				AsyncDecompiler.RunStep1(context, method, Optimize_List_ILExpression, Optimize_List_ILBlock, Optimize_Dict_ILLabel_Int32);
+				YieldReturnDecompiler.Run(context, method, autoPropertyProvider, Optimize_List_ILNode, del_getILInlining);
+				AsyncDecompiler.RunStep1(context, method, autoPropertyProvider, Optimize_List_ILExpression, Optimize_List_ILBlock, Optimize_Dict_ILLabel_Int32);
 
 				if (abortBeforeStep == ILAstOptimizationStep.AsyncAwait) return;
 				AsyncDecompiler.RunStep2(context, method, Optimize_List_ILExpression, Optimize_List_ILBlock, Optimize_Dict_ILLabel_Int32, Optimize_List_ILNode, del_getILInlining);
@@ -199,7 +235,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 				if (abortBeforeStep == ILAstOptimizationStep.TypeInference) return;
 				// Types are needed for the ternary operator optimization
-				TypeAnalysis.Run(context, method);
+				GetTypeAnalysis().Run(context, method);
 
 				if (abortBeforeStep == ILAstOptimizationStep.HandlePointerArithmetic) return;
 				HandlePointerArithmetic(method);
@@ -278,6 +314,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 				if (abortBeforeStep == ILAstOptimizationStep.FindConditions) return;
 				foreach (ILBlock block in method.GetSelfAndChildrenRecursive<ILBlock>(Optimize_List_ILBlock)) {
+					if (block is ILTryCatchBlock.FilterILBlock)
+						hasFilters = true;
 					GetLoopsAndConditions(context).FindConditions(block);
 				}
 
@@ -291,25 +329,19 @@ namespace ICSharpCode.Decompiler.ILAst {
 				RemoveRedundantCode(context, method, Optimize_List_ILExpression, Optimize_List_ILBlock, Optimize_Dict_ILLabel_Int32);
 
 				if (abortBeforeStep == ILAstOptimizationStep.GotoRemoval) return;
-				var gr = context.Cache.GetGotoRemoval();
-				try {
-					gr.RemoveGotos(method);
-				}
-				finally {
-					context.Cache.Return(gr);
-				}
+				GotoRemoval.RemoveGotos(context, method);
+
+				if (abortBeforeStep == ILAstOptimizationStep.FixRoslynStaticDelegates) return;
+				FixRoslynStaticDelegates(method);
+
+				if (abortBeforeStep == ILAstOptimizationStep.FixFilters) return;
+				FixFilterBlocks(method);
 
 				if (abortBeforeStep == ILAstOptimizationStep.DuplicateReturns) return;
 				DuplicateReturnStatements(method);
 
 				if (abortBeforeStep == ILAstOptimizationStep.GotoRemoval2) return;
-				gr = context.Cache.GetGotoRemoval();
-				try {
-					gr.RemoveGotos(method);
-				}
-				finally {
-					context.Cache.Return(gr);
-				}
+				GotoRemoval.RemoveGotos(context, method);
 
 				if (abortBeforeStep == ILAstOptimizationStep.ReduceIfNesting) return;
 				ReduceIfNesting(method);
@@ -345,7 +377,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 				if (abortBeforeStep == ILAstOptimizationStep.TypeInference2) return;
 				TypeAnalysis.Reset(method, this.Optimize_List_ILExpression);
-				TypeAnalysis.Run(context, method);
+				GetTypeAnalysis().Run(context, method);
 
 				if (abortBeforeStep == ILAstOptimizationStep.RemoveRedundantCode3) return;
 				GotoRemoval.RemoveRedundantCode(method, context);
@@ -353,6 +385,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 				// ReportUnassignedBinSpans(method);
 			}
 			finally {
+				this.Optimize_List_CatchBlockBase.Clear();
+				this.Optimize_List_CatchBlocks.Clear();
 				this.Optimize_List_ILBlock.Clear();
 				this.Optimize_List_ILNode.Clear();
 				this.Optimize_List_ILExpression.Clear();
@@ -362,7 +396,566 @@ namespace ICSharpCode.Decompiler.ILAst {
 				this.Optimize_Dict_ILLabel_ILNode.Clear();
 			}
 		}
-		
+
+		void ConvertFieldAccessesToPropertyMethodCalls(ILBlock method, AutoPropertyProvider autoPropertyProvider) {
+			if (autoPropertyProvider == null)
+				autoPropertyProvider = new AutoPropertyProvider();
+			// The compiler uses method calls in all non-constructor methods
+			Debug.Assert(context.CurrentMethod.IsConstructor);
+			var info = autoPropertyProvider.GetOrCreate(context.CurrentMethod.DeclaringType);
+			foreach (var block in method.GetSelfAndChildrenRecursive(Optimize_List_ILBlock))
+				ConvertFieldAccessesToPropertyMethodCallsCore(info, block);
+		}
+
+		void ConvertFieldAccessesToPropertyMethodCallsCore(AutoPropertyInfo info, ILBlock block) {
+			var body = block.Body;
+			var currentType = context.CurrentMethod.DeclaringType;
+			for (int i = 0; i < body.Count; i++) {
+				var expr = body[i] as ILExpression;
+				if (expr == null)
+					continue;
+				if (expr.Code == ILCode.Stfld || expr.Code == ILCode.Stsfld) {
+					var field = (expr.Operand as IField).ResolveFieldWithinSameModule();
+					if (field?.DeclaringType != currentType)
+						continue;
+					var setter = info.TryGetSetter(field);
+					// This is never virtual even if the property is virtual
+					var code = ILCode.Call;
+					if (setter == null) {
+						setter = info.TryGetGetter(field);
+						if (setter == null)
+							continue;
+						code = ILCode.CallReadOnlySetter;
+					}
+					expr.Code = code;
+					expr.Operand = setter;
+				}
+				else if (expr.Code == ILCode.Initobj && expr.Arguments.Count == 1) {
+					// initobj(TYPE, ldflda(class C::<Prop1>k__BackingField, ldloc(this)))
+					var ldflda = expr.Arguments[0];
+					if (ldflda.Code == ILCode.Ldflda || ldflda.Code == ILCode.Ldsflda) {
+						var field = (ldflda.Operand as IField).ResolveFieldWithinSameModule();
+						if (field?.DeclaringType != currentType)
+							continue;
+						var setter = info.TryGetSetter(field);
+						// This is never virtual even if the property is virtual
+						var code = ILCode.Call;
+						if (setter == null) {
+							setter = info.TryGetGetter(field);
+							if (setter == null)
+								continue;
+							code = ILCode.CallReadOnlySetter;
+						}
+
+						if (context.CalculateBinSpans)
+							expr.BinSpans.AddRange(ldflda.BinSpans);
+
+						var initobjType = expr.Operand;
+						var initobjVar = new ILVariable { Name = "rop_" + (readOnlyPropTempLocalNameCounter++).ToString(), GeneratedByDecompiler = true };
+						var newInitobj = new ILExpression(ILCode.Initobj, initobjType, new ILExpression(ILCode.Ldloca, initobjVar));
+						body.Insert(i++, newInitobj);
+
+						expr.Code = code;
+						expr.Operand = setter;
+						expr.Arguments.Clear();
+						expr.Arguments.AddRange(ldflda.Arguments);
+						expr.Arguments.Add(new ILExpression(ILCode.Ldloc, initobjVar));
+					}
+				}
+			}
+		}
+		int readOnlyPropTempLocalNameCounter;
+
+		void FixRoslynStaticDelegates(ILBlock method) {
+			foreach (var block in method.GetSelfAndChildrenRecursive(Optimize_List_ILBlock))
+				FixRoslynStaticDelegatesCore(block);
+		}
+
+		bool FixRoslynStaticDelegatesCore(ILBlock block) {
+			// Roslyn C# 6 (Debug and Release builds):
+			// arg_20_1 : class [mscorlib]System.Func`2<string, int32> [generated]
+			// if (logicnot(stloc(arg_20_1, ldsfld('<>c'::<>9__29_0)))) {
+			//     stloc(arg_20_1, stsfld('<>c'::<>9__29_0, newobj(class [mscorlib]System.Func`2<string, int32>::.ctor, ldsfld('<>c'::<>9), ldftn('<>c'::<TestDelegate1>b__29_0))))
+			// }
+			// else {
+			// }
+			var body = block.Body;
+			bool modified = false;
+			for (int i = 0; i < body.Count; i++) {
+				var ifNode = body[i] as ILCondition;
+				if (ifNode == null)
+					continue;
+				if (ifNode.TrueBlock == null)
+					continue;
+				if (ifNode.FalseBlock == null || ifNode.FalseBlock.Body.Count != 0)
+					continue;
+
+				IField field, instField;
+				FieldDef fd, instFd;
+				IMethod method;
+				MethodDef md;
+				ILExpression stloc, ldsfld, newobj, ldftn;
+				ILVariable delVar;
+				var cond = ifNode.Condition;
+				if (!cond.Match(ILCode.LogicNot, out stloc))
+					continue;
+				if (!stloc.Match(ILCode.Stloc, out delVar, out ldsfld))
+					continue;
+				if (!ldsfld.Match(ILCode.Ldsfld, out field) || (fd = field.ResolveFieldWithinSameModule()) == null)
+					continue;
+				// Make sure it's a nested type. We can't check that
+				//	field.DeclaringType.DeclaringType == context.CurrentMethod.DeclaringType
+				// since that sometimes fails.
+				if (field.DeclaringType.DeclaringType == null)
+					continue;
+
+				var trueBody = ifNode.TrueBlock.Body;
+				if (trueBody.Count != 1)
+					continue;
+				ILExpression stsfld;
+				if (!trueBody[0].MatchStloc(delVar, out stsfld))
+					continue;
+				if (!stsfld.Match(ILCode.Stsfld, out field, out newobj) || field.ResolveFieldWithinSameModule() != fd)
+					continue;
+				IMethod delTypeCtor;
+				if (!newobj.Match(ILCode.Newobj, out delTypeCtor, out ldsfld, out ldftn))
+					continue;
+				if (!ldsfld.Match(ILCode.Ldsfld, out instField) || (instFd = instField.ResolveFieldWithinSameModule()) == null)
+					continue;
+				if (instFd.DeclaringType != fd.DeclaringType)
+					continue;
+				if (!ldftn.Match(ILCode.Ldftn, out method) || (md = method.ResolveMethodWithinSameModule()) == null)
+					continue;
+				if (md.DeclaringType != fd.DeclaringType || md.IsStatic)
+					continue;
+
+				if (context.CalculateBinSpans)
+					newobj.BinSpans.AddRange(ifNode.GetSelfAndChildrenRecursiveBinSpans().ToArray());
+				body[i] = new ILExpression(ILCode.Stloc, delVar, newobj);
+				modified = true;
+			}
+			return modified;
+		}
+
+		bool IsVisualBasicModule() {
+			foreach (var asmRef in context.CurrentModule.GetAssemblyRefs()) {
+				if (asmRef.Name == nameAssemblyVisualBasic)
+					return true;
+			}
+			var asmName = context.CurrentModule.Assembly?.Name;
+			if ((object)asmName != null) {
+				if (asmName == nameAssemblyVisualBasic)
+					return true;
+
+				// The VB runtime can be embedded if '/vbruntime*' option is used.
+				// Microsoft.CodeAnalysis.VisualBasic.Workspaces, Microsoft.CodeAnalysis.VisualBasic.Features and
+				// Microsoft.CodeAnalysis.VisualBasic all have the methods we're looking for too. Assume it's
+				// a VB assembly if the name contains VisualBasic since it's too expensive to check all
+				// definitions every time we decompile something.
+				if (asmName.Contains("VisualBasic") == true)
+					return true;
+			}
+			return false;
+		}
+		static readonly UTF8String nameAssemblyVisualBasic = new UTF8String("Microsoft.VisualBasic");
+		static readonly UTF8String nameClearProjectError = new UTF8String("ClearProjectError");
+		static readonly UTF8String nameSetProjectError = new UTF8String("SetProjectError");
+		static readonly UTF8String nameProjectData = new UTF8String("ProjectData");
+
+		void RemoveVisualBasicCompilerCode(ILBlock method) {
+			Debug.Assert(IsVisualBasicModule());
+			Optimize_List_CatchBlockBase.Clear();
+			// The compiler adds the methods to all catch/filter blocks
+			foreach (var block in method.GetSelfAndChildrenRecursive(Optimize_List_CatchBlockBase)) {
+				var body = block.Body;
+				for (int i = 0; i < body.Count; i++) {
+					var expr = body[i] as ILExpression;
+					IMethod calledMethod;
+					List<ILExpression> args;
+					if (!expr.Match(ILCode.Call, out calledMethod, out args))
+						continue;
+					var declType = calledMethod.DeclaringType;
+					if (declType.Name != nameProjectData || declType.Namespace != "Microsoft.VisualBasic.CompilerServices")
+						continue;
+
+					// Don't check the assembly name since these methods could also be in the current assembly if vbc.exe's
+					// '/vbruntime*' option was used.
+					//if (declType.DefinitionAssembly?.Name != nameAssemblyVisualBasic)
+					//	continue;
+
+					if (args.Count == 0) {
+						if (calledMethod.Name != nameClearProjectError)
+							continue;
+						expr.Code = ILCode.Nop;
+						expr.Operand = null;
+					}
+					else if (args.Count == 1 || args.Count == 2) {
+						if (calledMethod.Name != nameSetProjectError)
+							continue;
+						if (context.CalculateBinSpans) {
+							foreach (var arg in args)
+								expr.BinSpans.AddRange(arg.GetSelfAndChildrenRecursiveBinSpans());
+						}
+						expr.Code = ILCode.Nop;
+						expr.Operand = null;
+						expr.Arguments.Clear();
+					}
+				}
+			}
+		}
+
+		void FixFilterBlocks(ILBlock method) {
+			if (!hasFilters)
+				return;
+			Optimize_List_CatchBlocks.Clear();
+			foreach (var catchBlock in method.GetSelfAndChildrenRecursive(Optimize_List_CatchBlocks)) {
+				if (catchBlock.FilterBlock == null)
+					continue;
+				ILVariable exVar;
+				ITypeDefOrRef exType;
+				if (FixFilter(catchBlock, out exVar, out exType)) {
+					catchBlock.ExceptionType = exType.ToTypeSig();
+					catchBlock.ExceptionVariable = exVar;
+					if (catchBlock.ExceptionVariable != null && catchBlock.ExceptionVariable.Type == null)
+						catchBlock.ExceptionVariable.Type = catchBlock.ExceptionType;
+				}
+			}
+		}
+
+		bool FixFilter(ILTryCatchBlock.CatchBlock catchBlock, out ILVariable exVar, out ITypeDefOrRef exType) {
+			exVar = null;
+			exType = null;
+
+			var filterBlock = catchBlock.FilterBlock;
+			if (filterBlock == null)
+				return false;
+
+			var body = filterBlock.Body;
+			int pos = 0;
+
+			// stloc:SystemException(expr_0C, isinst:SystemException([mscorlib]System.SystemException, arg_07_0))
+			if (!TryGetFilterExceptionType(body, ref pos, filterBlock, out exVar, out exType)) {
+				if (body.Count == 1) {
+					// Release builds (C# 6), no exception variable:
+					//		eg.: catch (IOException) when (ShouldThrow(null)) {
+					// endfilter(
+					//     logicand:bool(
+					//         isinst:IOException[exp:bool]([mscorlib]System.IO.IOException, arg_1F9_0),
+					//         cgt.un:bool[exp:int32](
+					//             <real expr>,
+					//             ldc.i4:bool(0)
+					//         )
+					//     )
+					// )
+
+					ILExpression logicand;
+					if (!body[0].Match(ILCode.Endfilter, out logicand))
+						return false;
+					List<ILExpression> logicand_Args;
+					if (!logicand.Match(ILCode.LogicAnd, out logicand_Args) || logicand_Args.Count != 2)
+						return false;
+
+					ILExpression isInstLdloc;
+					if (!logicand_Args[0].Match(ILCode.Isinst, out exType, out isInstLdloc))
+						return false;
+					if (!isInstLdloc.Match(ILCode.Ldloc, out exVar))
+						return false;
+					if (exVar != filterBlock.ExceptionVariable)
+						return false;
+
+					List<ILExpression> cgt_args;
+					if (!logicand_Args[1].Match(ILCode.Cgt_Un, out cgt_args) || cgt_args.Count != 2)
+						return false;
+					int intVal;
+					if (!cgt_args[1].Match(ILCode.Ldc_I4, out intVal) || intVal != 0)
+						return false;
+
+					var newCode = cgt_args[0];
+					if (context.CalculateBinSpans) {
+						var binSpans = filterBlock.GetSelfAndChildrenRecursiveBinSpans().ToArray();
+						newCode.BinSpans.AddRange(binSpans);
+					}
+					body.Clear();
+					body.Add(newCode);
+					return true;
+				}
+				else if (body.Count == 2) {
+					// Debug builds (C# 6), no exception variable:
+					//		eg.: catch (IOException) when (ShouldThrow(null)) {
+					// if (logicnot(isinst:IOException[exp:bool]([mscorlib]System.IO.IOException, arg_1F9_0))) {
+					//     stloc:int32(arg_46_0, ldc.i4:int32(0))
+					// }
+					// else {
+					//     stloc:bool(
+					//         var_3_4E,
+					//         <real expr>
+					//     )
+					//     stloc:int32(arg_46_0, cgt.un:bool[exp:int32](ldloc:bool(var_3_4E), ldc.i4:bool(0)))
+					// }
+					// endfilter(arg_46_0)
+
+					var ifCond = body[pos] as ILCondition;
+					if (ifCond == null || ifCond.TrueBlock == null || ifCond.FalseBlock == null)
+						return false;
+
+					var ifCondExpr = ifCond.Condition;
+					ILExpression isinst;
+					if (!ifCondExpr.Match(ILCode.LogicNot, out isinst))
+						return false;
+					ILExpression isInstLdloc;
+					if (!isinst.Match(ILCode.Isinst, out exType, out isInstLdloc))
+						return false;
+					if (!isInstLdloc.Match(ILCode.Ldloc, out exVar))
+						return false;
+					if (exVar != filterBlock.ExceptionVariable)
+						return false;
+					ILVariable v;
+
+					// Check failing path
+					var trueBody = ifCond.TrueBlock.Body;
+					ILVariable retVar;
+					ILExpression ldci4;
+					if (trueBody.Count != 1 || !trueBody[0].Match(ILCode.Stloc, out retVar, out ldci4))
+						return false;
+					int intVal;
+					if (!ldci4.Match(ILCode.Ldc_I4, out intVal) || intVal != 0)
+						return false;
+
+					// Check non-failing path
+					var falseBody = ifCond.FalseBlock.Body;
+					if (falseBody.Count != 2)
+						return false;
+
+					ILVariable boolVar;
+					ILExpression newCode;
+					if (!falseBody[0].Match(ILCode.Stloc, out boolVar, out newCode))
+						return false;
+
+					ILExpression cgt;
+					if (!falseBody[1].Match(ILCode.Stloc, out v, out cgt) || v != retVar)
+						return false;
+					List<ILExpression> cgt_args;
+					if (!cgt.Match(ILCode.Cgt_Un, out cgt_args) || cgt_args.Count != 2)
+						return false;
+					if (!cgt_args[0].Match(ILCode.Ldloc, out v) || v != boolVar)
+						return false;
+					if (!cgt_args[1].Match(ILCode.Ldc_I4, out intVal) || intVal != 0)
+						return false;
+
+					ILExpression ldloc;
+					if (!body[1].Match(ILCode.Endfilter, out ldloc) || !ldloc.Match(ILCode.Ldloc, out v) || v != retVar)
+						return false;
+
+					if (context.CalculateBinSpans) {
+						var binSpans = filterBlock.GetSelfAndChildrenRecursiveBinSpans().ToArray();
+						newCode.BinSpans.AddRange(binSpans);
+					}
+					body.Clear();
+					body.Add(newCode);
+					return true;
+				}
+				else
+					return false;
+			}
+
+			if (pos >= body.Count)
+				return false;
+			if (pos + 1 == body.Count) {
+				// endfilter(
+				//     logicand:bool(
+				//         expr_0C:SystemException[exp:bool],
+				//         cgt.un:bool[exp:int32](
+				//             <real expr>,
+				//             ldc.i4:bool(0)
+				//         )
+				//     )
+				// )
+				ILExpression logicand;
+				if (!body[pos].Match(ILCode.Endfilter, out logicand))
+					return false;
+				List<ILExpression> logicand_Args;
+				if (!logicand.Match(ILCode.LogicAnd, out logicand_Args) || logicand_Args.Count != 2)
+					return false;
+				ILVariable v;
+				if (!logicand_Args[0].Match(ILCode.Ldloc, out v) || v != exVar)
+					return false;
+				List<ILExpression> cgt_args;
+				if (!logicand_Args[1].Match(ILCode.Cgt_Un, out cgt_args) || cgt_args.Count != 2)
+					return false;
+				int intVal;
+				if (!cgt_args[1].Match(ILCode.Ldc_I4, out intVal) || intVal != 0)
+					return false;
+
+				Debug.Assert(body.Count == 2);
+				var newCode = cgt_args[0];
+				if (context.CalculateBinSpans) {
+					newCode.BinSpans.AddRange(body[0].GetSelfAndChildrenRecursiveBinSpans());// stloc
+					newCode.BinSpans.AddRange(body[pos].BinSpans);// endfilter
+					newCode.BinSpans.AddRange(logicand.BinSpans);
+					newCode.BinSpans.AddRange(logicand_Args[0].GetSelfAndChildrenRecursiveBinSpans());
+					newCode.BinSpans.AddRange(logicand_Args[1].BinSpans);
+					newCode.BinSpans.AddRange(cgt_args[1].GetSelfAndChildrenRecursiveBinSpans());// ldc.i4.0
+				}
+				body.Clear();
+				body.Add(newCode);
+				return true;
+			}
+			else {
+				// Release builds (C# 6)
+				// ---------------------
+				// if (logicnot(expr_0C:SystemException[exp:bool])) {
+				//     stloc:int32(arg_46_0, ldc.i4:int32(0))
+				// }
+				// else {
+				//     stloc:SystemException(ex2, expr_0C:SystemException)
+				//     stloc:int32(
+				//         arg_46_0,
+				//         cgt.un:bool[exp:int32](
+				//             <real expr>,
+				//             ldc.i4:bool(0)
+				//         )
+				//     )
+				// }
+				// endfilter(arg_46_0)
+				//
+				// Debug builds (C# 6)
+				// -------------------
+				// if (logicnot(expr_0C:SystemException[exp:bool])) {
+				//     stloc:int32(arg_46_0, ldc.i4:int32(0))
+				// }
+				// else {
+				//     stloc:SystemException(ex2, expr_0C:SystemException)
+				//     stloc:bool(
+				//         var_3_4E,
+				//         <real expr>
+				//     )
+				//     stloc:int32(arg_46_0, cgt.un:bool[exp:int32](ldloc:bool(var_3_4E), ldc.i4:bool(0)))
+				// }
+				// endfilter(arg_46_0)
+
+				var ifCond = body[pos] as ILCondition;
+				if (ifCond == null || ifCond.TrueBlock == null || ifCond.FalseBlock == null)
+					return false;
+
+				var ifCondExpr = ifCond.Condition;
+				ILExpression ldloc;
+				if (!ifCondExpr.Match(ILCode.LogicNot, out ldloc))
+					return false;
+				ILVariable v;
+				if (!ldloc.Match(ILCode.Ldloc, out v) || v != exVar)
+					return false;
+
+				// Check failing path
+				var trueBody = ifCond.TrueBlock.Body;
+				ILVariable retVar;
+				ILExpression ldci4;
+				if (trueBody.Count != 1 || !trueBody[0].Match(ILCode.Stloc, out retVar, out ldci4))
+					return false;
+				int intVal;
+				if (!ldci4.Match(ILCode.Ldc_I4, out intVal) || intVal != 0)
+					return false;
+
+				// Check non-failing path
+				var falseBody = ifCond.FalseBlock.Body;
+				if (falseBody.Count < 2)
+					return false;
+				ILExpression ldloc2;
+				ILVariable realExVar;
+				if (!falseBody[0].Match(ILCode.Stloc, out realExVar, out ldloc2))
+					return false;
+				if (!ldloc2.Match(ILCode.Ldloc, out v) || v != exVar)
+					return false;
+
+				if (falseBody.Count == 2) {
+					// Release build
+					//     stloc:int32(
+					//         arg_46_0,
+					//         cgt.un:bool[exp:int32](
+					//             <real expr>,
+					//             ldc.i4:bool(0)
+					//         )
+					//     )
+					ILExpression cgt;
+					if (!falseBody[1].Match(ILCode.Stloc, out v, out cgt) || v != retVar)
+						return false;
+					List<ILExpression> cgt_args;
+					if (!cgt.Match(ILCode.Cgt_Un, out cgt_args) || cgt_args.Count != 2)
+						return false;
+					if (!cgt_args[1].Match(ILCode.Ldc_I4, out intVal) || intVal != 0)
+						return false;
+
+					if (!body[2].Match(ILCode.Endfilter, out ldloc) || !ldloc.Match(ILCode.Ldloc, out v) || v != retVar)
+						return false;
+
+					var newCode = cgt_args[0];
+					if (context.CalculateBinSpans) {
+						var binSpans = filterBlock.GetSelfAndChildrenRecursiveBinSpans().ToArray();
+						newCode.BinSpans.AddRange(binSpans);
+					}
+					body.Clear();
+					body.Add(newCode);
+					exVar = realExVar;
+					return true;
+				}
+				else if (falseBody.Count == 3) {
+					// Debug build
+					//     stloc:bool(
+					//         var_3_4E,
+					//         <real expr>
+					//     )
+					//     stloc:int32(arg_46_0, cgt.un:bool[exp:int32](ldloc:bool(var_3_4E), ldc.i4:bool(0)))
+					ILVariable boolVar;
+					ILExpression newCode;
+					if (!falseBody[1].Match(ILCode.Stloc, out boolVar, out newCode))
+						return false;
+
+					ILExpression cgt;
+					if (!falseBody[2].Match(ILCode.Stloc, out v, out cgt) || v != retVar)
+						return false;
+					List<ILExpression> cgt_args;
+					if (!cgt.Match(ILCode.Cgt_Un, out cgt_args) || cgt_args.Count != 2)
+						return false;
+					if (!cgt_args[0].Match(ILCode.Ldloc, out v) || v != boolVar)
+						return false;
+					if (!cgt_args[1].Match(ILCode.Ldc_I4, out intVal) || intVal != 0)
+						return false;
+
+					if (!body[2].Match(ILCode.Endfilter, out ldloc) || !ldloc.Match(ILCode.Ldloc, out v) || v != retVar)
+						return false;
+
+					if (context.CalculateBinSpans) {
+						var binSpans = filterBlock.GetSelfAndChildrenRecursiveBinSpans().ToArray();
+						newCode.BinSpans.AddRange(binSpans);
+					}
+					body.Clear();
+					body.Add(newCode);
+					exVar = realExVar;
+					return true;
+				}
+				else
+					return false;
+			}
+		}
+
+		static bool TryGetFilterExceptionType(List<ILNode> body, ref int pos, ILTryCatchBlock.FilterILBlock filterBlock, out ILVariable exVar, out ITypeDefOrRef exType) {
+			exVar = null;
+			exType = null;
+			ILExpression isinst;
+			if (pos >= body.Count || !body[pos].Match(ILCode.Stloc, out exVar, out isinst))
+				return false;
+			ILExpression isInstLdloc;
+			if (!isinst.Match(ILCode.Isinst, out exType, out isInstLdloc))
+				return false;
+			ILVariable v;
+			if (!isInstLdloc.Match(ILCode.Ldloc, out v))
+				return false;
+			if (v != filterBlock.ExceptionVariable)
+				return false;
+
+			pos++;
+			return true;
+		}
+
 		/// <summary>
 		/// Removes redundatant Br, Nop, Dup, Pop
 		/// Ignore arguments of 'leave'
@@ -481,17 +1074,17 @@ namespace ICSharpCode.Decompiler.ILAst {
 								expr.BinSpans.Clear();
 							}
 							continue;
-							case ILCode.Brfalse:  op = ILCode.LogicNot; break;
-							case ILCode.Beq:      op = ILCode.Ceq; break;
-							case ILCode.Bne_Un:   op = ILCode.Cne; break;
-							case ILCode.Bgt:      op = ILCode.Cgt; break;
-							case ILCode.Bgt_Un:   op = ILCode.Cgt_Un; break;
-							case ILCode.Ble:      op = ILCode.Cle; break;
-							case ILCode.Ble_Un:   op = ILCode.Cle_Un; break;
-							case ILCode.Blt:      op = ILCode.Clt; break;
-							case ILCode.Blt_Un:   op = ILCode.Clt_Un; break;
-							case ILCode.Bge:	  op = ILCode.Cge; break;
-							case ILCode.Bge_Un:   op = ILCode.Cge_Un; break;
+						case ILCode.Brfalse:  op = ILCode.LogicNot; break;
+						case ILCode.Beq:      op = ILCode.Ceq; break;
+						case ILCode.Bne_Un:   op = ILCode.Cne; break;
+						case ILCode.Bgt:      op = ILCode.Cgt; break;
+						case ILCode.Bgt_Un:   op = ILCode.Cgt_Un; break;
+						case ILCode.Ble:      op = ILCode.Cle; break;
+						case ILCode.Ble_Un:   op = ILCode.Cle_Un; break;
+						case ILCode.Blt:      op = ILCode.Clt; break;
+						case ILCode.Blt_Un:   op = ILCode.Clt_Un; break;
+						case ILCode.Bge:	  op = ILCode.Cge; break;
+						case ILCode.Bge_Un:   op = ILCode.Cge_Un; break;
 						default:
 							continue;
 					}
@@ -534,8 +1127,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		{
 			if (expr.Code == ILCode.Call || expr.Code == ILCode.Callvirt) {
 				IMethod method = (IMethod)expr.Operand;
-				var declType = method.DeclaringType as dnlib.DotNet.TypeSpec;
-				var declArrayType = declType == null ? null : declType.TypeSig.RemovePinnedAndModifiers() as ArraySigBase;
+				var declArrayType = (method.DeclaringType as TypeSpec)?.TypeSig.RemovePinnedAndModifiers() as ArraySigBase;
 				if (declArrayType != null) {
 					switch (method.Name) {
 						case "Get":
@@ -547,7 +1139,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 						case "Address":
 							ByRefSig brt = method.MethodSig.GetRetType() as ByRefSig;
 							if (brt != null) {
-								IMethod getMethod = new MemberRefUser(method.Module, "Get", method.MethodSig == null ? null : method.MethodSig.Clone(), declArrayType.ToTypeDefOrRef());
+								IMethod getMethod = new MemberRefUser(method.Module, "Get", method.MethodSig?.Clone(), declArrayType.ToTypeDefOrRef());
 								if (getMethod.MethodSig != null)
 									getMethod.MethodSig.RetType = declArrayType.Next;
 								expr.Operand = getMethod;
@@ -560,12 +1152,10 @@ namespace ICSharpCode.Decompiler.ILAst {
 					}
 				} else {
 					MethodDef methodDef = method.Resolve();
-					if (methodDef != null) {
-						if (methodDef.IsGetter)
-							expr.Code = (expr.Code == ILCode.Call) ? ILCode.CallGetter : ILCode.CallvirtGetter;
-						else if (methodDef.IsSetter)
-							expr.Code = (expr.Code == ILCode.Call) ? ILCode.CallSetter : ILCode.CallvirtSetter;
-					}
+					if (methodDef?.IsGetter ?? method.Name.StartsWith("get_"))
+						expr.Code = (expr.Code == ILCode.Call) ? ILCode.CallGetter : ILCode.CallvirtGetter;
+					else if (methodDef?.IsSetter ?? method.Name.StartsWith("set_"))
+						expr.Code = (expr.Code == ILCode.Call) ? ILCode.CallSetter : ILCode.CallvirtSetter;
 				}
 			} else if (expr.Code == ILCode.Newobj && expr.Arguments.Count == 2) {
 				// Might be 'newobj(SomeDelegate, target, ldvirtftn(F, target))'.
@@ -714,7 +1304,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 							else
 								block.BinSpans.AddRange(childAsBB.BinSpans);
 						}
-						flatBody.AddRange(childAsBB.GetChildren());
+						foreach (var c in childAsBB.GetChildren())
+							flatBody.Add(c);
 						prevChildAsBB = childAsBB;
 					} else {
 						flatBody.Add(child);
@@ -764,40 +1355,49 @@ namespace ICSharpCode.Decompiler.ILAst {
 		/// </summary>
 		void ReduceIfNesting(ILNode node)
 		{
-			ILBlock block = node as ILBlock;
-			if (block != null) {
-				for (int i = 0; i < block.Body.Count; i++) {
-					ILCondition cond = block.Body[i] as ILCondition;
-					if (cond != null) {
-						bool trueExits = cond.TrueBlock.Body.LastOrDefault().IsUnconditionalControlFlow();
-						bool falseExits = cond.FalseBlock.Body.LastOrDefault().IsUnconditionalControlFlow();
-						
-						if (trueExits) {
-							// Move the false block after the condition
-							block.Body.InsertRange(i + 1, cond.FalseBlock.GetChildren());
-							cond.FalseBlock = new ILBlock();
-						} else if (falseExits) {
-							// Move the true block after the condition
-							block.Body.InsertRange(i + 1, cond.TrueBlock.GetChildren());
-							cond.TrueBlock = new ILBlock();
-						}
-						
-						// Eliminate empty true block
-						if (!cond.TrueBlock.GetChildren().Any() && cond.FalseBlock.GetChildren().Any()) {
-							// Swap bodies
-							ILBlock tmp = cond.TrueBlock;
-							cond.TrueBlock = cond.FalseBlock;
-							cond.FalseBlock = tmp;
-							cond.Condition = new ILExpression(ILCode.LogicNot, null, cond.Condition);
+			var list = Optimize_List_ILNode;
+			list.Clear();
+			list.Add(node);
+			while (list.Count > 0) {
+				node = list[list.Count - 1];
+				list.RemoveAt(list.Count - 1);
+
+				ILBlock block = node as ILBlock;
+				if (block != null) {
+					for (int i = 0; i < block.Body.Count; i++) {
+						ILCondition cond = block.Body[i] as ILCondition;
+						if (cond != null) {
+							bool trueExits = cond.TrueBlock.Body.LastOrDefault().IsUnconditionalControlFlow();
+							bool falseExits = cond.FalseBlock.Body.LastOrDefault().IsUnconditionalControlFlow();
+
+							if (trueExits) {
+								// Move the false block after the condition
+								block.Body.InsertRange(i + 1, cond.FalseBlock.GetChildren());
+								cond.FalseBlock = new ILBlock();
+							}
+							else if (falseExits) {
+								// Move the true block after the condition
+								block.Body.InsertRange(i + 1, cond.TrueBlock.GetChildren());
+								cond.TrueBlock = new ILBlock();
+							}
+
+							// Eliminate empty true block
+							if (!cond.TrueBlock.HasChildren && cond.FalseBlock.HasChildren) {
+								// Swap bodies
+								ILBlock tmp = cond.TrueBlock;
+								cond.TrueBlock = cond.FalseBlock;
+								cond.FalseBlock = tmp;
+								cond.Condition = new ILExpression(ILCode.LogicNot, null, cond.Condition);
+							}
 						}
 					}
 				}
-			}
-			
-			// We are changing the number of blocks so we use plain old recursion to get all blocks
-			foreach(ILNode child in node.GetChildren()) {
-				if (child != null && !(child is ILExpression))
-					ReduceIfNesting(child);
+
+				// We are changing the number of blocks so we use plain old recursion to get all blocks
+				foreach (ILNode child in node.GetChildren()) {
+					if (child != null && !(child is ILExpression))
+						list.Add(child);//TODO: For same order, need to reverse it
+				}
 			}
 		}
 		
@@ -1016,7 +1616,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				foreach (ILExpression child in expr.Arguments)
 					ReplaceVariables(child, variableMapping);
 			} else {
-				var catchBlock = node as ILTryCatchBlock.CatchBlock;
+				var catchBlock = node as ILTryCatchBlock.CatchBlockBase;
 				if (catchBlock != null && catchBlock.ExceptionVariable != null) {
 					catchBlock.ExceptionVariable = variableMapping(catchBlock.ExceptionVariable);
 				}
@@ -1145,6 +1745,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					// property getters can't be expression statements, but all other method calls can be
 					IMethod mr = (IMethod)expr.Operand;
 					return !mr.Name.StartsWith("get_", StringComparison.Ordinal);
+				case ILCode.CallReadOnlySetter:
 				case ILCode.CallSetter:
 				case ILCode.CallvirtSetter:
 				case ILCode.Newobj:

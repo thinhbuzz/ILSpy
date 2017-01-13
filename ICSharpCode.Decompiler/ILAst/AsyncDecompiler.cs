@@ -49,11 +49,13 @@ namespace ICSharpCode.Decompiler.ILAst {
 		}
 		
 		DecompilerContext context;
-		
+		AutoPropertyProvider autoPropertyProvider;
+
 		// These fields are set by MatchTaskCreationPattern()
 		AsyncMethodType methodType;
 		int initialState;
-		TypeDef stateMachineStruct;
+		TypeDef stateMachineType;
+		bool stateMachineTypeIsValueType;
 		MethodDef moveNextMethod;
 		FieldDef builderField;
 		FieldDef stateField;
@@ -68,12 +70,13 @@ namespace ICSharpCode.Decompiler.ILAst {
 		ILExpression resultExpr;
 		
 		#region RunStep1() method
-		public static void RunStep1(DecompilerContext context, ILBlock method, List<ILExpression> listExpr, List<ILBlock> listBlock, Dictionary<ILLabel, int> labelRefCount)
+		public static void RunStep1(DecompilerContext context, ILBlock method, AutoPropertyProvider autoPropertyProvider, List<ILExpression> listExpr, List<ILBlock> listBlock, Dictionary<ILLabel, int> labelRefCount)
 		{
 			if (!context.Settings.AsyncAwait)
 				return; // abort if async decompilation is disabled
 			var yrd = new AsyncDecompiler();
 			yrd.context = context;
+			yrd.autoPropertyProvider = autoPropertyProvider;
 			if (!yrd.MatchTaskCreationPattern(method))
 				return;
 			#if DEBUG
@@ -140,10 +143,11 @@ namespace ICSharpCode.Decompiler.ILAst {
 			if (!loadStartArgument.Match(ILCode.Ldloca, out stateMachineVar))
 				return false;
 			
-			stateMachineStruct = stateMachineVar.Type.GetTypeDefOrRef().ResolveWithinSameModule();
-			if (stateMachineStruct == null || !DnlibExtensions.IsValueType(stateMachineStruct))
+			stateMachineType = stateMachineVar.Type.GetTypeDefOrRef().ResolveWithinSameModule();
+			if (stateMachineType == null)
 				return false;
-			moveNextMethod = stateMachineStruct.Methods.FirstOrDefault(f => f.Name == "MoveNext");
+			stateMachineTypeIsValueType = DnlibExtensions.IsValueType(stateMachineType);
+			moveNextMethod = stateMachineType.Methods.FirstOrDefault(f => f.Name == "MoveNext");
 			if (moveNextMethod == null)
 				return false;
 			
@@ -179,13 +183,15 @@ namespace ICSharpCode.Decompiler.ILAst {
 				IField builderField2;
 				if (!builderExpr.Match(ILCode.Ldflda, out builderField2, out loadStateMachineForBuilderExpr2))
 					return false;
-				if (builderField2.ResolveFieldWithinSameModule() != builderField || !loadStateMachineForBuilderExpr2.MatchLdloca(stateMachineVar))
+				if (builderField2.ResolveFieldWithinSameModule() != builderField)
+					return false;
+				if (stateMachineTypeIsValueType ? !loadStateMachineForBuilderExpr2.MatchLdloca(stateMachineVar) : !loadStateMachineForBuilderExpr2.MatchLdloc(stateMachineVar))
 					return false;
 			}
 			
 			// Check the last field assignment - this should be the state field
 			ILExpression initialStateExpr;
-			if (!MatchStFld(method.Body[method.Body.Count - 4], stateMachineVar, out stateField, out initialStateExpr))
+			if (!MatchStFld(method.Body[method.Body.Count - 4], stateMachineVar, stateMachineTypeIsValueType, out stateField, out initialStateExpr))
 				return false;
 			if (!initialStateExpr.Match(ILCode.Ldc_I4, out initialState))
 				return false;
@@ -195,18 +201,18 @@ namespace ICSharpCode.Decompiler.ILAst {
 			// Check the second-to-last field assignment - this should be the builder field
 			FieldDef builderField3;
 			ILExpression builderInitialization;
-			if (!MatchStFld(method.Body[method.Body.Count - 5], stateMachineVar, out builderField3, out builderInitialization))
+			if (!MatchStFld(method.Body[method.Body.Count - 5], stateMachineVar, stateMachineTypeIsValueType, out builderField3, out builderInitialization))
 				return false;
 			IMethod createMethodRef;
 			if (builderField3 != builderField || !builderInitialization.Match(ILCode.Call, out createMethodRef))
 				return false;
 			if (createMethodRef.Name != "Create")
 				return false;
-			
-			for (int i = 0; i < method.Body.Count - 5; i++) {
+
+			for (int i = stateMachineTypeIsValueType ? 0 : 1; i < method.Body.Count - 5; i++) {
 				FieldDef field;
 				ILExpression fieldInit;
-				if (!MatchStFld(method.Body[i], stateMachineVar, out field, out fieldInit))
+				if (!MatchStFld(method.Body[i], stateMachineVar, stateMachineTypeIsValueType, out field, out fieldInit))
 					return false;
 				ILVariable v;
 				if (!fieldInit.Match(ILCode.Ldloc, out v))
@@ -219,7 +225,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			return true;
 		}
 		
-		static bool MatchStFld(ILNode stfld, ILVariable stateMachineVar, out FieldDef field, out ILExpression expr)
+		static bool MatchStFld(ILNode stfld, ILVariable stateMachineVar, bool stateMachineStructIsValueType, out FieldDef field, out ILExpression expr)
 		{
 			field = null;
 			IField fieldRef;
@@ -227,7 +233,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 			if (!stfld.Match(ILCode.Stfld, out fieldRef, out ldloca, out expr))
 				return false;
 			field = fieldRef.ResolveFieldWithinSameModule();
-			return field != null && ldloca.MatchLdloca(stateMachineVar);
+			if (field == null)
+				return false;
+			return stateMachineStructIsValueType ? ldloca.MatchLdloca(stateMachineVar) : ldloca.MatchLdloc(stateMachineVar);
 		}
 		#endregion
 		
@@ -304,7 +312,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 			var optimizer = this.context.Cache.GetILAstOptimizer();
 			try {
-				optimizer.Optimize(context, ilMethod, ILAstOptimizationStep.YieldReturn);
+				optimizer.Optimize(context, ilMethod, autoPropertyProvider, ILAstOptimizationStep.YieldReturn);
 			}
 			finally {
 				this.context.Cache.Return(optimizer);
@@ -492,6 +500,16 @@ namespace ICSharpCode.Decompiler.ILAst {
 				return newBody;
 			ILLabel endFinallyLabel;
 			ILExpression ceqExpr;
+
+			ILExpression cge;
+			if (newBody[0].Match(ILCode.Brtrue, out endFinallyLabel, out cge)) {
+				List<ILExpression> args;
+				if (cge.Match(ILCode.Cge, out args) && args.Count == 2) {
+					if (args[1].MatchLdcI4(0) && args[0].MatchLdloc(cachedStateVar))
+						newBody.RemoveAt(0);//TODO: Preserve BinSpans?
+				}
+			}
+
 			if (newBody[0].Match(ILCode.Brtrue, out endFinallyLabel, out ceqExpr)) {
 				ILExpression condition;
 				if (MatchLogicNot(ceqExpr, out condition)) {
@@ -550,6 +568,19 @@ namespace ICSharpCode.Decompiler.ILAst {
 			// stfld(StateMachine::<>u__$awaiter6, ldloc(this), ldloc(CS$0$0001))
 			IField awaiterFieldRef;
 			ILExpression loadThis, loadAwaiterVar;
+
+			if (!stateMachineTypeIsValueType) {
+				if (newBody.Count < 2)
+					throw new SymbolicAnalysisFailedException();
+				ILVariable v;
+				ILExpression ldloc;
+				if (!newBody.LastOrDefault().Match(ILCode.Stloc, out v, out ldloc))
+					throw new SymbolicAnalysisFailedException();
+				if (!ldloc.Match(ILCode.Ldloc, out v))
+					throw new SymbolicAnalysisFailedException();
+				newBody.RemoveAt(newBody.Count - 1);
+			}
+
 			if (!newBody.LastOrDefault().Match(ILCode.Stfld, out awaiterFieldRef, out loadThis, out loadAwaiterVar))
 				throw new SymbolicAnalysisFailedException();
 			//TODO: Preserve BinSpans?

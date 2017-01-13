@@ -34,18 +34,39 @@ namespace ICSharpCode.Decompiler.ILAst {
 	/// </remarks>
 	public class TypeAnalysis
 	{
-		public static void Run(DecompilerContext context, ILBlock method)
+		public void Run(DecompilerContext context, ILBlock method)
 		{
-			TypeAnalysis ta = new TypeAnalysis();
-			ta.context = context;
-			ta.module = context.CurrentMethod.Module;
-			ta.typeSystem = ta.module.CorLibTypes;
-			ta.method = method;
-			ta.CreateDependencyGraph(method);
-			ta.IdentifySingleLoadVariables();
-			ta.RunInference();
+			this.context = context;
+			module = context.CurrentMethod.Module;
+			typeSystem = module.CorLibTypes;
+			this.method = method;
+			allExpressions.Clear();
+			assignmentExpressions.Clear();
+			singleLoadVariables.Clear();
+			ilnodes.Clear();
+			expressionToInferListIndex = 0;
+			CreateDependencyGraph(method);
+			IdentifySingleLoadVariables();
+			RunInference();
 		}
-		
+
+		ExpressionToInfer CreateExpressionToInfer(ILExpression expr) {
+			var list = expressionToInferList;
+			ExpressionToInfer instance;
+			if (expressionToInferListIndex < list.Count) {
+				instance = list[expressionToInferListIndex];
+				instance.Reset(expr);
+			}
+			else {
+				instance = ExpressionToInfer.Create(expr);
+				list.Add(instance);
+			}
+			expressionToInferListIndex++;
+			return instance;
+		}
+		readonly List<ExpressionToInfer> expressionToInferList = new List<ExpressionToInfer>();
+		int expressionToInferListIndex;
+
 		sealed class ExpressionToInfer
 		{
 			public ILExpression Expression;
@@ -61,8 +82,19 @@ namespace ICSharpCode.Decompiler.ILAst {
 			/// <summary>
 			/// The list variables that are read by this expression.
 			/// </summary>
-			public List<ILVariable> Dependencies = new List<ILVariable>();
-			
+			public readonly List<ILVariable> Dependencies = new List<ILVariable>();
+
+			public void Reset(ILExpression expr) {
+				Expression = expr;
+				Done = false;
+				DependsOnSingleLoad = null;
+				Dependencies.Clear();
+			}
+
+			ExpressionToInfer() { }
+
+			public static ExpressionToInfer Create(ILExpression expr) => new ExpressionToInfer { Expression = expr };
+
 			public override string ToString()
 			{
 				if (Done)
@@ -77,10 +109,11 @@ namespace ICSharpCode.Decompiler.ILAst {
 		ICorLibTypes typeSystem;
 		ILBlock method;
 		ModuleDef module;
-		List<ExpressionToInfer> allExpressions = new List<ExpressionToInfer>();
-		DefaultDictionary<ILVariable, List<ExpressionToInfer>> assignmentExpressions = new DefaultDictionary<ILVariable, List<ExpressionToInfer>>(_ => new List<ExpressionToInfer>());
-		HashSet<ILVariable> singleLoadVariables = new HashSet<ILVariable>();
-		
+		readonly List<ExpressionToInfer> allExpressions = new List<ExpressionToInfer>();
+		readonly DefaultDictionary<ILVariable, List<ExpressionToInfer>> assignmentExpressions = new DefaultDictionary<ILVariable, List<ExpressionToInfer>>(_ => new List<ExpressionToInfer>());
+		readonly HashSet<ILVariable> singleLoadVariables = new HashSet<ILVariable>();
+		readonly List<ILNode> ilnodes = new List<ILNode>();
+
 		#region CreateDependencyGraph
 		/// <summary>
 		/// Creates the "ExpressionToInfer" instances (=nodes in dependency graph)
@@ -90,31 +123,41 @@ namespace ICSharpCode.Decompiler.ILAst {
 		/// </remarks>
 		void CreateDependencyGraph(ILNode node)
 		{
-			ILCondition cond = node as ILCondition;
-			if (cond != null) {
-				cond.Condition.ExpectedType = typeSystem.Boolean;
-			}
-			ILWhileLoop loop = node as ILWhileLoop;
-			if (loop != null && loop.Condition != null) {
-				loop.Condition.ExpectedType = typeSystem.Boolean;
-			}
-			ILTryCatchBlock.CatchBlock catchBlock = node as ILTryCatchBlock.CatchBlock;
-			if (catchBlock != null && catchBlock.ExceptionVariable != null && catchBlock.ExceptionType != null && catchBlock.ExceptionVariable.Type == null) {
-				catchBlock.ExceptionVariable.Type = catchBlock.ExceptionType;
-			}
-			ILExpression expr = node as ILExpression;
-			if (expr != null) {
-				ExpressionToInfer expressionToInfer = new ExpressionToInfer();
-				expressionToInfer.Expression = expr;
-				allExpressions.Add(expressionToInfer);
-				FindNestedAssignments(expr, expressionToInfer);
-				
-				if (expr.Code == ILCode.Stloc && expr.Operand is ILVariable && ((ILVariable)expr.Operand).Type == null)
-					assignmentExpressions[(ILVariable)expr.Operand].Add(expressionToInfer);
-				return;
-			}
-			foreach (ILNode child in node.GetChildren()) {
-				CreateDependencyGraph(child);
+			var list = ilnodes;
+			list.Clear();
+			list.Add(node);
+			while (list.Count > 0) {
+				node = list[list.Count - 1];
+				list.RemoveAt(list.Count - 1);
+				ILCondition cond;
+				ILWhileLoop loop;
+				ILTryCatchBlock.CatchBlockBase catchBlock;
+				ILExpression expr;
+				if ((cond = node as ILCondition) != null) {
+					cond.Condition.ExpectedType = typeSystem.Boolean;
+				}
+				else if ((loop = node as ILWhileLoop) != null) {
+					if (loop.Condition != null)
+						loop.Condition.ExpectedType = typeSystem.Boolean;
+				}
+				else if ((catchBlock = node as ILTryCatchBlock.CatchBlockBase) != null) {
+					if (catchBlock.ExceptionVariable != null && catchBlock.ExceptionType != null && catchBlock.ExceptionVariable.Type == null)
+						catchBlock.ExceptionVariable.Type = catchBlock.ExceptionType;
+				}
+				else if ((expr = node as ILExpression) != null) {
+					ExpressionToInfer expressionToInfer = CreateExpressionToInfer(expr);
+					allExpressions.Add(expressionToInfer);
+					FindNestedAssignments(expr, expressionToInfer);
+
+					if (expr.Code == ILCode.Stloc && expr.Operand is ILVariable && ((ILVariable)expr.Operand).Type == null)
+						assignmentExpressions[(ILVariable)expr.Operand].Add(expressionToInfer);
+					continue;
+				}
+				int index = list.Count;
+				foreach (var c in node.GetChildren())
+					list.Add(c);
+				if (list.Count != index)
+					list.Reverse(index, list.Count - index);
 			}
 		}
 		
@@ -122,8 +165,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		{
 			foreach (ILExpression arg in expr.Arguments) {
 				if (arg.Code == ILCode.Stloc) {
-					ExpressionToInfer expressionToInfer = new ExpressionToInfer();
-					expressionToInfer.Expression = arg;
+					ExpressionToInfer expressionToInfer = CreateExpressionToInfer(arg);
 					allExpressions.Add(expressionToInfer);
 					FindNestedAssignments(arg, expressionToInfer);
 					ILVariable v = (ILVariable)arg.Operand;
@@ -324,6 +366,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				case ILCode.CallvirtGetter:
 				case ILCode.CallSetter:
 				case ILCode.CallvirtSetter:
+				case ILCode.CallReadOnlySetter:
 					{
 						IMethod method = expr.Operand as IMethod;
 						var parameters = method == null ? null : method.MethodSig.GetParameters();
@@ -332,7 +375,11 @@ namespace ICSharpCode.Decompiler.ILAst {
 								if (i == 0 && method.MethodSig.HasThis) {
 									InferTypeForExpression(expr.Arguments[0], MakeRefIfValueType(method.DeclaringType.ToTypeSig(), expr.GetPrefix(ILCode.Constrained)));
 								} else {
-									InferTypeForExpression(expr.Arguments[i], SubstituteTypeArgs(parameters[method.MethodSig.HasThis ? i - 1 : i], method: method));
+									// If it's a CallReadOnlySetter, the method is really the getter which has one less param,
+									// so verify the index.
+									int pi = method.MethodSig.HasThis ? i - 1 : i;
+									if (pi < parameters.Count)
+										InferTypeForExpression(expr.Arguments[i], SubstituteTypeArgs(parameters[pi], method: method));
 								}
 							}
 						}
@@ -619,7 +666,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				case ILCode.Ldtoken:
 					if (expr.Operand is ITypeDefOrRef)
 						return typeSystem.GetTypeRef("System", "RuntimeTypeHandle").ToTypeSig();
-					else if (expr.Operand is IField && ((IField)expr.Operand).FieldSig != null)
+					else if ((expr.Operand as IField)?.FieldSig != null)
 						return typeSystem.GetTypeRef("System", "RuntimeFieldHandle").ToTypeSig();
 					else
 						return typeSystem.GetTypeRef("System", "RuntimeMethodHandle").ToTypeSig();
@@ -915,7 +962,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		
 		public static TypeSig GetFieldType(IField field)
 		{
-			return SubstituteTypeArgs(field == null || field.FieldSig == null ? null : field.FieldSig.Type.RemoveModifiers(), field == null ? null : field.DeclaringType.ToTypeSig());
+			return SubstituteTypeArgs(field?.FieldSig?.Type.RemoveModifiers(), field?.DeclaringType.ToTypeSig());
 		}
 		
 		public static TypeSig SubstituteTypeArgs(TypeSig type, TypeSig typeContext = null, IMethod method = null)
@@ -937,12 +984,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 		
 		static TypeSig UnpackPointer(TypeSig pointerOrManagedReference)
 		{
-			ByRefSig refType = pointerOrManagedReference as ByRefSig;
-			if (refType != null)
-				return refType.Next;
-			PtrSig ptrType = pointerOrManagedReference as PtrSig;
-			if (ptrType != null)
-				return ptrType.Next;
+			if (pointerOrManagedReference is ByRefSig || pointerOrManagedReference is PtrSig)
+				return pointerOrManagedReference.Next;
 			return null;
 		}
 

@@ -142,7 +142,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 		{
 			if (!context.Settings.AnonymousMethods)
 				return false; // anonymous method decompilation is disabled
-			if (target != null && !(target is IdentifierExpression || target is ThisReferenceExpression || target is NullReferenceExpression))
+			if (target != null && !(target is IdentifierExpression || target is ThisReferenceExpression || target is NullReferenceExpression || target is MemberReferenceExpression))
 				return false; // don't copy arbitrary expressions, deal with identifiers only
 			
 			// Anonymous methods are defined in the same assembly
@@ -157,7 +157,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			ame.CopyAnnotationsFrom(objectCreateExpression); // copy BinSpans etc.
 			ame.RemoveAnnotations<IMethod>(); // remove reference to delegate ctor
 			ame.AddAnnotation(method); // add reference to anonymous method
-			ame.Parameters.AddRange(AstBuilder.MakeParameters(context.MetadataTextColorProvider, method, context.Settings.SortCustomAttributes, stringBuilder, isLambda: true));
+			ame.Parameters.AddRange(AstBuilder.MakeParameters(context.MetadataTextColorProvider, method, context.Settings, stringBuilder, isLambda: true));
 			ame.HasParameterList = true;
 			
 			// rename variables so that they don't conflict with the parameters:
@@ -171,8 +171,9 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			subContext.CurrentMethod = method;
 			subContext.CurrentMethodIsAsync = false;
 			subContext.ReservedVariableNames.AddRange(currentlyUsedVariableNames);
+			var autoPropProvider = new AutoPropertyProvider();
 			MethodDebugInfoBuilder builder;
-			BlockStatement body = AstMethodBodyBuilder.CreateMethodBody(method, subContext, ame.Parameters, false, stringBuilder, out builder);
+			BlockStatement body = AstMethodBodyBuilder.CreateMethodBody(method, subContext, autoPropProvider, ame.Parameters, false, stringBuilder, out builder);
 			ame.AddAnnotation(builder);
 			TransformationPipeline.RunTransformationsUntil(body, v => v is DelegateConstruction, subContext);
 			body.AcceptVisitor(this, null);

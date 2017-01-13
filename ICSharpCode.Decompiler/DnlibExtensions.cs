@@ -83,11 +83,11 @@ namespace ICSharpCode.Decompiler {
 			return pushes;
 		}
 		
-		public static int? GetPopDelta(this Instruction instruction, MethodDef methodDef)
+		public static int GetPopDelta(this Instruction instruction, MethodDef methodDef)
 		{
 			int pushes, pops;
 			instruction.CalculateStackUsage(methodDef.HasReturnType, out pushes, out pops);
-			return pops == -1 ? (int?)null : pops;
+			return pops;
 		}
 		#endregion
 
@@ -106,30 +106,41 @@ namespace ICSharpCode.Decompiler {
 				   type.ElementType == ElementType.I;
 		}
 
-		/// <summary>
-		/// checks if the given value is a numeric zero-value.
-		/// NOTE that this only works for types: [sbyte, short, int, long, IntPtr, byte, ushort, uint, ulong, UIntPtr, float, double and decimal]
-		/// </summary>
 		public static bool IsZero(this object value)
 		{
 			if (value == null)
 				return false;
-			return value.Equals((sbyte)0) ||
-				   value.Equals((short)0) ||
-				   value.Equals(0) ||
-				   value.Equals(0L) ||
-				   value.Equals(IntPtr.Zero) ||
-				   value.Equals((byte)0) ||
-				   value.Equals((ushort)0) ||
-				   value.Equals(0u) ||
-				   value.Equals(0UL) ||
-				   value.Equals(UIntPtr.Zero) ||
-				   value.Equals(0.0f) ||
-				   value.Equals(0.0) ||
-				   value.Equals((decimal)0);
-					
+			var type = value.GetType();
+			switch (Type.GetTypeCode(type)) {
+			case TypeCode.Empty:		return false;
+			case TypeCode.DBNull:		return false;
+			case TypeCode.Boolean:		return false;
+			case TypeCode.Char:			return (char)value == 0;
+			case TypeCode.SByte:		return (sbyte)value == 0;
+			case TypeCode.Byte:			return (byte)value == 0;
+			case TypeCode.Int16:		return (short)value == 0;
+			case TypeCode.UInt16:		return (ushort)value == 0;
+			case TypeCode.Int32:		return (int)value == 0;
+			case TypeCode.UInt32:		return (uint)value == 0;
+			case TypeCode.Int64:		return (long)value == 0;
+			case TypeCode.UInt64:		return (ulong)value == 0;
+			case TypeCode.Single:		return (float)value == 0;
+			case TypeCode.Double:		return (double)value == 0;
+			case TypeCode.Decimal:		return (decimal)value == 0;
+			case TypeCode.DateTime:		return false;
+			case TypeCode.String:		return false;
+			default:					return false;
+			case TypeCode.Object:
+				var ip = value as IntPtr?;
+				if (ip != null)
+					return ip.Value == IntPtr.Zero;
+				var uip = value as UIntPtr?;
+				if (uip != null)
+					return uip.Value == UIntPtr.Zero;
+				return false;
+			}
 		}
-		
+
 		/// <summary>
 		/// Gets the (exclusive) end offset of this instruction.
 		/// </summary>
@@ -220,7 +231,14 @@ namespace ICSharpCode.Decompiler {
 			}
 			return false;
 		}
-		
+
+		public static bool IsDynamicCallSiteContainerType(this ITypeDefOrRef type)
+		{
+			if (type == null)
+				return false;
+			return type.Name == "<>o" || type.Name.StartsWith("<>o__");
+		}
+
 		public static bool IsAnonymousType(this ITypeDefOrRef type)
 		{
 			if (type == null)
@@ -528,25 +546,7 @@ namespace ICSharpCode.Decompiler {
 			return tdr.IsValueType;
 		}
 
-		public static bool IsValueType(TypeSig ts)
-		{
-			if (ts == null)
-				return false;
-			switch (ts.ElementType) {
-			case ElementType.SZArray:
-			case ElementType.Array:
-			case ElementType.CModReqd:
-			case ElementType.CModOpt:
-			case ElementType.Pinned:
-			case ElementType.Ptr:
-			case ElementType.ByRef:
-			case ElementType.Sentinel:
-				// Emulate cecil behavior
-				return false;
-			default:
-				return ts.IsValueType;
-			}
-		}
+		public static bool IsValueType(TypeSig ts) => ts?.IsValueType ?? false;
 
 		static string GetNamespaceInternal(this ITypeDefOrRef tdr) {
 			var tr = tdr as TypeRef;

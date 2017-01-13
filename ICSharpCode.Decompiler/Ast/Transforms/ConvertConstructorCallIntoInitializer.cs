@@ -77,7 +77,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			return null;
 		}
 		
-		static readonly ExpressionStatement fieldInitializerPattern = new ExpressionStatement {
+		static readonly ExpressionStatement fieldOrPropInitializerPattern = new ExpressionStatement {
 			Expression = new AssignmentExpression {
 				Left = new NamedNode("fieldAccess", new MemberReferenceExpression { 
 				                     	Target = new ThisReferenceExpression(),
@@ -121,18 +121,28 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				// Convert first statement in all ctors (if all ctors have the same statement) into a field initializer.
 				bool allSame;
 				do {
-					Match m = fieldInitializerPattern.Match(instanceCtorsNotChainingWithThis[0].Body.FirstOrDefault());
+					Match m = fieldOrPropInitializerPattern.Match(instanceCtorsNotChainingWithThis[0].Body.FirstOrDefault());
 					if (!m.Success)
 						break;
-					
-					FieldDef fieldDef = m.Get<AstNode>("fieldAccess").Single().Annotation<IField>().ResolveFieldWithinSameModule();
-					if (fieldDef == null)
-						break;
-					AstNode fieldOrEventDecl = members.FirstOrDefault(f => f.Annotation<FieldDef>() == fieldDef);
+
+					var node = m.Get<AstNode>("fieldAccess").Single();
+					AstNode fieldOrEventDecl = null;
+					var fieldRef = node.Annotation<IField>();
+					if (fieldRef?.IsField == true) {
+						FieldDef fieldDef = node.Annotation<IField>().ResolveFieldWithinSameModule();
+						if (fieldDef == null)
+							break;
+						fieldOrEventDecl = members.FirstOrDefault(f => f.Annotation<FieldDef>() == fieldDef);
+					}
+					else {
+						var prop = node.Annotation<PropertyDef>();
+						if (prop != null)
+							fieldOrEventDecl = members.FirstOrDefault(f => f.Annotation<PropertyDef>() == prop);
+					}
 					if (fieldOrEventDecl == null)
 						break;
 					Expression initializer = m.Get<Expression>("initializer").Single();
-					// 'this'/'base' cannot be used in field initializers
+					// 'this'/'base' cannot be used in initializers
 					if (initializer.DescendantsAndSelf.Any(n => n is ThisReferenceExpression || n is BaseReferenceExpression))
 						break;
 					
@@ -153,6 +163,10 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 							Debug.Assert(mm != null);
 							if (mm != null)
 								ctorBinSpans.Add(Tuple.Create(mm, stmt.GetAllRecursiveBinSpans()));
+						}
+						if (fieldOrEventDecl is PropertyDeclaration) {
+							var pd = (PropertyDeclaration)fieldOrEventDecl;
+							pd.Variables.Add(new VariableInitializer(null, string.Empty, null));
 						}
 						var varInit = fieldOrEventDecl.GetChildrenByRole(Roles.Variable).Single();
 						initializer.Remove();
@@ -195,20 +209,39 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 						AssignmentExpression assignment = es.Expression as AssignmentExpression;
 						if (assignment == null || assignment.Operator != AssignmentOperatorType.Assign)
 							break;
-						FieldDef fieldDef = assignment.Left.Annotation<IField>().ResolveFieldWithinSameModule();
-						if (fieldDef == null || !fieldDef.IsStatic)
-							break;
-						FieldDeclaration fieldDecl = members.OfType<FieldDeclaration>().FirstOrDefault(f => f.Annotation<FieldDef>() == fieldDef);
-						if (fieldDecl == null)
-							break;
+						VariableInitializer varInit;
+						var node = assignment.Left;
+						var field = node.Annotation<IField>();
+						EntityDeclaration decl;
+						if (field?.IsField == true) {
+							FieldDef fieldDef = node.Annotation<IField>().ResolveFieldWithinSameModule();
+							if (fieldDef == null || !fieldDef.IsStatic)
+								break;
+							FieldDeclaration fieldDecl = members.OfType<FieldDeclaration>().FirstOrDefault(f => f.Annotation<FieldDef>() == fieldDef);
+							if (fieldDecl == null)
+								break;
+							varInit = fieldDecl.Variables.Single();
+							decl = fieldDecl;
+						}
+						else {
+							var prop = node.Annotation<PropertyDef>();
+							if (prop != null) {
+								var pd = members.OfType<PropertyDeclaration>().FirstOrDefault(f => f.Annotation<PropertyDef>() == prop);
+								if (pd == null)
+									break;
+								decl = pd;
+								pd.Variables.Add(varInit = new VariableInitializer(null, string.Empty, null));
+							}
+							else
+								break;
+						}
 						var binSpans = assignment.GetAllRecursiveBinSpans();
 						assignment.RemoveAllBinSpansRecursive();
-						var varInit = fieldDecl.Variables.Single();
 						varInit.Initializer = assignment.Right.Detach();
 						var ctorBinSpans = new List<Tuple<MethodDebugInfoBuilder, List<BinSpan>>>(1);
 						if (mm != null)
 							ctorBinSpans.Add(Tuple.Create(mm, binSpans));
-						fieldDecl.AddAnnotation(ctorBinSpans);
+						decl.AddAnnotation(ctorBinSpans);
 						es.Remove();
 					}
 					if (!context.Settings.ForceShowAllMembers && context.Settings.RemoveEmptyDefaultConstructors && staticCtor.Body.Statements.Count == 0)

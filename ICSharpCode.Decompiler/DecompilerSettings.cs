@@ -53,6 +53,7 @@ namespace ICSharpCode.Decompiler {
 			MaxArrayElements = int.MaxValue;
 			SortCustomAttributes = true;
 			UseSourceCodeOrder = false;
+			OneCustomAttributePerLine = false;
 			return this;
 		}
 
@@ -506,6 +507,17 @@ namespace ICSharpCode.Decompiler {
 		}
 		bool allowFieldInitializers = true;
 
+		public bool OneCustomAttributePerLine {
+			get { return oneCustomAttributePerLine; }
+			set {
+				if (oneCustomAttributePerLine != value) {
+					oneCustomAttributePerLine = value;
+					OnPropertyChanged(nameof(OneCustomAttributePerLine));
+				}
+			}
+		}
+		bool oneCustomAttributePerLine = true;
+
 		CSharpFormattingOptions csharpFormattingOptions;
 
 		public CSharpFormattingOptions CSharpFormattingOptions {
@@ -578,6 +590,7 @@ namespace ICSharpCode.Decompiler {
 			if (SortCustomAttributes != other.SortCustomAttributes) return false;
 			if (UseSourceCodeOrder != other.UseSourceCodeOrder) return false;
 			if (AllowFieldInitializers != other.AllowFieldInitializers) return false;
+			if (OneCustomAttributePerLine != other.OneCustomAttributePerLine) return false;
 
 			//TODO: CSharpFormattingOptions. This isn't currently used but it has a ton of properties
 
@@ -620,6 +633,7 @@ namespace ICSharpCode.Decompiler {
 				h ^= SortCustomAttributes			? 0 : 0x00000040U;
 				h ^= UseSourceCodeOrder				? 0 : 0x00000020U;
 				h ^= AllowFieldInitializers			? 0 : 0x00000010U;
+				h ^= OneCustomAttributePerLine		? 0 : 0x00000008U;
 
 				for (int i = 0; i < decompilationObjects.Length; i++)
 					h ^= (uint)decompilationObjects[i] << (i * 8);
@@ -667,6 +681,7 @@ namespace ICSharpCode.Decompiler {
 			other.SortCustomAttributes = this.SortCustomAttributes;
 			other.UseSourceCodeOrder = this.UseSourceCodeOrder;
 			other.AllowFieldInitializers = this.AllowFieldInitializers;
+			other.OneCustomAttributePerLine = this.OneCustomAttributePerLine;
 			//TODO: CSharpFormattingOptions
 			return other;
 		}

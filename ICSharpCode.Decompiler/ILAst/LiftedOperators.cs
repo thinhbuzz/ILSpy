@@ -523,16 +523,16 @@ namespace ICSharpCode.Decompiler.ILAst
 
 			void SetResult(ILExpression expr, ILExpression n)
 			{
-				// IL ranges from removed nodes are assigned to the new operator expression
-				var removednodes = expr.GetSelfAndChildrenRecursive<ILExpression>().Except(n.GetSelfAndChildrenRecursive<ILExpression>());
-				if (context.CalculateBinSpans)
+				if (context.CalculateBinSpans) {
+					// IL ranges from removed nodes are assigned to the new operator expression
+					var removednodes = expr.GetSelfAndChildrenRecursive<ILExpression>().Except(n.GetSelfAndChildrenRecursive<ILExpression>());
 					n.BinSpans.AddRange(removednodes.SelectMany(el => el.BinSpans));
+					expr.BinSpans.Clear();
+				}
 				// the new expression is wrapped in a container so that negations aren't pushed through lifted comparison operations
 				expr.Code = ILCode.Wrap;
 				expr.Arguments.Clear();
 				expr.Arguments.Add(n);
-				if (context.CalculateBinSpans)
-					expr.BinSpans.Clear();
 				expr.InferredType = n.InferredType;
 			}
 		}

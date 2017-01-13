@@ -36,16 +36,25 @@ namespace ICSharpCode.Decompiler.ILAst {
 		readonly List<ILNode> list_ILNode = new List<ILNode>();
 		readonly DecompilerContext context;
 
-		public ILInlining(DecompilerContext context, ILBlock method)
+		public ILInlining(DecompilerContext context)
 		{
 			this.context = context;
-			Initialize(method);
 		}
 
 		public void Initialize(ILBlock method)
 		{
 			this.method = method;
 			AnalyzeMethod();
+		}
+
+		public void Initialize(List<ILNode> body, int start, int count)
+		{
+			method = null;
+			numStloc.Clear();
+			numLdloc.Clear();
+			numLdloca.Clear();
+			for (int i = 0; i < count; i++)
+				AnalyzeNode(body[i + start]);
 		}
 
 		void AnalyzeMethod()
@@ -81,7 +90,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				foreach (ILExpression child in expr.Arguments)
 					AnalyzeNode(child, direction);
 			} else {
-				var catchBlock = node as ILTryCatchBlock.CatchBlock;
+				var catchBlock = node as ILTryCatchBlock.CatchBlockBase;
 				if (catchBlock != null && catchBlock.ExceptionVariable != null) {
 					numStloc[catchBlock.ExceptionVariable] = numStloc.GetOrDefault(catchBlock.ExceptionVariable) + direction;
 				}
@@ -103,9 +112,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 		ILInlining GetILInlining(ILBlock method)
 		{
 			if (cached_ILInlining == null)
-				cached_ILInlining = new ILInlining(context, method);
-			else
-				cached_ILInlining.Initialize(method);
+				cached_ILInlining = new ILInlining(context);
+			cached_ILInlining.Initialize(method);
 			return cached_ILInlining;
 		}
 		ILInlining cached_ILInlining;
@@ -114,17 +122,17 @@ namespace ICSharpCode.Decompiler.ILAst {
 		{
 			bool modified = false;
 			List<ILNode> body = block.Body;
-			if (block is ILTryCatchBlock.CatchBlock && body.Count > 1) {
-				ILVariable v = ((ILTryCatchBlock.CatchBlock)block).ExceptionVariable;
+			if (block is ILTryCatchBlock.CatchBlockBase && body.Count > 1) {
+				ILVariable v = ((ILTryCatchBlock.CatchBlockBase)block).ExceptionVariable;
 				if (v != null && v.GeneratedByDecompiler) {
 					if (numLdloca.GetOrDefault(v) == 0 && numStloc.GetOrDefault(v) == 1 && numLdloc.GetOrDefault(v) == 1) {
 						ILVariable v2;
 						ILExpression ldException;
 						if (body[0].Match(ILCode.Stloc, out v2, out ldException) && ldException.MatchLdloc(v)) {
 							if (context.CalculateBinSpans)
-								body[0].AddSelfAndChildrenRecursiveBinSpans(((ILTryCatchBlock.CatchBlock)block).StlocBinSpans);
+								body[0].AddSelfAndChildrenRecursiveBinSpans(((ILTryCatchBlock.CatchBlockBase)block).StlocBinSpans);
 							body.RemoveAt(0);
-							((ILTryCatchBlock.CatchBlock)block).ExceptionVariable = v2;
+							((ILTryCatchBlock.CatchBlockBase)block).ExceptionVariable = v2;
 							modified = true;
 						}
 					}
@@ -329,8 +337,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 						// so we have to handle both 'call' and 'callgetter'
 						IMethod mr = (IMethod)inlinedExpression.Operand;
 						// ensure that it's not an multi-dimensional array getter
-						TypeSig ts;
-						if (mr.DeclaringType is TypeSpec && (ts = ((TypeSpec)mr.DeclaringType).TypeSig.RemovePinnedAndModifiers()) != null && ts.IsSingleOrMultiDimensionalArray)
+						if ((mr.DeclaringType as TypeSpec)?.TypeSig.RemovePinnedAndModifiers()?.IsSingleOrMultiDimensionalArray == true)
 							return false;
 						goto case ILCode.Callvirt;
 					case ILCode.Callvirt:
@@ -357,11 +364,11 @@ namespace ICSharpCode.Decompiler.ILAst {
 					case ILCode.Call:
 					case ILCode.CallGetter:
 					case ILCode.CallSetter:
+					case ILCode.CallReadOnlySetter:
 					case ILCode.Callvirt:
 					case ILCode.CallvirtGetter:
 					case ILCode.CallvirtSetter:
-						IMethod mr = parent.Operand as IMethod;
-						return mr == null || mr.MethodSig == null ? false : mr.MethodSig.HasThis;
+						return (parent.Operand as IMethod)?.MethodSig?.HasThis == true;
 					case ILCode.Stfld:
 					case ILCode.Ldfld:
 					case ILCode.Ldflda:
@@ -501,7 +508,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 						// un-inline the arguments of the ldArg instruction
 						ILVariable[] uninlinedArgs = new ILVariable[copiedExpr.Arguments.Count];
 						for (int j = 0; j < uninlinedArgs.Length; j++) {
-							uninlinedArgs[j] = new ILVariable { GeneratedByDecompiler = true, Name = v.Name + "_cp_" + j };
+							uninlinedArgs[j] = new ILVariable { GeneratedByDecompiler = true, Name = v.Name + "_cp_" + j.ToString() };
 							block.Body.Insert(i++, new ILExpression(ILCode.Stloc, uninlinedArgs[j], copiedExpr.Arguments[j]));
 							recalc = true;
 						}

@@ -105,11 +105,11 @@ namespace ICSharpCode.Decompiler.ILAst
 			IMethod ctor;
 			List<ILExpression> ctorArgs;
 			TypeSpec arySpec;
-			ArraySigBase arrayType;
+			ArraySig arrayType;
 			if (expr.Match(ILCode.Stloc, out v, out newarrExpr) &&
 			    newarrExpr.Match(ILCode.Newobj, out ctor, out ctorArgs) &&
 			    (arySpec = (ctor.DeclaringType as TypeSpec)) != null &&
-				(arrayType = arySpec.TypeSig.RemovePinnedAndModifiers() as ArraySigBase) != null &&
+				(arrayType = arySpec.TypeSig.RemovePinnedAndModifiers() as ArraySig) != null &&
 			    arrayType.Rank == ctorArgs.Count) {
 				// Clone the type, so we can muck about with the Dimensions
 				var multAry = new ArraySig(arrayType.Next, arrayType.Rank, new uint[arrayType.Rank], new int[arrayType.Rank]);
@@ -146,9 +146,9 @@ namespace ICSharpCode.Decompiler.ILAst
 			ILExpression methodArg2;
 			IField fieldRef;
 			if (body.ElementAtOrDefault(pos).Match(ILCode.Call, out methodRef, out methodArg1, out methodArg2) &&
+				methodRef.Name == nameInitializeArray &&
 				methodRef.DeclaringType != null &&
 			    methodRef.DeclaringType.FullName == "System.Runtime.CompilerServices.RuntimeHelpers" &&
-			    methodRef.Name == "InitializeArray" &&
 			    methodArg1.Match(ILCode.Ldloc, out v2) &&
 			    array == v2 &&
 			    methodArg2.Match(ILCode.Ldtoken, out fieldRef))
@@ -170,6 +170,7 @@ namespace ICSharpCode.Decompiler.ILAst
 			foundPos = -1;
 			return false;
 		}
+		static readonly UTF8String nameInitializeArray = new UTF8String("InitializeArray");
 
 		static bool DecodeArrayInitializer(TypeSig elementTypeRef, byte[] initialValue, ILExpression[] output)
 		{
@@ -269,6 +270,7 @@ namespace ICSharpCode.Decompiler.ILAst
 		}
 		#endregion
 
+		static readonly UTF8String nameCtor = new UTF8String(".ctor");
 		/// <summary>
 		/// Handles both object and collection initializers.
 		/// </summary>
@@ -288,7 +290,7 @@ namespace ICSharpCode.Decompiler.ILAst
 				if (newObjExpr.Match(ILCode.Newobj, out ctor, out ctorArgs)) {
 					// v = newObj(ctor, ctorArgs)
 					newObjType = ctor.DeclaringType;
-					isValueType = false;
+					isValueType = DnlibExtensions.IsValueType(newObjType);
 				} else if (newObjExpr.Match(ILCode.DefaultValue, out newObjType)) {
 					// v = defaultvalue(type)
 					isValueType = true;
@@ -297,7 +299,7 @@ namespace ICSharpCode.Decompiler.ILAst
 				}
 			} else if (expr.Match(ILCode.Call, out ctor, out ctorArgs)) {
 				// call(SomeStruct::.ctor, ldloca(v), remainingArgs)
-				if (ctorArgs.Count > 0 && ctorArgs[0].Match(ILCode.Ldloca, out v)) {
+				if (ctor.Name == nameCtor && ctorArgs.Count > 0 && ctorArgs[0].Match(ILCode.Ldloca, out v)) {
 					isValueType = true;
 					newObjType = ctor.DeclaringType;
 					ctorArgs = new List<ILExpression>(ctorArgs);
@@ -314,7 +316,7 @@ namespace ICSharpCode.Decompiler.ILAst
 			}
 			if (DnlibExtensions.IsValueType(newObjType) != isValueType)
 				return false;
-			
+
 			int originalPos = pos;
 
 			// don't use object initializer syntax for closures
@@ -333,18 +335,18 @@ namespace ICSharpCode.Decompiler.ILAst
 			if (pos >= body.Count)
 				return false; // reached end of block, but there should be another instruction which consumes the initialized object
 
-			var inlining = GetILInlining(method);
+			var inlining = isValueType ? GetILInlining(body, originalPos, pos - originalPos + 1) : GetILInlining(method);
+			bool recheck = true;
 			if (isValueType) {
-				// one ldloc for the use of the initialized object
-				if (inlining.numLdloc.GetOrDefault(v) != 1)
-					return false;
-				// one ldloca for each initializer argument, and also for the ctor call (if it exists)
-				if (inlining.numLdloca.GetOrDefault(v) != totalElementCount + (expr.Code == ILCode.Call ? 1 : 0))
-					return false;
-				// one stloc for the initial store (if no ctor call was used)
-				if (inlining.numStloc.GetOrDefault(v) != (expr.Code == ILCode.Call ? 0 : 1))
-					return false;
-			} else {
+				recheck =
+					// one ldloc for the use of the initialized object
+					inlining.numLdloc.GetOrDefault(v) != 1 ||
+					// one ldloca for each initializer argument, and also for the ctor call (if it exists)
+					(inlining.numLdloca.GetOrDefault(v) != totalElementCount + (expr.Code == ILCode.Call ? 1 : 0)) ||
+					// one stloc for the initial store (if no ctor call was used)
+					(inlining.numStloc.GetOrDefault(v) != (expr.Code == ILCode.Call ? 0 : 1));
+			}
+			if (recheck) {
 				// one ldloc for each initializer argument, and another ldloc for the use of the initialized object
 				if (inlining.numLdloc.GetOrDefault(v) != totalElementCount + 1)
 					return false;
@@ -395,12 +397,17 @@ namespace ICSharpCode.Decompiler.ILAst
 				return false;
 			TypeDef td = tr.Resolve();
 			while (td != null) {
-				if (td.Interfaces.Any(intf => intf.Interface != null && intf.Interface.Name == "IEnumerable" && intf.Interface.Namespace == "System.Collections"))
-					return true;
+				foreach (var ii in td.Interfaces) {
+					var i = ii.Interface;
+					if (i.Name == nameIEnumerable && i.Namespace == nameSystemCollections)
+						return true;
+				}
 				td = td.BaseType != null ? td.BaseType.ResolveTypeDef() : null;
 			}
 			return false;
 		}
+		static readonly UTF8String nameIEnumerable = new UTF8String("IEnumerable");
+		static readonly UTF8String nameSystemCollections = new UTF8String("System.Collections");
 
 		/// <summary>
 		/// Gets whether 'expr' represents a setter in an object initializer.
@@ -424,9 +431,8 @@ namespace ICSharpCode.Decompiler.ILAst
 			IMethod addMethod;
 			List<ILExpression> args;
 			if (expr.Match(ILCode.Callvirt, out addMethod, out args) || expr.Match(ILCode.Call, out addMethod, out args)) {
-				if (addMethod.Name == "Add" && addMethod.MethodSig != null && addMethod.MethodSig.HasThis) {
+				if (addMethod.Name == "Add")
 					return args.Count >= 2;
-				}
 			}
 			return false;
 		}
@@ -486,7 +492,11 @@ namespace ICSharpCode.Decompiler.ILAst
 			// Ensure that the final argument is 'v'
 			if (isValueType) {
 				ILVariable loadedVar;
-				if (!(argument.Match(ILCode.Ldloca, out loadedVar) && loadedVar == v))
+				if (argument.Match(ILCode.Ldloca, out loadedVar)) {
+					if (loadedVar != v)
+						return false;
+				}
+				else if (!argument.MatchLdloc(v))
 					return false;
 			} else {
 				if (!argument.MatchLdloc(v))

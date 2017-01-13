@@ -1004,15 +1004,34 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 						Right = IdentifierExpression.Create("value", BoxedTextColor.Keyword)
 					}
 				}}};
-		
+		static readonly PropertyDeclaration automaticReadOnlyPropertyPattern = new PropertyDeclaration {
+			Attributes = { new Repeat(new AnyNode()) },
+			Modifiers = Modifiers.Any,
+			ReturnType = new AnyNode(),
+			PrivateImplementationType = new OptionalNode(new AnyNode()),
+			Name = Pattern.AnyString,
+			Getter = new Accessor {
+				Attributes = { new Repeat(new AnyNode()) },
+				Modifiers = Modifiers.Any,
+				Body = new BlockStatement {
+					new ReturnStatement {
+						Expression = new AnyNode("fieldReference")
+					}
+				}
+			}};
+
 		PropertyDeclaration TransformAutomaticProperties(PropertyDeclaration property)
 		{
 			PropertyDef prop = property.Annotation<PropertyDef>();
-			if (prop == null || prop.GetMethod == null || prop.SetMethod == null)
+			if (prop == null || prop.GetMethod == null)
 				return null;
-			if (!(prop.GetMethod.IsCompilerGenerated() && prop.SetMethod.IsCompilerGenerated()))
+			if (!prop.GetMethod.IsCompilerGenerated())
+				return null;
+			if (prop.SetMethod != null && !prop.SetMethod.IsCompilerGenerated())
 				return null;
 			Match m = automaticPropertyPattern.Match(property);
+			if (!m.Success)
+				m = automaticReadOnlyPropertyPattern.Match(property);
 			if (m.Success) {
 				FieldDef field = m.Get<AstNode>("fieldReference").Single().Annotation<IField>().ResolveFieldWithinSameModule();
 				if (field != null && field.IsCompilerGenerated() && field.DeclaringType == prop.DeclaringType) {
@@ -1028,7 +1047,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 					property.Setter.Body = null;
 					if (prop.GetMethod.Body != null)
 						property.Getter.AddAnnotation(new List<BinSpan> { new BinSpan(0, (uint)prop.GetMethod.Body.GetCodeSize()) });
-					if (prop.SetMethod.Body != null)
+					if (prop.SetMethod?.Body != null)
 						property.Setter.AddAnnotation(new List<BinSpan> { new BinSpan(0, (uint)prop.SetMethod.Body.GetCodeSize()) });
 				}
 			}
@@ -1158,7 +1177,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				FieldDef field = eventDef.DeclaringType.Fields.FirstOrDefault(f => f.Name == ev.Name);
 				if (field != null) {
 					ed.AddAnnotation(field);
-					AstBuilder.ConvertAttributes(context.MetadataTextColorProvider, ed, field, context.Settings.SortCustomAttributes, stringBuilder, "field");
+					AstBuilder.ConvertAttributes(context.MetadataTextColorProvider, ed, field, context.Settings, stringBuilder, "field");
 				}
 			}
 			
