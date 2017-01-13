@@ -280,16 +280,16 @@ public class InitializerTests
 	{
 		InitializerTests.X(InitializerTests.Y(), new ulong[]
 				{
-					1uL,
-					2000000000uL,
-					3000000000uL,
-					4uL,
-					5uL,
-					6uL,
-					7uL,
-					8uL,
-					4999999999999999999uL,
-					9999999999999999999uL
+					1UL,
+					2000000000UL,
+					3000000000UL,
+					4UL,
+					5UL,
+					6UL,
+					7UL,
+					8UL,
+					4999999999999999999UL,
+					9999999999999999999UL
 				});
 	}
 
