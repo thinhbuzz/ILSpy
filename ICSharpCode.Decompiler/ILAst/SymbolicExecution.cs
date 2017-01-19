@@ -52,7 +52,11 @@ namespace ICSharpCode.Decompiler.ILAst {
 		/// <summary>
 		/// bool: State != Constant
 		/// </summary>
-		StateInEquals
+		StateInEquals,
+		/// <summary>
+		/// bool: State > Constant
+		/// </summary>
+		StateGreaterThan,
 	}
 	
 	struct SymbolicValue
@@ -85,6 +89,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 	{
 		readonly FieldDef stateField;
 		readonly List<ILVariable> stateVariables = new List<ILVariable>();
+
+		public List<ILVariable> StateVariables => stateVariables;
 		
 		public SymbolicEvaluationContext(FieldDef stateField)
 		{
@@ -147,6 +153,12 @@ namespace ICSharpCode.Decompiler.ILAst {
 						return new SymbolicValue(SymbolicValueType.StateEquals, val.Constant);
 					else
 						return Failed();
+				case ILCode.Cgt:
+					left = Eval(expr.Arguments[0]);
+					right = Eval(expr.Arguments[1]);
+					if (left.Type != SymbolicValueType.State || right.Type != SymbolicValueType.IntegerConstant)
+						return Failed();
+					return new SymbolicValue(SymbolicValueType.StateGreaterThan, right.Constant);
 				default:
 					return Failed();
 			}

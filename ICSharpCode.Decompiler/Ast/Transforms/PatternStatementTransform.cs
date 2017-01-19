@@ -506,6 +506,23 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 					}
 				}
 			}};
+		// There's no finally block if it's a sealed class (or a struct) that doesn't implement IDisposable
+		static readonly Statement nonGenericForeachPatternNoFinallyBlock = new WhileStatement {
+			Condition = new IdentifierExpression(Pattern.AnyString).WithName("enumerator").Invoke("MoveNext"),
+			EmbeddedStatement = new BlockStatement {
+				new AssignmentExpression(
+					new IdentifierExpression(Pattern.AnyString).WithName("itemVar"),
+					new Choice {
+						new Backreference("enumerator").ToExpression().Member("Current", BoxedTextColor.InstanceProperty),
+						new CastExpression {
+							Type = new AnyNode("castType"),
+							Expression = new Backreference("enumerator").ToExpression().Member("Current", BoxedTextColor.InstanceProperty)
+						}
+					}
+				).WithName("getCurrent"),
+				new Repeat(new AnyNode("stmt")).ToStatement()
+			}
+		}.WithName("loop");
 		
 		public ForeachStatement TransformNonGenericForEach(ExpressionStatement node)
 		{
@@ -513,6 +530,8 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			if (!m1.Success) return null;
 			AstNode tryCatch = node.NextSibling;
 			Match m2 = nonGenericForeachPattern.Match(tryCatch);
+			if (!m2.Success)
+				m2 = nonGenericForeachPatternNoFinallyBlock.Match(tryCatch);
 			if (!m2.Success) return null;
 			
 			IdentifierExpression enumeratorVar = m2.Get<IdentifierExpression>("enumerator").Single();
@@ -553,11 +572,10 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			
 			body.Add(node.Detach());
 			body.Add((Statement)tryCatch.Detach());
-			
+
 			// Now that we moved the whole try-catch into the foreach loop; verify that we can
 			// move the enumerator into the foreach loop:
-			CanMoveVariableDeclarationIntoStatement(enumeratorVarDecl, foreachStatement, out declarationPoint);
-			if (declarationPoint != foreachStatement) {
+			if (!IsVariableValueUnused(enumeratorVarDecl, foreachStatement)) {
 				// oops, the enumerator variable can't be moved into the foreach loop
 				// Undo our AST changes:
 				((BlockStatement)foreachStatement.Parent).Statements.InsertBefore(foreachStatement, node.Detach());
@@ -565,9 +583,11 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				return null;
 			}
 
-			var tc = (TryCatchStatement)tryCatch;
-			foreachStatement.HiddenGetEnumeratorNode = !context.CalculateBinSpans ? tc.TryBlock.HiddenStart : NRefactoryExtensions.CreateHidden(tc.TryBlock.HiddenStart, m1.Get<AssignmentExpression>("getEnumeratorAssignment").Single());
-			foreachStatement.HiddenGetEnumeratorNode = NRefactoryExtensions.CreateHidden(!context.CalculateBinSpans ? null : BinSpan.OrderAndCompactList(tc.TryBlock.GetAllBinSpans()), foreachStatement.HiddenGetEnumeratorNode);
+			var tc = tryCatch as TryCatchStatement;
+			if (tc != null) {
+				foreachStatement.HiddenGetEnumeratorNode = !context.CalculateBinSpans ? tc.TryBlock.HiddenStart : NRefactoryExtensions.CreateHidden(tc.TryBlock.HiddenStart, m1.Get<AssignmentExpression>("getEnumeratorAssignment").Single());
+				foreachStatement.HiddenGetEnumeratorNode = NRefactoryExtensions.CreateHidden(!context.CalculateBinSpans ? null : BinSpan.OrderAndCompactList(tc.TryBlock.GetAllBinSpans()), foreachStatement.HiddenGetEnumeratorNode);
+			}
 			foreachStatement.HiddenMoveNextNode = loop.Condition;
 			foreachStatement.HiddenGetCurrentNode = m2.Get<AstNode>("getCurrent").Single();
 			var oldBody = loop.EmbeddedStatement as BlockStatement;
@@ -575,7 +595,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				body.HiddenStart = oldBody.HiddenStart;
 				body.HiddenEnd = oldBody.HiddenEnd;
 			}
-			if (context.CalculateBinSpans)
+			if (context.CalculateBinSpans && tc != null)
 				body.HiddenEnd = NRefactoryExtensions.CreateHidden(body.HiddenEnd, tc.TryBlock.HiddenEnd, tc.FinallyBlock);
 			
 			// Now create the correct body for the foreach statement:
@@ -1057,13 +1077,29 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 
 		static readonly UTF8String systemRuntimeCompilerServicesString = new UTF8String("System.Runtime.CompilerServices");
 		static readonly UTF8String compilerGeneratedAttributeString = new UTF8String("CompilerGeneratedAttribute");
-		void RemoveCompilerGeneratedAttribute(AstNodeCollection<AttributeSection> attributeSections)
-		{
+		static readonly UTF8String methodImplAttributeString = new UTF8String("MethodImplAttribute");
+		static readonly KeyValuePair<UTF8String, UTF8String>[] compilerGeneratedAttributeNames = new KeyValuePair<UTF8String, UTF8String>[] {
+			new KeyValuePair<UTF8String, UTF8String>(systemRuntimeCompilerServicesString, compilerGeneratedAttributeString),
+		};
+		static readonly KeyValuePair<UTF8String, UTF8String>[] eventAttributesToRemove = new KeyValuePair<UTF8String, UTF8String>[] {
+			new KeyValuePair<UTF8String, UTF8String>(systemRuntimeCompilerServicesString, compilerGeneratedAttributeString),
+			new KeyValuePair<UTF8String, UTF8String>(systemRuntimeCompilerServicesString, methodImplAttributeString),
+		};
+		void RemoveCompilerGeneratedAttribute(AstNodeCollection<AttributeSection> attributeSections) =>
+			RemoveAttribuets(attributeSections, compilerGeneratedAttributeNames);
+		void RemoveEventAttributes(AstNodeCollection<AttributeSection> attributeSections) =>
+			RemoveAttribuets(attributeSections, eventAttributesToRemove);
+		void RemoveAttribuets(AstNodeCollection<AttributeSection> attributeSections, KeyValuePair<UTF8String, UTF8String>[] attrNames) {
 			foreach (AttributeSection section in attributeSections) {
 				foreach (var attr in section.Attributes) {
 					ITypeDefOrRef tr = attr.Type.Annotation<ITypeDefOrRef>();
-					if (tr != null && tr.Compare(systemRuntimeCompilerServicesString, compilerGeneratedAttributeString)) {
-						attr.Remove();
+					if (tr == null)
+						continue;
+					foreach (var kv in attrNames) {
+						if (tr.Compare(kv.Key, kv.Value)) {
+							attr.Remove();
+							break;
+						}
 					}
 				}
 				if (section.Attributes.Count == 0)
@@ -1071,7 +1107,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			}
 		}
 		#endregion
-		
+
 		#region Automatic Events
 		static readonly Accessor automaticEventPatternV4 = new Accessor {
 			Attributes = { new Repeat(new AnyNode()) },
@@ -1119,14 +1155,76 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 						Right = new IdentifierExpressionBackreference("var2")
 					}}
 			}};
+		// mcs, Mono 4.6.2
+		static readonly Accessor automaticEventPatternMcs46 = new Accessor {
+			Body = new BlockStatement {
+				new VariableDeclarationStatement { Type = new AnyNode("type"), Variables = { new AnyNode() } },
+				new VariableDeclarationStatement { Type = new Backreference("type"), Variables = { new AnyNode() } },
+				new ExpressionStatement {
+					Expression = new AssignmentExpression {
+						Left = new NamedNode("var1", new IdentifierExpression(Pattern.AnyString)),
+						Operator = AssignmentOperatorType.Assign,
+						Right = new NamedNode(
+							"field",
+							new MemberReferenceExpression {
+								Target = new Choice { new ThisReferenceExpression(), new TypeReferenceExpression { Type = new AnyNode() } },
+								MemberName = Pattern.AnyString
+							})
+					},
+				},
+				new DoWhileStatement {
+					EmbeddedStatement = new BlockStatement {
+						new AssignmentExpression(new NamedNode("var2", new IdentifierExpression(Pattern.AnyString)), new IdentifierExpressionBackreference("var1")),
+						new AssignmentExpression {
+							Left = new IdentifierExpressionBackreference("var1"),
+							Right = new TypePattern(typeof(System.Threading.Interlocked)).ToType().Invoke(
+								BoxedTextColor.StaticMethod,
+								"CompareExchange",
+								new AstType[] { new Backreference("type") }, // type argument
+								new Expression[] { // arguments
+									new DirectionExpression { FieldDirection = FieldDirection.Ref, Expression = new Backreference("field") },
+									new AnyNode("delegateCombine").ToExpression().Invoke(
+										new IdentifierExpressionBackreference("var2"),
+										IdentifierExpression.Create("value", BoxedTextColor.Keyword)
+									).CastTo(new Backreference("type")),
+									new IdentifierExpressionBackreference("var1")
+								}
+							)}
+					},
+					Condition = new BinaryOperatorExpression {
+						Left = new IdentifierExpressionBackreference("var1"),
+						Operator = BinaryOperatorType.InEquality,
+						Right = new IdentifierExpressionBackreference("var2")
+					}}
+			}};
+		// csc 2.0-3.5
+		// Accessors have MethodImplOptions.Synchronized set
+		// this.SomeEvent = (EventHandler)Delegate.Combine(this.SomeEvent, value);
+		static readonly Accessor automaticEventPatternV35 = new Accessor {
+			Attributes = { new Repeat(new AnyNode()) },
+			Body = new BlockStatement {
+				new ExpressionStatement {
+					Expression = new AssignmentExpression {
+						Left = new NamedNode("field", new MemberReferenceExpression {
+							Target = new Choice { new ThisReferenceExpression(), new TypeReferenceExpression { Type = new AnyNode() } },
+							MemberName = Pattern.AnyString
+						}),
+						Operator = AssignmentOperatorType.Assign,
+						Right = new AnyNode("delegateCombine").ToExpression().Invoke(
+								new Backreference("field"),
+								IdentifierExpression.Create("value", BoxedTextColor.Keyword)
+							).CastTo(new AnyNode())
+					},
+				},
+			}};
 		
-		bool CheckAutomaticEventV4Match(Match m, CustomEventDeclaration ev, bool isAddAccessor)
+		bool CheckAutomaticEventV4Match(Match m, CustomEventDeclaration ev, bool isAddAccessor, bool hasType)
 		{
 			if (!m.Success)
 				return false;
 			if (m.Get<MemberReferenceExpression>("field").Single().MemberName != ev.Name)
 				return false; // field name must match event name
-			if (!ev.ReturnType.IsMatch(m.Get("type").Single()))
+			if (hasType && !ev.ReturnType.IsMatch(m.Get("type").Single()))
 				return false; // variable types must match event type
 			var combineMethod = m.Get<AstNode>("delegateCombine").Single().Parent.Annotation<IMethod>();
 			if (combineMethod == null || combineMethod.Name != (isAddAccessor ? "Combine" : "Remove"))
@@ -1136,11 +1234,19 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 		
 		EventDeclaration TransformAutomaticEvents(CustomEventDeclaration ev)
 		{
-			Match m1 = automaticEventPatternV4.Match(ev.AddAccessor);
-			if (!CheckAutomaticEventV4Match(m1, ev, true))
+			var pat = automaticEventPatternV4;
+			bool hasType = true;
+			Match m1 = pat.Match(ev.AddAccessor);
+			if (!m1.Success)
+				m1 = (pat = automaticEventPatternMcs46).Match(ev.AddAccessor);
+			if (!m1.Success) {
+				m1 = (pat = automaticEventPatternV35).Match(ev.AddAccessor);
+				hasType = false;
+			}
+			if (!CheckAutomaticEventV4Match(m1, ev, true, hasType))
 				return null;
-			Match m2 = automaticEventPatternV4.Match(ev.RemoveAccessor);
-			if (!CheckAutomaticEventV4Match(m2, ev, false))
+			Match m2 = pat.Match(ev.RemoveAccessor);
+			if (!CheckAutomaticEventV4Match(m2, ev, false, hasType))
 				return null;
 			EventDeclaration ed = new EventDeclaration();
 			ev.Attributes.MoveTo(ed.Attributes);
@@ -1180,7 +1286,8 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 					AstBuilder.ConvertAttributes(context.MetadataTextColorProvider, ed, field, context.Settings, stringBuilder, "field");
 				}
 			}
-			
+
+			RemoveEventAttributes(ed.Attributes);
 			ev.ReplaceWith(ed);
 			ev.AddAllRecursiveBinSpansTo(ev);
 			return ed;

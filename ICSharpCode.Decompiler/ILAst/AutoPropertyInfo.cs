@@ -68,26 +68,63 @@ namespace ICSharpCode.Decompiler.ILAst {
 				return null;
 			int pos = 0;
 			var instrs = body.Instructions;
+			IField field;
 			if (getter.IsStatic) {
-				if (instrs.Count != 2)
-					return null;
-				if (instrs[pos].OpCode.Code != Code.Ldsfld)
+				if (instrs.Count == 2) {
+					if (instrs[pos].OpCode.Code != Code.Ldsfld)
+						return null;
+					field = instrs[pos++].Operand as IField;
+				}
+				else if (instrs.Count == 5) {
+					if (instrs[pos].OpCode.Code != Code.Ldsfld)
+						return null;
+					field = instrs[pos++].Operand as IField;
+					if (instrs[pos++].OpCode.Code != Code.Stloc_0)
+						return null;
+					var brTarget = instrs[pos];
+					if (instrs[pos].OpCode.Code != Code.Br && instrs[pos].OpCode.Code != Code.Br_S)
+						return null;
+					if (brTarget != instrs[pos++])
+						return null;
+					if (instrs[pos++].OpCode.Code != Code.Ldloc_0)
+						return null;
+				}
+				else
 					return null;
 			}
 			else {
-				if (instrs.Count != 3)
-					return null;
-				if (instrs[pos++].OpCode.Code != Code.Ldarg_0)
-					return null;
-				if (instrs[pos].OpCode.Code != Code.Ldfld)
+				if (instrs.Count == 3) {
+					if (instrs[pos++].OpCode.Code != Code.Ldarg_0)
+						return null;
+					if (instrs[pos].OpCode.Code != Code.Ldfld)
+						return null;
+					field = instrs[pos++].Operand as IField;
+				}
+				else if (instrs.Count == 6) {
+					if (instrs[pos++].OpCode.Code != Code.Ldarg_0)
+						return null;
+					if (instrs[pos].OpCode.Code != Code.Ldfld)
+						return null;
+					field = instrs[pos++].Operand as IField;
+					if (instrs[pos++].OpCode.Code != Code.Stloc_0)
+						return null;
+					var brTarget = instrs[pos];
+					if (instrs[pos].OpCode.Code != Code.Br && instrs[pos].OpCode.Code != Code.Br_S)
+						return null;
+					if (brTarget != instrs[pos++])
+						return null;
+					if (instrs[pos++].OpCode.Code != Code.Ldloc_0)
+						return null;
+				}
+				else
 					return null;
 			}
-			var field = (instrs[pos++].Operand as IField).ResolveFieldWithinSameModule();
-			if (field?.DeclaringType != getter.DeclaringType)
+			var fd = field.ResolveFieldWithinSameModule();
+			if (fd?.DeclaringType != getter.DeclaringType)
 				return null;
 			if (instrs[pos++].OpCode.Code != Code.Ret)
 				return null;
-			return field;
+			return fd;
 		}
 
 		static FieldDef GetSetterBackingField(MethodDef getter) {

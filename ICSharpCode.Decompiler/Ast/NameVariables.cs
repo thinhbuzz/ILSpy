@@ -243,7 +243,7 @@ namespace ICSharpCode.Decompiler.Ast
 			}
 		}
 		
-		static string GetNameFromExpression(ILExpression expr)
+		string GetNameFromExpression(ILExpression expr)
 		{
 			switch (expr.Code) {
 				case ILCode.Ldfld:
@@ -254,7 +254,7 @@ namespace ICSharpCode.Decompiler.Ast
 				case ILCode.CallGetter:
 				case ILCode.CallvirtGetter:
 					IMethod mr = (IMethod)expr.Operand;
-					if (mr.Name.StartsWith("get_", StringComparison.OrdinalIgnoreCase) && mr.MethodSig.GetParameters().Count == 0) {
+					if (mr.MethodSig.GetParameters().Count == 0 && mr.Name.StartsWith("get_", StringComparison.OrdinalIgnoreCase) && mr.Name != nameGetCurrent) {
 						// use name from properties, but not from indexers
 						return CleanUpVariableName(mr.Name.Substring(4));
 					} else if (mr.Name.StartsWith("Get", StringComparison.OrdinalIgnoreCase) && mr.Name.String.Length >= 4 && char.IsUpper(mr.Name.String[3])) {
@@ -265,8 +265,9 @@ namespace ICSharpCode.Decompiler.Ast
 			}
 			return null;
 		}
+		static readonly UTF8String nameGetCurrent = new UTF8String("get_Current");
 		
-		static string GetNameForArgument(ILExpression parent, int i)
+		string GetNameForArgument(ILExpression parent, int i)
 		{
 			switch (parent.Code) {
 				case ILCode.Stfld:
@@ -288,7 +289,9 @@ namespace ICSharpCode.Decompiler.Ast
 						// argument might be value of a setter
 						if (methodRef.Name.StartsWith("set_", StringComparison.OrdinalIgnoreCase) ||
 							(parent.Code == ILCode.CallReadOnlySetter && methodRef.Name.StartsWith("get_", StringComparison.OrdinalIgnoreCase))) {
-							return CleanUpVariableName(methodRef.Name.Substring(4));
+							var name = methodRef.Name.Substring(4);
+							if (name != "Current")
+								return CleanUpVariableName(name);
 						} else if (methodRef.Name.StartsWith("Set", StringComparison.OrdinalIgnoreCase) && methodRef.Name.String.Length >= 4 && char.IsUpper(methodRef.Name.String[3])) {
 							return CleanUpVariableName(methodRef.Name.Substring(3));
 						}
@@ -344,27 +347,34 @@ namespace ICSharpCode.Decompiler.Ast
 			return name;
 		}
 		
-		static string CleanUpVariableName(string name)
+		string CleanUpVariableName(string name)
 		{
+			var sb = stringBuilder;
+			sb.Clear();
 			// remove the backtick (generics)
-			int pos = name.IndexOf('`');
+			int pos = name.LastIndexOf('`');
 			if (pos >= 0)
-				name = name.Substring(0, pos);
-			
+				sb.Append(name, 0, pos);
+			else
+				sb.Append(name);
+
 			// remove field prefix:
-			if (name.Length > 2 && name[0] == 'm' && name[1] == '_')
-				name = name.Substring(2);
-			else if (name.Length > 1 && name[0] == '_')
-				name = name.Substring(1);
-			
-			if (name.Length == 0)
+			if (sb.Length > 2 && sb[0] == 'm' && sb[1] == '_')
+				sb.Remove(0, 2);
+			else if (sb.Length > 1 && sb[0] == '_')
+				sb.Remove(0, 1);
+
+			if (sb.Length == 0)
 				return "obj";
 
-			var origChar = name[0];
-			var newChar = char.ToLowerInvariant(name[0]);
-			if (origChar == newChar)
-				return name;
-			return newChar.ToString() + name.Substring(1);
+			for (int i = 0; i < sb.Length; i++) {
+				var origChar = sb[i];
+				var newChar = char.ToLowerInvariant(origChar);
+				if (origChar == newChar)
+					break;
+				sb[i] = newChar;
+			}
+			return sb.ToString();
 		}
 	}
 }

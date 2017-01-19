@@ -43,15 +43,40 @@ namespace ICSharpCode.Decompiler.ILAst {
 		bool TransformDecimalCtorToConstant(ILExpression expr)
 		{
 			IMethod r;
+			IField f;
 			List<ILExpression> args;
-			if (expr.Match(ILCode.Newobj, out r, out args) &&
-				r.DeclaringType.Compare(systemString, decimalString))
-			{
+			if (expr.Match(ILCode.Newobj, out r, out args)) {
+				if (!r.DeclaringType.Compare(systemString, decimalString))
+					return false;
+				var sig = r.MethodSig;
+				if (sig == null || sig.GetGenParamCount() != 0)
+					return false;
 				if (args.Count == 1) {
 					int val;
+					long val64;
 					if (args[0].Match(ILCode.Ldc_I4, out val)) {
+						if (sig.Params.Count != 1)
+							return false;
+						var paramType = sig.Params[0].RemovePinnedAndModifiers().GetElementType();
+						if (paramType != ElementType.I4 && paramType != ElementType.U4)
+							return false;
 						expr.Code = ILCode.Ldc_Decimal;
-						expr.Operand = new decimal(val);
+						expr.Operand = paramType == ElementType.I4 ? new decimal(val) : new decimal((uint)val);
+						expr.InferredType = r.DeclaringType.ToTypeSig();
+						if (context.CalculateBinSpans) {
+							foreach (var arg in expr.Arguments)
+								arg.AddSelfAndChildrenRecursiveBinSpans(expr.BinSpans);
+						}
+						expr.Arguments.Clear();
+						return true;
+					} else if (args[0].Match(ILCode.Ldc_I8, out val64)) {
+						if (sig.Params.Count != 1)
+							return false;
+						var paramType = sig.Params[0].RemovePinnedAndModifiers().GetElementType();
+						if (paramType != ElementType.I8 && paramType != ElementType.U8)
+							return false;
+						expr.Code = ILCode.Ldc_Decimal;
+						expr.Operand = paramType == ElementType.I8 ? new decimal(val64) : new decimal((ulong)val64);
 						expr.InferredType = r.DeclaringType.ToTypeSig();
 						if (context.CalculateBinSpans) {
 							foreach (var arg in expr.Arguments)
@@ -69,7 +94,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					    expr.Arguments[4].Match(ILCode.Ldc_I4, out scale))
 					{
 						expr.Code = ILCode.Ldc_Decimal;
-						expr.Operand = new decimal(lo, mid, hi, isNegative != 0, (byte)scale);
+						expr.Operand = new decimal(lo, mid, hi, isNegative != 0, (byte)Math.Min(28, (uint)scale));
 						expr.InferredType = r.DeclaringType.ToTypeSig();
 						if (context.CalculateBinSpans) {
 							foreach (var arg in expr.Arguments)
@@ -79,6 +104,104 @@ namespace ICSharpCode.Decompiler.ILAst {
 						return true;
 					}
 				}
+			} else if (expr.Match(ILCode.Call, out r, out args)) {
+				if (!r.DeclaringType.Compare(systemString, decimalString))
+					return false;
+				if (r.Name != nameCtor)
+					return false;
+				if (args.Count == 0)
+					return false;
+				var sig = r.MethodSig;
+				if (sig == null || sig.GetGenParamCount() != 0)
+					return false;
+				ILVariable v;
+				if (!args[0].Match(ILCode.Ldloca, out v))
+					return false;
+				if (args.Count == 2) {
+					int val;
+					long val64;
+					if (args[1].Match(ILCode.Ldc_I4, out val)) {
+						if (sig.Params.Count != 1)
+							return false;
+						var paramType = sig.Params[0].RemovePinnedAndModifiers().GetElementType();
+						if (paramType != ElementType.I4 && paramType != ElementType.U4)
+							return false;
+						var ldcExpr = new ILExpression(ILCode.Ldc_Decimal, paramType == ElementType.I4 ? new decimal(val) : new decimal((uint)val));
+						ldcExpr.InferredType = r.DeclaringType.ToTypeSig();
+						if (context.CalculateBinSpans) {
+							foreach (var arg in expr.Arguments)
+								arg.AddSelfAndChildrenRecursiveBinSpans(expr.BinSpans);
+						}
+						expr.Code = ILCode.Stloc;
+						expr.Operand = v;
+						expr.Arguments.Clear();
+						expr.Arguments.Add(ldcExpr);
+						expr.InferredType = ldcExpr.InferredType;
+						expr.ExpectedType = null;
+						return true;
+					} else if (args[1].Match(ILCode.Ldc_I8, out val64)) {
+						if (sig.Params.Count != 1)
+							return false;
+						var paramType = sig.Params[0].RemovePinnedAndModifiers().GetElementType();
+						if (paramType != ElementType.I8 && paramType != ElementType.U8)
+							return false;
+						var ldcExpr = new ILExpression(ILCode.Ldc_Decimal, paramType == ElementType.I8 ? new decimal(val64) : new decimal((ulong)val64));
+						ldcExpr.InferredType = r.DeclaringType.ToTypeSig();
+						if (context.CalculateBinSpans) {
+							foreach (var arg in expr.Arguments)
+								arg.AddSelfAndChildrenRecursiveBinSpans(expr.BinSpans);
+						}
+						expr.Code = ILCode.Stloc;
+						expr.Operand = v;
+						expr.Arguments.Clear();
+						expr.Arguments.Add(ldcExpr);
+						expr.InferredType = ldcExpr.InferredType;
+						expr.ExpectedType = null;
+						return true;
+					}
+				} else if (args.Count == 6) {
+					int lo, mid, hi, isNegative, scale;
+					if (expr.Arguments[1].Match(ILCode.Ldc_I4, out lo) &&
+					    expr.Arguments[2].Match(ILCode.Ldc_I4, out mid) &&
+					    expr.Arguments[3].Match(ILCode.Ldc_I4, out hi) &&
+					    expr.Arguments[4].Match(ILCode.Ldc_I4, out isNegative) &&
+					    expr.Arguments[5].Match(ILCode.Ldc_I4, out scale))
+					{
+						var ldcExpr = new ILExpression(ILCode.Ldc_Decimal, new decimal(lo, mid, hi, isNegative != 0, (byte)Math.Min(28, (uint)scale)));
+						ldcExpr.InferredType = r.DeclaringType.ToTypeSig();
+						if (context.CalculateBinSpans) {
+							foreach (var arg in expr.Arguments)
+								arg.AddSelfAndChildrenRecursiveBinSpans(expr.BinSpans);
+						}
+						expr.Code = ILCode.Stloc;
+						expr.Operand = v;
+						expr.Arguments.Clear();
+						expr.Arguments.Add(ldcExpr);
+						expr.InferredType = ldcExpr.InferredType;
+						expr.ExpectedType = null;
+						return true;
+					}
+				}
+			} else if (expr.Match(ILCode.Ldsfld, out f)) {
+				if (!f.DeclaringType.Compare(systemString, decimalString))
+					return false;
+				decimal value;
+				if (f.Name == "MinValue")
+					value = decimal.MinValue;
+				else if (f.Name == "MaxValue")
+					value = decimal.MaxValue;
+				else if (f.Name == "Zero")
+					value = decimal.Zero;
+				else if (f.Name == "MinusOne")
+					value = decimal.MinusOne;
+				else if (f.Name == "One")
+					value = decimal.One;
+				else
+					return false;
+				expr.Code = ILCode.Ldc_Decimal;
+				expr.Operand = value;
+				expr.InferredType = f.DeclaringType.ToTypeSig();
+				return true;
 			}
 			return false;
 		}

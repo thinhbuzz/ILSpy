@@ -68,6 +68,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		ILLabel setResultAndExitLabel;
 		ILLabel exitLabel;
 		ILExpression resultExpr;
+		ILVariable resultVariable;
 		
 		#region RunStep1() method
 		public static void RunStep1(DecompilerContext context, ILBlock method, AutoPropertyProvider autoPropertyProvider, List<ILExpression> listExpr, List<ILBlock> listBlock, Dictionary<ILLabel, int> labelRefCount)
@@ -280,6 +281,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			if (methodType == AsyncMethodType.TaskOfT) {
 				if (!ilMethod.Body[startIndex + 3].Match(ILCode.Call, out setResultMethod, out builderExpr, out resultExpr))
 					throw new SymbolicAnalysisFailedException();
+				resultExpr.Match(ILCode.Ldloc, out resultVariable);
 			} else {
 				if (!ilMethod.Body[startIndex + 3].Match(ILCode.Call, out setResultMethod, out builderExpr))
 					throw new SymbolicAnalysisFailedException();
@@ -406,7 +408,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				if (body.Count == 0)
 					throw new SymbolicAnalysisFailedException();
 			}
-			StateRangeAnalysis rangeAnalysis = new StateRangeAnalysis(body[0], StateRangeAnalysisMode.AsyncMoveNext, stateField, cachedStateVar);
+			StateRangeAnalysis rangeAnalysis = new MicrosoftStateRangeAnalysis(body[0], StateRangeAnalysisMode.AsyncMoveNext, stateField, cachedStateVar);
 			int bodyLength = block.Body.Count;
 			int pos = rangeAnalysis.AssignStateRanges(body, bodyLength);
 			rangeAnalysis.EnsureLabelAtPos(body, ref pos, ref bodyLength);
@@ -426,7 +428,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		{
 			ILVariable v;
 			ILExpression initExpr;
-			if (!body[0].Match(ILCode.Stloc, out v, out initExpr))
+			if (!body[0].Match(ILCode.Stloc, out v, out initExpr) || (resultVariable != null && v == resultVariable))
 				return false;
 			int initialValue;
 			if (!(initExpr.Match(ILCode.Ldc_I4, out initialValue) && initialValue == 1))
@@ -466,7 +468,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					var tryBody = tryCatchBlock.TryBlock.Body;
 					if (tryBody.Count == 0)
 						throw new SymbolicAnalysisFailedException();
-					StateRangeAnalysis rangeAnalysis = new StateRangeAnalysis(tryBody[0], StateRangeAnalysisMode.AsyncMoveNext, stateField, cachedStateVar);
+					var rangeAnalysis = new MicrosoftStateRangeAnalysis(tryBody[0], StateRangeAnalysisMode.AsyncMoveNext, stateField, cachedStateVar);
 					int tryBodyLength = tryBody.Count;
 					int posInTryBody = rangeAnalysis.AssignStateRanges(tryBody, tryBodyLength);
 					rangeAnalysis.EnsureLabelAtPos(tryBody, ref posInTryBody, ref tryBodyLength);

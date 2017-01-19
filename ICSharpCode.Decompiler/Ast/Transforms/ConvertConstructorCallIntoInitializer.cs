@@ -120,6 +120,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				// Recognize field initializers:
 				// Convert first statement in all ctors (if all ctors have the same statement) into a field initializer.
 				bool allSame;
+				uint lastFieldToken = 0, lastPropertyToken = 0;
 				do {
 					Match m = fieldOrPropInitializerPattern.Match(instanceCtorsNotChainingWithThis[0].Body.FirstOrDefault());
 					if (!m.Success)
@@ -127,17 +128,24 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 
 					var node = m.Get<AstNode>("fieldAccess").Single();
 					AstNode fieldOrEventDecl = null;
-					var fieldRef = node.Annotation<IField>();
-					if (fieldRef?.IsField == true) {
-						FieldDef fieldDef = node.Annotation<IField>().ResolveFieldWithinSameModule();
-						if (fieldDef == null)
+					var field = node.Annotation<IField>();
+					if (field?.IsField == true) {
+						var mr = field as MemberRef;
+						if (mr != null && !VerifyGenericClass((mr.Class as TypeSpec)?.TypeSig.RemovePinnedAndModifiers() as GenericInstSig))
+							break;
+
+						FieldDef fieldDef = field.ResolveFieldWithinSameModule();
+						if (fieldDef == null || fieldDef.MDToken.Raw <= lastFieldToken)
 							break;
 						fieldOrEventDecl = members.FirstOrDefault(f => f.Annotation<FieldDef>() == fieldDef);
+						lastFieldToken = fieldDef.MDToken.Raw;
 					}
 					else {
 						var prop = node.Annotation<PropertyDef>();
-						if (prop != null)
+						if (prop != null && prop.MDToken.Raw > lastPropertyToken) {
 							fieldOrEventDecl = members.FirstOrDefault(f => f.Annotation<PropertyDef>() == prop);
+							lastPropertyToken = prop.MDToken.Raw;
+						}
 					}
 					if (fieldOrEventDecl == null)
 						break;
@@ -191,7 +199,18 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 					instanceCtors[0].Remove();
 			}
 		}
-		
+
+		static bool VerifyGenericClass(GenericInstSig gis) {
+			if (gis == null)
+				return false;
+			for (int i = 0; i < gis.GenericArguments.Count; i++) {
+				var gv = gis.GenericArguments[i] as GenericVar;
+				if (gv == null || gv.Number != i)
+					return false;
+			}
+			return true;
+		}
+
 		void HandleStaticFieldInitializers(IEnumerable<AstNode> members)
 		{
 			if (!context.Settings.AllowFieldInitializers)
@@ -200,6 +219,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			var staticCtor = members.OfType<ConstructorDeclaration>().FirstOrDefault(c => (c.Modifiers & Modifiers.Static) == Modifiers.Static);
 			if (staticCtor != null) {
 				MethodDef ctorMethodDef = staticCtor.Annotation<MethodDef>();
+				uint lastFieldToken = 0, lastPropertyToken = 0;
 				if (ctorMethodDef != null) {
 					var mm = staticCtor.Annotation<MethodDebugInfoBuilder>() ?? staticCtor.Body.Annotation<MethodDebugInfoBuilder>();
 					while (true) {
@@ -214,23 +234,31 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 						var field = node.Annotation<IField>();
 						EntityDeclaration decl;
 						if (field?.IsField == true) {
-							FieldDef fieldDef = node.Annotation<IField>().ResolveFieldWithinSameModule();
-							if (fieldDef == null || !fieldDef.IsStatic)
+							var mr = field as MemberRef;
+							if (mr != null && !VerifyGenericClass((mr.Class as TypeSpec)?.TypeSig.RemovePinnedAndModifiers() as GenericInstSig))
+								break;
+
+							FieldDef fieldDef = field.ResolveFieldWithinSameModule();
+							if (fieldDef == null || !fieldDef.IsStatic || fieldDef.MDToken.Raw <= lastFieldToken)
 								break;
 							FieldDeclaration fieldDecl = members.OfType<FieldDeclaration>().FirstOrDefault(f => f.Annotation<FieldDef>() == fieldDef);
 							if (fieldDecl == null)
 								break;
 							varInit = fieldDecl.Variables.Single();
 							decl = fieldDecl;
+							lastFieldToken = fieldDef.MDToken.Raw;
 						}
 						else {
 							var prop = node.Annotation<PropertyDef>();
 							if (prop != null) {
+								if (prop.MDToken.Raw <= lastPropertyToken)
+									break;
 								var pd = members.OfType<PropertyDeclaration>().FirstOrDefault(f => f.Annotation<PropertyDef>() == prop);
 								if (pd == null)
 									break;
 								decl = pd;
 								pd.Variables.Add(varInit = new VariableInitializer(null, string.Empty, null));
+								lastPropertyToken = prop.MDToken.Raw;
 							}
 							else
 								break;

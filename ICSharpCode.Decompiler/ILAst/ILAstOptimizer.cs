@@ -64,6 +64,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		GotoRemoval,
 		FixRoslynStaticDelegates,
 		FixFilters,
+		CreateLoopLocal,
 		DuplicateReturns,
 		GotoRemoval2,
 		ReduceIfNesting,
@@ -73,6 +74,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		RecombineVariables,
 		TypeInference2,
 		RemoveRedundantCode3,
+		IntroduceConstants,
 		None
 	}
 	
@@ -87,6 +89,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		// PERF: Cache used lists used in Optimize() instead of creating new ones all the time
 		readonly List<ILTryCatchBlock.CatchBlockBase> Optimize_List_CatchBlockBase;
 		readonly List<ILTryCatchBlock.CatchBlock> Optimize_List_CatchBlocks;
+		readonly List<ILWhileLoop> Optimize_List_ILWhileLoop;
 		readonly List<ILBlock> Optimize_List_ILBlock;
 		readonly List<ILNode> Optimize_List_ILNode;
 		readonly List<ILExpression> Optimize_List_ILExpression;
@@ -94,6 +97,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		readonly Dictionary<ILLabel, int> Optimize_Dict_ILLabel_Int32;
 		readonly Dictionary<Local, ILVariable> Optimize_Dict_Local_ILVariable;
 		readonly Dictionary<ILLabel, ILNode> Optimize_Dict_ILLabel_ILNode;
+		readonly List<KeyValuePair<ILExpression, ILExpression>> Optimize_List_ILExpressionx2;
 		bool hasFilters;
 
 		public ILAstOptimizer()
@@ -101,6 +105,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			this.del_getILInlining = GetILInlining;
 			this.Optimize_List_CatchBlockBase = new List<ILTryCatchBlock.CatchBlockBase>();
 			this.Optimize_List_CatchBlocks = new List<ILTryCatchBlock.CatchBlock>();
+			this.Optimize_List_ILWhileLoop = new List<ILWhileLoop>();
 			this.Optimize_List_ILBlock = new List<ILBlock>();
 			this.Optimize_List_ILNode = new List<ILNode>();
 			this.Optimize_List_ILExpression = new List<ILExpression>();
@@ -108,6 +113,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			this.Optimize_Dict_ILLabel_Int32 = new Dictionary<ILLabel, int>();
 			this.Optimize_Dict_Local_ILVariable = new Dictionary<Local, ILVariable>();
 			this.Optimize_Dict_ILLabel_ILNode = new Dictionary<ILLabel, ILNode>();
+			this.Optimize_List_ILExpressionx2 = new List<KeyValuePair<ILExpression, ILExpression>>();
 		}
 
 		public void Reset()
@@ -118,6 +124,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			this.nextLabelIndex = 0;
 			this.Optimize_List_CatchBlockBase.Clear();
 			this.Optimize_List_CatchBlocks.Clear();
+			this.Optimize_List_ILWhileLoop.Clear();
 			this.Optimize_List_ILBlock.Clear();
 			this.Optimize_List_ILNode.Clear();
 			this.Optimize_List_ILExpression.Clear();
@@ -125,8 +132,10 @@ namespace ICSharpCode.Decompiler.ILAst {
 			this.Optimize_Dict_ILLabel_Int32.Clear();
 			this.Optimize_Dict_Local_ILVariable.Clear();
 			this.Optimize_Dict_ILLabel_ILNode.Clear();
+			this.Optimize_List_ILExpressionx2.Clear();
 			hasFilters = false;
 			readOnlyPropTempLocalNameCounter = 0;
+			tmpLocalCounter = 0;
 		}
 
 		TypeAnalysis GetTypeAnalysis() {
@@ -337,6 +346,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 				if (abortBeforeStep == ILAstOptimizationStep.FixFilters) return;
 				FixFilterBlocks(method);
 
+				if (abortBeforeStep == ILAstOptimizationStep.CreateLoopLocal) return;
+				CreateLoopLocal(method);
+
 				if (abortBeforeStep == ILAstOptimizationStep.DuplicateReturns) return;
 				DuplicateReturnStatements(method);
 
@@ -382,11 +394,15 @@ namespace ICSharpCode.Decompiler.ILAst {
 				if (abortBeforeStep == ILAstOptimizationStep.RemoveRedundantCode3) return;
 				GotoRemoval.RemoveRedundantCode(method, context);
 
+				if (abortBeforeStep == ILAstOptimizationStep.IntroduceConstants) return;
+				IntroduceConstants(method);
+
 				// ReportUnassignedBinSpans(method);
 			}
 			finally {
 				this.Optimize_List_CatchBlockBase.Clear();
 				this.Optimize_List_CatchBlocks.Clear();
+				this.Optimize_List_ILWhileLoop.Clear();
 				this.Optimize_List_ILBlock.Clear();
 				this.Optimize_List_ILNode.Clear();
 				this.Optimize_List_ILExpression.Clear();
@@ -394,8 +410,329 @@ namespace ICSharpCode.Decompiler.ILAst {
 				this.Optimize_Dict_ILLabel_Int32.Clear();
 				this.Optimize_Dict_Local_ILVariable.Clear();
 				this.Optimize_Dict_ILLabel_ILNode.Clear();
+				this.Optimize_List_ILExpressionx2.Clear();
 			}
 		}
+
+		void IntroduceConstants(ILBlock method) {
+			foreach (var block in method.GetSelfAndChildrenRecursive(Optimize_List_ILBlock))
+				IntroduceConstantsCore(block);
+		}
+
+		static readonly UTF8String nameSystem = "System";
+		static bool IsMscorlibSystemClass(TypeDef type, string name) {
+			if (type.Namespace != nameSystem)
+				return false;
+			if (!type.DefinitionAssembly.IsCorLib())
+				return false;
+			return type.Name == name;
+		}
+
+		void IntroduceConstantsCore(ILBlock block) {
+			var list = Optimize_List_ILExpression;
+			list.Clear();
+			var body = block.Body;
+			for (int i = 0; i < body.Count; i++) {
+				var expr = body[i] as ILExpression;
+				if (expr != null)
+					list.Add(expr);
+			}
+			while (list.Count > 0) {
+				var expr = list[list.Count - 1];
+				list.RemoveAt(list.Count - 1);
+				var args = expr.Arguments;
+				for (int i = 0; i < args.Count; i++)
+					list.Add(args[i]);
+
+				var type = (expr.InferredType ?? expr.ExpectedType).RemovePinnedAndModifiers();
+				if (type == null)
+					continue;
+				switch (type.ElementType) {
+				case ElementType.Char:
+					if (expr.Code == ILCode.Ldc_I4) {
+						var c = (int)expr.Operand;
+						if (c == char.MaxValue && !IsMscorlibSystemClass(context.CurrentMethod.DeclaringType, "Char")) {
+							var module = context.CurrentModule;
+							var mr = new MemberRefUser(module, "MaxValue", new FieldSig(module.CorLibTypes.Char), module.CorLibTypes.Char.TypeDefOrRef);
+							expr.Code = ILCode.Ldsfld;
+							expr.Operand = mr;
+							expr.Arguments.Clear();
+						}
+					}
+					break;
+
+				case ElementType.I1:
+					if (expr.Code == ILCode.Ldc_I4) {
+						var c = (int)expr.Operand;
+						if ((c == sbyte.MaxValue || c == sbyte.MinValue) && !IsMscorlibSystemClass(context.CurrentMethod.DeclaringType, "SByte")) {
+							var module = context.CurrentModule;
+							var mr = new MemberRefUser(module, c == sbyte.MaxValue ? "MaxValue" : "MinValue", new FieldSig(module.CorLibTypes.SByte), module.CorLibTypes.SByte.TypeDefOrRef);
+							expr.Code = ILCode.Ldsfld;
+							expr.Operand = mr;
+							expr.Arguments.Clear();
+						}
+					}
+					break;
+
+				case ElementType.U1:
+					if (expr.Code == ILCode.Ldc_I4) {
+						var c = (int)expr.Operand;
+						if (c == byte.MaxValue && !IsMscorlibSystemClass(context.CurrentMethod.DeclaringType, "Byte")) {
+							var module = context.CurrentModule;
+							var mr = new MemberRefUser(module, "MaxValue", new FieldSig(module.CorLibTypes.Byte), module.CorLibTypes.Byte.TypeDefOrRef);
+							expr.Code = ILCode.Ldsfld;
+							expr.Operand = mr;
+							expr.Arguments.Clear();
+						}
+					}
+					break;
+
+				case ElementType.I2:
+					if (expr.Code == ILCode.Ldc_I4) {
+						var c = (int)expr.Operand;
+						if ((c == short.MaxValue || c == short.MinValue) && !IsMscorlibSystemClass(context.CurrentMethod.DeclaringType, "Int16")) {
+							var module = context.CurrentModule;
+							var mr = new MemberRefUser(module, c == short.MaxValue ? "MaxValue" : "MinValue", new FieldSig(module.CorLibTypes.Int16), module.CorLibTypes.Int16.TypeDefOrRef);
+							expr.Code = ILCode.Ldsfld;
+							expr.Operand = mr;
+							expr.Arguments.Clear();
+						}
+					}
+					break;
+
+				case ElementType.U2:
+					if (expr.Code == ILCode.Ldc_I4) {
+						var c = (int)expr.Operand;
+						if (c == ushort.MaxValue && !IsMscorlibSystemClass(context.CurrentMethod.DeclaringType, "UInt16")) {
+							var module = context.CurrentModule;
+							var mr = new MemberRefUser(module, "MaxValue", new FieldSig(module.CorLibTypes.UInt16), module.CorLibTypes.UInt16.TypeDefOrRef);
+							expr.Code = ILCode.Ldsfld;
+							expr.Operand = mr;
+							expr.Arguments.Clear();
+						}
+					}
+					break;
+
+				case ElementType.I4:
+					if (expr.Code == ILCode.Ldc_I4) {
+						var c = (int)expr.Operand;
+						if ((c == int.MaxValue || c == int.MinValue) && !IsMscorlibSystemClass(context.CurrentMethod.DeclaringType, "Int32")) {
+							var module = context.CurrentModule;
+							var mr = new MemberRefUser(module, c == int.MaxValue ? "MaxValue" : "MinValue", new FieldSig(module.CorLibTypes.Int32), module.CorLibTypes.Int32.TypeDefOrRef);
+							expr.Code = ILCode.Ldsfld;
+							expr.Operand = mr;
+							expr.Arguments.Clear();
+						}
+					}
+					break;
+
+				case ElementType.U4:
+					if (expr.Code == ILCode.Ldc_I4) {
+						var c = (int)expr.Operand;
+						if (c == unchecked((int)uint.MaxValue) && !IsMscorlibSystemClass(context.CurrentMethod.DeclaringType, "UInt32")) {
+							var module = context.CurrentModule;
+							var mr = new MemberRefUser(module, "MaxValue", new FieldSig(module.CorLibTypes.UInt32), module.CorLibTypes.UInt32.TypeDefOrRef);
+							expr.Code = ILCode.Ldsfld;
+							expr.Operand = mr;
+							expr.Arguments.Clear();
+						}
+					}
+					break;
+
+				case ElementType.I8:
+					if (expr.Code == ILCode.Ldc_I8) {
+						var c = (long)expr.Operand;
+						if ((c == long.MaxValue || c == long.MinValue) && !IsMscorlibSystemClass(context.CurrentMethod.DeclaringType, "Int64")) {
+							var module = context.CurrentModule;
+							var mr = new MemberRefUser(module, c == long.MaxValue ? "MaxValue" : "MinValue", new FieldSig(module.CorLibTypes.Int64), module.CorLibTypes.Int64.TypeDefOrRef);
+							expr.Code = ILCode.Ldsfld;
+							expr.Operand = mr;
+							expr.Arguments.Clear();
+						}
+					}
+					break;
+
+				case ElementType.U8:
+					if (expr.Code == ILCode.Ldc_I8) {
+						var c = (long)expr.Operand;
+						if (c == unchecked((long)ulong.MaxValue) && !IsMscorlibSystemClass(context.CurrentMethod.DeclaringType, "UInt64")) {
+							var module = context.CurrentModule;
+							var mr = new MemberRefUser(module, "MaxValue", new FieldSig(module.CorLibTypes.UInt64), module.CorLibTypes.UInt64.TypeDefOrRef);
+							expr.Code = ILCode.Ldsfld;
+							expr.Operand = mr;
+							expr.Arguments.Clear();
+						}
+					}
+					break;
+
+				case ElementType.R4:
+					if (expr.Code == ILCode.Ldc_R4) {
+						var c = (float)expr.Operand;
+						string name;
+						if (float.IsNaN(c))
+							name = "NaN";
+						else if (float.IsPositiveInfinity(c))
+							name = "PositiveInfinity";
+						else if (float.IsNegativeInfinity(c))
+							name = "NegativeInfinity";
+						else if (c == float.Epsilon)
+							name = "Epsilon";
+						else if (c == float.MinValue)
+							name = "MinValue";
+						else if (c == float.MaxValue)
+							name = "MaxValue";
+						else
+							break;
+						if (IsMscorlibSystemClass(context.CurrentMethod.DeclaringType, "Single"))
+							break;
+						var module = context.CurrentModule;
+						var mr = new MemberRefUser(module, name, new FieldSig(module.CorLibTypes.Single), module.CorLibTypes.Single.TypeDefOrRef);
+						expr.Code = ILCode.Ldsfld;
+						expr.Operand = mr;
+						expr.Arguments.Clear();
+					}
+					break;
+
+				case ElementType.R8:
+					if (expr.Code == ILCode.Ldc_R8) {
+						var c = (double)expr.Operand;
+						string name;
+						if (double.IsNaN(c))
+							name = "NaN";
+						else if (double.IsPositiveInfinity(c))
+							name = "PositiveInfinity";
+						else if (double.IsNegativeInfinity(c))
+							name = "NegativeInfinity";
+						else if (c == double.Epsilon)
+							name = "Epsilon";
+						else if (c == double.MinValue)
+							name = "MinValue";
+						else if (c == double.MaxValue)
+							name = "MaxValue";
+						else
+							break;
+						if (IsMscorlibSystemClass(context.CurrentMethod.DeclaringType, "Double"))
+							break;
+						var module = context.CurrentModule;
+						var mr = new MemberRefUser(module, name, new FieldSig(module.CorLibTypes.Double), module.CorLibTypes.Double.TypeDefOrRef);
+						expr.Code = ILCode.Ldsfld;
+						expr.Operand = mr;
+						expr.Arguments.Clear();
+					}
+					break;
+
+				case ElementType.ValueType:
+					if (expr.Code == ILCode.Ldc_Decimal) {
+						var c = (decimal)expr.Operand;
+						string name;
+						if (c == decimal.MinValue)
+							name = "MinValue";
+						else if (c == decimal.MaxValue)
+							name = "MaxValue";
+						else
+							break;
+						if (IsMscorlibSystemClass(context.CurrentMethod.DeclaringType, "Decimal"))
+							break;
+						var module = context.CurrentModule;
+						var tr = module.CorLibTypes.GetTypeRef("System", "Decimal");
+						var mr = new MemberRefUser(module, name, new FieldSig(new ValueTypeSig(tr)), tr);
+						expr.Code = ILCode.Ldsfld;
+						expr.Operand = mr;
+						expr.Arguments.Clear();
+					}
+					break;
+				}
+			}
+		}
+
+		void CreateLoopLocal(ILBlock method) {
+			foreach (var block in method.GetSelfAndChildrenRecursive(Optimize_List_ILWhileLoop))
+				CreateLoopLocalCore(block);
+		}
+
+		void CreateLoopLocalCore(ILWhileLoop block) {
+			// 'Current' is passed directly to a method without being stored in a local. This will cause
+			// the foreach loop detection in PatternStatementTransform to fail. Solution is to create a
+			// local and make sure it doesn't get inlined.
+			//
+			// loop (call(Enumerator::MoveNext, ldloca(var_0_0A))) {
+			//     (....(callgetter(Enumerator::get_Current, ldloca(var_0_0A)))....)
+			//     ....
+			// }
+
+			IMethod method;
+			ILExpression ldloc;
+			if (!block.Condition.Match(ILCode.Call, out method, out ldloc) && !block.Condition.Match(ILCode.Callvirt, out method, out ldloc))
+				return;
+			ILVariable enumeratorVar;
+			if (!ldloc.Match(ILCode.Ldloc, out enumeratorVar) && !ldloc.Match(ILCode.Ldloca, out enumeratorVar))
+				return;
+
+			var body = block.BodyBlock?.Body;
+			if (body == null || body.Count == 0)
+				return;
+			var expr = body[0] as ILExpression;
+			if (expr == null)
+				return;
+
+			// Check if it's a normal store to a local
+			// stloc(x, callgetter(Enumerator::get_Current, ldloca(enumeratorVar)))
+			ILVariable v;
+			ILExpression callgetter;
+			if (expr.Match(ILCode.Stloc, out v, out callgetter)) {
+				// TODO: Allow castclass, but it's disabled since eg. TransformForeach() won't
+				// detect the foreach loop. Castclass is used in eg. foreach (int v in (IList<object>)new object[] { 1 })
+				//ILExpression expr2;
+				//ITypeDefOrRef type;
+				//if (callgetter.Match(ILCode.Castclass, out type, out expr2))
+				//	callgetter = expr2;
+				if (MatchCallGetterCurrent(callgetter, enumeratorVar))
+					return;
+			}
+
+			var stack = Optimize_List_ILExpressionx2;
+			stack.Clear();
+			stack.Add(new KeyValuePair<ILExpression, ILExpression>(expr, null));
+			var foundExpr = default(KeyValuePair<ILExpression, ILExpression>);
+			while (stack.Count > 0) {
+				var info = stack[stack.Count - 1];
+				stack.RemoveAt(stack.Count - 1);
+				var curr = info.Key;
+				if (MatchCallGetterCurrent(curr, enumeratorVar)) {
+					// Make sure it's called once in the first expression
+					if (foundExpr.Key != null)
+						return;
+					foundExpr = info;
+				}
+
+				var args = curr.Arguments;
+				for (int i = 0; i < args.Count; i++)
+					stack.Add(new KeyValuePair<ILExpression, ILExpression>(args[i], curr));
+			}
+			if (foundExpr.Value == null)
+				return;
+			var parent = foundExpr.Value;
+			var child = foundExpr.Key;
+			int index = parent.Arguments.IndexOf(child);
+			Debug.Assert(index >= 0);
+			if (index < 0)
+				return;
+			var newVar = CreateTempLocal();
+			var newStloc = new ILExpression(ILCode.Wrap, null, new ILExpression(ILCode.Stloc, newVar, child));
+			body.Insert(0, newStloc);
+			parent.Arguments[index] = new ILExpression(ILCode.Ldloc, newVar);
+		}
+
+		static bool MatchCallGetterCurrent(ILExpression expr, ILVariable enumeratorVar) {
+			IMethod getter;
+			ILExpression ldloc;
+			if (expr.Match(ILCode.CallGetter, out getter, out ldloc) || expr.Match(ILCode.CallvirtGetter, out getter, out ldloc)) {
+				if (getter.Name == name_get_Current && (ldloc.MatchLdloc(enumeratorVar) || ldloc.MatchLdloca(enumeratorVar)))
+					return true;
+			}
+			return false;
+		}
+		static readonly UTF8String name_get_Current = new UTF8String("get_Current");
 
 		void ConvertFieldAccessesToPropertyMethodCalls(ILBlock method, AutoPropertyProvider autoPropertyProvider) {
 			if (autoPropertyProvider == null)
@@ -479,6 +816,14 @@ namespace ICSharpCode.Decompiler.ILAst {
 			// }
 			// else {
 			// }
+			//
+			// or if the local wasn't used in the source code and the compiler optimized it away:
+			//
+			// if (logicnot(ldsfld:class [mscorlib]System.Func`2<string, int32>[exp:bool]('<>c'::<>9__45_0))) {
+			//     stsfld:class [mscorlib]System.Func`2<string, int32>('<>c'::<>9__45_0, newobj:class [mscorlib]System.Func`2<string, int32>(class [mscorlib]System.Func`2<string, int32>::.ctor, ldsfld:'<>c'[exp:object]('<>c'::<>9), ldftn:native int('<>c'::<TestDelegate30>b__45_0)))
+			// }
+			// else {
+			// }
 			var body = block.Body;
 			bool modified = false;
 			for (int i = 0; i < body.Count; i++) {
@@ -499,43 +844,78 @@ namespace ICSharpCode.Decompiler.ILAst {
 				var cond = ifNode.Condition;
 				if (!cond.Match(ILCode.LogicNot, out stloc))
 					continue;
-				if (!stloc.Match(ILCode.Stloc, out delVar, out ldsfld))
-					continue;
-				if (!ldsfld.Match(ILCode.Ldsfld, out field) || (fd = field.ResolveFieldWithinSameModule()) == null)
-					continue;
-				// Make sure it's a nested type. We can't check that
-				//	field.DeclaringType.DeclaringType == context.CurrentMethod.DeclaringType
-				// since that sometimes fails.
-				if (field.DeclaringType.DeclaringType == null)
-					continue;
+				if (stloc.Match(ILCode.Stloc, out delVar, out ldsfld)) {
+					if (!ldsfld.Match(ILCode.Ldsfld, out field) || (fd = field.ResolveFieldWithinSameModule()) == null)
+						continue;
+					// Make sure it's a nested type. We can't check that
+					//	field.DeclaringType.DeclaringType == context.CurrentMethod.DeclaringType
+					// since that sometimes fails.
+					if (field.DeclaringType.DeclaringType == null)
+						continue;
 
-				var trueBody = ifNode.TrueBlock.Body;
-				if (trueBody.Count != 1)
-					continue;
-				ILExpression stsfld;
-				if (!trueBody[0].MatchStloc(delVar, out stsfld))
-					continue;
-				if (!stsfld.Match(ILCode.Stsfld, out field, out newobj) || field.ResolveFieldWithinSameModule() != fd)
-					continue;
-				IMethod delTypeCtor;
-				if (!newobj.Match(ILCode.Newobj, out delTypeCtor, out ldsfld, out ldftn))
-					continue;
-				if (!ldsfld.Match(ILCode.Ldsfld, out instField) || (instFd = instField.ResolveFieldWithinSameModule()) == null)
-					continue;
-				if (instFd.DeclaringType != fd.DeclaringType)
-					continue;
-				if (!ldftn.Match(ILCode.Ldftn, out method) || (md = method.ResolveMethodWithinSameModule()) == null)
-					continue;
-				if (md.DeclaringType != fd.DeclaringType || md.IsStatic)
-					continue;
+					var trueBody = ifNode.TrueBlock.Body;
+					if (trueBody.Count != 1)
+						continue;
+					ILExpression stsfld;
+					if (!trueBody[0].MatchStloc(delVar, out stsfld))
+						continue;
+					if (!stsfld.Match(ILCode.Stsfld, out field, out newobj) || field.ResolveFieldWithinSameModule() != fd)
+						continue;
+					IMethod delTypeCtor;
+					if (!newobj.Match(ILCode.Newobj, out delTypeCtor, out ldsfld, out ldftn))
+						continue;
+					if (!ldsfld.Match(ILCode.Ldsfld, out instField) || (instFd = instField.ResolveFieldWithinSameModule()) == null)
+						continue;
+					if (instFd.DeclaringType != fd.DeclaringType)
+						continue;
+					if (!ldftn.Match(ILCode.Ldftn, out method) || (md = method.ResolveMethodWithinSameModule()) == null)
+						continue;
+					if (md.DeclaringType != fd.DeclaringType || md.IsStatic)
+						continue;
 
-				if (context.CalculateBinSpans)
-					newobj.BinSpans.AddRange(ifNode.GetSelfAndChildrenRecursiveBinSpans().ToArray());
-				body[i] = new ILExpression(ILCode.Stloc, delVar, newobj);
-				modified = true;
+					if (context.CalculateBinSpans)
+						newobj.BinSpans.AddRange(ifNode.GetSelfAndChildrenRecursiveBinSpans().ToArray());
+					body[i] = new ILExpression(ILCode.Stloc, delVar, newobj);
+					modified = true;
+				}
+				else if (stloc.Match(ILCode.Ldsfld, out field)) {
+					if ((fd = field.ResolveFieldWithinSameModule()) == null)
+						continue;
+					// Make sure it's a nested type. We can't check that
+					//	field.DeclaringType.DeclaringType == context.CurrentMethod.DeclaringType
+					// since that sometimes fails.
+					if (field.DeclaringType.DeclaringType == null)
+						continue;
+
+					var trueBody = ifNode.TrueBlock.Body;
+					if (trueBody.Count != 1)
+						continue;
+					if (!trueBody[0].Match(ILCode.Stsfld, out field, out newobj) || field.ResolveFieldWithinSameModule() != fd)
+						continue;
+					IMethod delTypeCtor;
+					if (!newobj.Match(ILCode.Newobj, out delTypeCtor, out ldsfld, out ldftn))
+						continue;
+					if (!ldsfld.Match(ILCode.Ldsfld, out instField) || (instFd = instField.ResolveFieldWithinSameModule()) == null)
+						continue;
+					if (instFd.DeclaringType != fd.DeclaringType)
+						continue;
+					if (!ldftn.Match(ILCode.Ldftn, out method) || (md = method.ResolveMethodWithinSameModule()) == null)
+						continue;
+					if (md.DeclaringType != fd.DeclaringType || md.IsStatic)
+						continue;
+
+					if (context.CalculateBinSpans)
+						newobj.BinSpans.AddRange(ifNode.GetSelfAndChildrenRecursiveBinSpans().ToArray());
+					// Make sure the local isn't removed
+					body[i] = new ILExpression(ILCode.Wrap, null, new ILExpression(ILCode.Stloc, CreateTempLocal(), newobj));
+					modified = true;
+				}
 			}
 			return modified;
 		}
+
+		ILVariable CreateTempLocal() => new ILVariable { Name = "_tmp_" + (tmpLocalCounter++).ToString(), GeneratedByDecompiler = true, GeneratedByDecompilerButCanBeRenamed = true };
+		int tmpLocalCounter;
 
 		bool IsVisualBasicModule() {
 			foreach (var asmRef in context.CurrentModule.GetAssemblyRefs()) {
@@ -622,7 +1002,11 @@ namespace ICSharpCode.Decompiler.ILAst {
 			}
 		}
 
-		bool FixFilter(ILTryCatchBlock.CatchBlock catchBlock, out ILVariable exVar, out ITypeDefOrRef exType) {
+		bool FixFilter(ILTryCatchBlock.CatchBlock catchBlock, out ILVariable exVar, out ITypeDefOrRef exType) =>
+			FixFilterRoslyn(catchBlock, out exVar, out exType) ||
+			FixFilterMcs(catchBlock, out exVar, out exType);
+
+		bool FixFilterRoslyn(ILTryCatchBlock.CatchBlock catchBlock, out ILVariable exVar, out ITypeDefOrRef exType) {
 			exVar = null;
 			exType = null;
 
@@ -954,6 +1338,75 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 			pos++;
 			return true;
+		}
+
+		// Tested: mcs, Mono 4.6.2
+		bool FixFilterMcs(ILTryCatchBlock.CatchBlock catchBlock, out ILVariable exVar, out ITypeDefOrRef exType) {
+			exVar = null;
+			exType = null;
+
+			var filterBlock = catchBlock.FilterBlock;
+			if (filterBlock == null)
+				return false;
+
+			var body = filterBlock.Body;
+			int pos = 0;
+
+			// filter arg_13_0 {
+			//     stloc(var_0_18, isinst([mscorlib]System.SystemException, arg_13_0))
+			//     endfilter(logicand(ldloc(var_0_18), <real-expr>))
+			// }
+			if (TryGetFilterExceptionType(body, ref pos, filterBlock, out exVar, out exType)) {
+				if (pos >= body.Count)
+					return false;
+				ILExpression logicand;
+				if (!body[pos++].Match(ILCode.Endfilter, out logicand))
+					return false;
+				List<ILExpression> args;
+				if (!logicand.Match(ILCode.LogicAnd, out args) || args.Count != 2)
+					return false;
+				if (!args[0].MatchLdloc(exVar))
+					return false;
+				var newCode = args[1];
+
+				if (context.CalculateBinSpans) {
+					var binSpans = filterBlock.GetSelfAndChildrenRecursiveBinSpans().ToArray();
+					newCode.BinSpans.AddRange(binSpans);
+				}
+				body.Clear();
+				body.Add(newCode);
+				return true;
+			}
+
+			// Local isn't used by the catch handler or the filter
+			// eg. catch (IOException) when (ShouldThrow(null)) {
+			// filter arg_232_0 {
+			//     endfilter(logicand(isinst([mscorlib]System.IO.IOException, arg_232_0), <real-expr>))
+			// }
+			if (body.Count == 1) {
+				ILExpression logicand;
+				if (!body[pos++].Match(ILCode.Endfilter, out logicand))
+					return false;
+				List<ILExpression> args;
+				if (!logicand.Match(ILCode.LogicAnd, out args) || args.Count != 2)
+					return false;
+				ILExpression ldloc;
+				if (!args[0].Match(ILCode.Isinst, out exType, out ldloc))
+					return false;
+				if (!ldloc.Match(ILCode.Ldloc, out exVar))
+					return false;
+				var newCode = args[1];
+
+				if (context.CalculateBinSpans) {
+					var binSpans = filterBlock.GetSelfAndChildrenRecursiveBinSpans().ToArray();
+					newCode.BinSpans.AddRange(binSpans);
+				}
+				body.Clear();
+				body.Add(newCode);
+				return true;
+			}
+
+			return false;
 		}
 
 		/// <summary>

@@ -60,10 +60,12 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 		
 		readonly List<string> currentlyUsedVariableNames = new List<string>();
 		readonly StringBuilder stringBuilder;
+		readonly AutoPropertyProvider autoPropertyProvider;
 
 		public DelegateConstruction(DecompilerContext context) : base(context)
 		{
-			this.stringBuilder = new StringBuilder();
+			stringBuilder = new StringBuilder();
+			autoPropertyProvider = new AutoPropertyProvider();
 			Reset(context);
 		}
 
@@ -71,6 +73,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 		{
 			this.context = context;
 			currentlyUsedVariableNames.Clear();
+			autoPropertyProvider.Reset();
 		}
 
 		public override object VisitObjectCreateExpression(ObjectCreateExpression objectCreateExpression, object data)
@@ -171,9 +174,8 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			subContext.CurrentMethod = method;
 			subContext.CurrentMethodIsAsync = false;
 			subContext.ReservedVariableNames.AddRange(currentlyUsedVariableNames);
-			var autoPropProvider = new AutoPropertyProvider();
 			MethodDebugInfoBuilder builder;
-			BlockStatement body = AstMethodBodyBuilder.CreateMethodBody(method, subContext, autoPropProvider, ame.Parameters, false, stringBuilder, out builder);
+			BlockStatement body = AstMethodBodyBuilder.CreateMethodBody(method, subContext, autoPropertyProvider, ame.Parameters, false, stringBuilder, out builder);
 			ame.AddAnnotation(builder);
 			TransformationPipeline.RunTransformationsUntil(body, v => v is DelegateConstruction, subContext);
 			body.AcceptVisitor(this, null);
@@ -186,7 +188,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			}
 			// Remove the parameter list from an AnonymousMethodExpression if the original method had no names,
 			// and the parameters are not used in the method body
-			if (!isLambda && method.Parameters.SkipNonNormal().All(p => string.IsNullOrEmpty(p.Name))) {
+			if (!isLambda && method.Parameters.SkipNonNormal().All(p => string.IsNullOrEmpty(p.Name) || (p.Name.StartsWith("<") && p.Name.EndsWith(">")))) {
 				var parameterReferencingIdentifiers =
 					from ident in body.Descendants.OfType<IdentifierExpression>()
 					let v = ident.Annotation<ILVariable>()
@@ -358,10 +360,13 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				
 				// Looks like we found a display class creation. Now let's verify that the variable is used only for field accesses:
 				bool ok = true;
+				INode nodeVar = null;
 				foreach (var identExpr in blockStatement.Descendants.OfType<IdentifierExpression>()) {
-					if (identExpr.Identifier == variable.Name && identExpr != displayClassAssignmentMatch.Get("variable").Single()) {
-						if (!(identExpr.Parent is MemberReferenceExpression && identExpr.Parent.Annotation<IField>() != null && identExpr.Parent.Annotation<IField>().IsField))
+					if (identExpr.Identifier == variable.Name && identExpr != (nodeVar ?? (nodeVar = displayClassAssignmentMatch.Get("variable").Single()))) {
+						if (!(identExpr.Parent is MemberReferenceExpression && identExpr.Parent.Annotation<IField>()?.IsField == true)) {
 							ok = false;
+							break;
+						}
 					}
 				}
 				if (!ok)
