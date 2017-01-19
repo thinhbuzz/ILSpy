@@ -227,11 +227,7 @@ namespace PropertyInterface
 {
 	public interface IMyInterface
 	{
-		int MyProperty
-		{
-			get;
-			set;
-		}
+		int MyProperty { get; set; }
 	}
 }
 //$$ PropertyInterfaceExplicitImplementation
@@ -239,11 +235,7 @@ namespace PropertyInterfaceExplicitImplementation
 {
 	public interface IMyInterface
 	{
-		int MyProperty
-		{
-			get;
-			set;
-		}
+		int MyProperty { get; set; }
 	}
 	public class MyClass : IMyInterface
 	{
@@ -264,11 +256,7 @@ namespace PropertyInterfaceImplementation
 {
 	public interface IMyInterface
 	{
-		int MyProperty
-		{
-			get;
-			set;
-		}
+		int MyProperty { get; set; }
 	}
 	public class MyClass : IMyInterface
 	{

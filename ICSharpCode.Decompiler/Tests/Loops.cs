@@ -24,34 +24,34 @@ public class Loops
 {
 	public void ForEach(IEnumerable<string> enumerable)
 	{
-		foreach (string current in enumerable)
+		foreach (string text in enumerable)
 		{
-			current.ToLower();
+			text.ToLower();
 		}
 	}
 	
 	public void ForEachOverList(List<string> list)
 	{
 		// List has a struct as enumerator, so produces quite different IL than foreach over the IEnumerable interface
-		foreach (string current in list)
+		foreach (string text in list)
 		{
-			current.ToLower();
+			text.ToLower();
 		}
 	}
 	
 	public void ForEachOverNonGenericEnumerable(IEnumerable enumerable)
 	{
-		foreach (object current in enumerable)
+		foreach (object obj in enumerable)
 		{
-			current.ToString();
+			obj.ToString();
 		}
 	}
 	
 	public void ForEachOverNonGenericEnumerableWithAutomaticCast(IEnumerable enumerable)
 	{
-		foreach (int num in enumerable)
+		foreach (object obj in enumerable)
 		{
-			num.ToString();
+			((int)obj).ToString();
 		}
 	}
 	

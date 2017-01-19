@@ -36,44 +36,18 @@ public class InitializerTests
 	private class Data
 	{
 		public List<InitializerTests.MyEnum2> FieldList = new List<InitializerTests.MyEnum2>();
-		public InitializerTests.MyEnum a
-		{
-			get;
-			set;
-		}
-		public List<InitializerTests.MyEnum2> PropertyList
-		{
-			get;
-			set;
-		}
-
-		public InitializerTests.Data MoreData
-		{
-			get;
-			set;
-		}
-		
-		public InitializerTests.StructData NestedStruct
-		{
-			get;
-			set;
-		}
+		public InitializerTests.MyEnum a { get; set; }
+		public List<InitializerTests.MyEnum2> PropertyList { get; set; }
+		public InitializerTests.Data MoreData { get; set; }
+		public InitializerTests.StructData NestedStruct { get; set; }
 	}
 	
 	private struct StructData
 	{
 		public int Field;
-		public int Property 
-		{
-			get;
-			set; 
-		}
+		public int Property { get; set; }
 		
-		public InitializerTests.Data MoreData
-		{
-			get;
-			set;
-		}
+		public InitializerTests.Data MoreData { get; set; }
 		
 		public StructData(int initialValue)
 		{
@@ -186,7 +160,7 @@ public class InitializerTests
 					7,
 					8,
 					254,
-					255
+					byte.MaxValue
 				});
 	}
 
@@ -194,14 +168,14 @@ public class InitializerTests
 	{
 		InitializerTests.X(InitializerTests.Y(), new sbyte[]
 				{
-					-128,
+					sbyte.MinValue,
 					-127,
 					0,
 					1,
 					2,
 					3,
 					4,
-					127
+					sbyte.MaxValue
 				});
 	}
 
@@ -209,11 +183,11 @@ public class InitializerTests
 	{
 		InitializerTests.X(InitializerTests.Y(), new short[]
 				{
-					-32768,
+					short.MinValue,
 					-1,
 					0,
 					1,
-					32767
+					short.MaxValue
 				});
 	}
 
@@ -226,7 +200,7 @@ public class InitializerTests
 					32767,
 					32768, 
 					65534,
-					65535
+					ushort.MaxValue
 				});
 	}
 
@@ -326,8 +300,8 @@ public class InitializerTests
 					-100m,
 					0m,
 					100m,
-					-79228162514264337593543950335m, 
-					79228162514264337593543950335m, 
+					decimal.MinValue,
+					decimal.MaxValue,
 					0.0000001m
 				});
 	}

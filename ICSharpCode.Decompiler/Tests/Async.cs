@@ -112,9 +112,9 @@ public class Async
 	public async Task<int> AwaitInForEach(IEnumerable<Task<int>> elements)
 	{
 		int num = 0;
-		foreach (Task<int> current in elements)
+		foreach (Task<int> task in elements)
 		{
-			num += await current;
+			num += await task;
 		}
 		return num;
 	}

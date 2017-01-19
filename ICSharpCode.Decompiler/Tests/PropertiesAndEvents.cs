@@ -40,11 +40,7 @@ public class PropertiesAndEvents
 		}
 	}
 	
-	public int AutomaticProperty
-	{
-		get;
-		set;
-	}
+	public int AutomaticProperty { get; set; }
 	
 	public int CustomProperty
 	{

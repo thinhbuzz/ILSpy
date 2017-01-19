@@ -65,9 +65,9 @@ public static class ControlFlow
 	
 	public static void Test(string input, List<string> value, Dictionary<int, string> _headers)
 	{
-		foreach (string current in value)
+		foreach (string value2 in value)
 		{
-			_headers.Add(0, current);
+			_headers.Add(0, value2);
 		}
 		if (value.Contains("test"))
 		{

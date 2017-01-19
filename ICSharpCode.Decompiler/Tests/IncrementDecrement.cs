@@ -33,11 +33,7 @@ public class IncrementDecrement
 	{
 		public int Field;
 		
-		public int Property
-		{
-			get;
-			set;
-		}
+		public int Property { get; set; }
 		
 		public uint this[string name]
 		{
@@ -54,11 +50,7 @@ public class IncrementDecrement
 	private IncrementDecrement.MyEnum enumField;
 	public static int StaticField;
 	
-	public static int StaticProperty
-	{
-		get;
-		set;
-	}
+	public static int StaticProperty { get; set; }
 	
 	private IncrementDecrement.MutableClass M()
 	{
