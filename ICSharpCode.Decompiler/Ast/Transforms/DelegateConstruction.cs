@@ -88,7 +88,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 					if (method != null) {
 						if (HandleAnonymousMethod(objectCreateExpression, obj, method))
 							return null;
-						var binSpans = objectCreateExpression.GetAllRecursiveBinSpans();
+						var binSpans = context.CalculateBinSpans ? objectCreateExpression.GetAllRecursiveBinSpans() : null;
 						// Perform the transformation to "new Action(obj.func)".
 						obj.Remove();
 						methodIdent.Remove();
@@ -122,6 +122,25 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 						mre.MemberNameToken = (Identifier)methodIdent.IdentifierToken.Clone();
 						methodIdent.TypeArguments.MoveTo(mre.TypeArguments);
 						mre.AddAnnotation(method);
+
+						// Replace 'new DelegateClass(<method>)' with '<method>' if it's an event adder/remover
+						var parent = objectCreateExpression.Parent as AssignmentExpression;
+						if (parent != null && (parent.Operator == AssignmentOperatorType.Add || parent.Operator == AssignmentOperatorType.Subtract)) {
+							var delType = objectCreateExpression.Annotation<IMethod>()?.DeclaringType;
+							var invokeMethod = delType.ResolveTypeDef()?.FindMethod(nameInvoke);
+							if (invokeMethod != null) {
+								var invokeSig = GetMethodBaseSig(delType, invokeMethod.MethodSig);
+								var msig = GetMethodBaseSig(method.DeclaringType, method.MethodSig, (method as MethodSpec)?.GenericInstMethodSig.GenericArguments);
+								invokeSig = new MethodSig((invokeSig.CallingConvention | CallingConvention.HasThis) & ~CallingConvention.Generic, 0, invokeSig.RetType, invokeSig.Params);
+								msig = new MethodSig((msig.CallingConvention | CallingConvention.HasThis) & ~CallingConvention.Generic, 0, msig.RetType, msig.Params);
+								if (new SigComparer().Equals(invokeSig, msig)) {
+									objectCreateExpression.ReplaceWith(mre);
+									mre.AddAnnotation(binSpans);
+									return null;
+								}
+							}
+						}
+
 						objectCreateExpression.Arguments.Clear();
 						objectCreateExpression.Arguments.Add(mre);
 						objectCreateExpression.AddAnnotation(binSpans);
@@ -130,6 +149,21 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				}
 			}
 			return base.VisitObjectCreateExpression(objectCreateExpression, data);
+		}
+		static readonly UTF8String nameInvoke = new UTF8String("Invoke");
+
+		static MethodBaseSig GetMethodBaseSig(ITypeDefOrRef type, MethodBaseSig msig, IList<TypeSig> methodGenArgs = null)
+		{
+			IList<TypeSig> typeGenArgs = null;
+			var ts = type as TypeSpec;
+			if (ts != null) {
+				var genSig = ts.TypeSig.ToGenericInstSig();
+				if (genSig != null)
+					typeGenArgs = genSig.GenericArguments;
+			}
+			if (typeGenArgs == null && methodGenArgs == null)
+				return msig;
+			return GenericArgumentResolver.Resolve(msig, typeGenArgs, methodGenArgs);
 		}
 		
 		internal static bool IsAnonymousMethod(DecompilerContext context, MethodDef method)
@@ -173,14 +207,15 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			DecompilerContext subContext = context.Clone();
 			subContext.CurrentMethod = method;
 			subContext.CurrentMethodIsAsync = false;
+			subContext.CurrentMethodIsYieldReturn = false;
 			subContext.ReservedVariableNames.AddRange(currentlyUsedVariableNames);
 			MethodDebugInfoBuilder builder;
 			BlockStatement body = AstMethodBodyBuilder.CreateMethodBody(method, subContext, autoPropertyProvider, ame.Parameters, false, stringBuilder, out builder);
 			ame.AddAnnotation(builder);
 			TransformationPipeline.RunTransformationsUntil(body, v => v is DelegateConstruction, subContext);
 			body.AcceptVisitor(this, null);
-			
-			
+			ame.IsAsync = subContext.CurrentMethodIsAsync;
+
 			bool isLambda = false;
 			if (ame.Parameters.All(p => p.ParameterModifier == ParameterModifier.None)) {
 				isLambda = body.Statements.Count == 1 && body.Statements.Single() is ReturnStatement &&
@@ -462,7 +497,6 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 					ILVariable ilVar = new ILVariable
 					{
 						GeneratedByDecompiler = true,
-						GeneratedByDecompilerButCanBeRenamed = true,
 						Name = capturedVariableName,
 						Type = field.FieldType,
 					};

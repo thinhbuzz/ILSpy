@@ -50,6 +50,15 @@ namespace ICSharpCode.Decompiler.ILAst {
 			get { return data.Count == 0; }
 		}
 
+		public int? TryGetSingleState() {
+			if (data.Count != 1)
+				return null;
+			var i = data[0];
+			if (i.Start == i.End)
+				return i.Start;
+			return null;
+		}
+
 		public bool Contains(int val) {
 			foreach (Interval v in data) {
 				if (v.Start <= val && val <= v.End)
@@ -117,7 +126,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		AsyncMoveNext
 	}
 
-	class StateRangeAnalysis {
+	abstract class StateRangeAnalysis {
 		protected readonly StateRangeAnalysisMode mode;
 		protected readonly FieldDef stateField;
 		internal readonly DefaultDictionary<ILNode, StateRange> ranges;
@@ -129,7 +138,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		/// Initializes the state range logic:
 		/// Clears 'ranges' and sets 'ranges[entryPoint]' to the full range (int.MinValue to int.MaxValue)
 		/// </summary>
-		protected StateRangeAnalysis(ILNode entryPoint, StateRangeAnalysisMode mode, FieldDef stateField, ILVariable cachedStateVar = null) {
+		protected StateRangeAnalysis(ILNode entryPoint, StateRangeAnalysisMode mode, FieldDef stateField, ILVariable cachedStateVar) {
 			this.mode = mode;
 			this.stateField = stateField;
 
@@ -233,10 +242,13 @@ namespace ICSharpCode.Decompiler.ILAst {
 				throw new SymbolicAnalysisFailedException();
 		}
 
-		public int AssignStateRanges(List<ILNode> body, int bodyLength) {
-			if (bodyLength == 0)
+		public int AssignStateRanges(List<ILNode> body, int bodyEnd) =>
+			AssignStateRanges(body, 0, bodyEnd);
+
+		public int AssignStateRanges(List<ILNode> body, int bodyStart, int bodyEnd) {
+			if (bodyEnd == 0)
 				return 0;
-			for (int i = 0; i < bodyLength; i++) {
+			for (int i = bodyStart; i < bodyEnd; i++) {
 				StateRange nodeRange = ranges[body[i]];
 				nodeRange.Simplify();
 
@@ -264,7 +276,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 						return res.Value;
 				}
 			}
-			return bodyLength;
+			return bodyEnd;
 		}
 
 		public void EnsureLabelAtPos(List<ILNode> body, ref int pos, ref int bodyLength) {
@@ -277,9 +289,6 @@ namespace ICSharpCode.Decompiler.ILAst {
 				return; // label found
 			}
 			if (body[pos] is ILLabel)
-				return;
-			var tryCatch = body[pos] as ILTryCatchBlock;
-			if (tryCatch != null && tryCatch.TryBlock.Body.Count != 0 && tryCatch.TryBlock.Body[0] is ILLabel)
 				return;
 
 			// ensure that the first element at body[pos] is a label:
@@ -333,6 +342,12 @@ namespace ICSharpCode.Decompiler.ILAst {
 				finallyMethodToStateRange = new Dictionary<MethodDef, StateRange>();
 		}
 
+		protected override int? AssignStateRanges(List<ILNode> body, int i, StateRange nodeRange, ILTryCatchBlock tryFinally) {
+			if (mode == StateRangeAnalysisMode.IteratorMoveNext)
+				return i;
+			return base.AssignStateRanges(body, i, nodeRange, tryFinally);
+		}
+
 		protected override int? AssignStateRanges(List<ILNode> body, int i, ILExpression expr, StateRange nodeRange) {
 			if (expr.Code == ILCode.Call) {
 				// in some cases (e.g. foreach over array) the C# compiler produces a finally method outside of try-finally blocks
@@ -351,8 +366,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 	sealed class MonoStateRangeAnalysis : StateRangeAnalysis {
 		readonly FieldDef disposingField;
 		readonly ILVariable disposeInFinallyVar;
-		public MonoStateRangeAnalysis(ILNode entryPoint, StateRangeAnalysisMode mode, FieldDef stateField, FieldDef disposingField, ILVariable disposeInFinallyVar = null)
-			: base(entryPoint, mode, stateField) {
+		public MonoStateRangeAnalysis(ILNode entryPoint, StateRangeAnalysisMode mode, FieldDef stateField, FieldDef disposingField, ILVariable disposeInFinallyVar, ILVariable cachedStateVar = null)
+			: base(entryPoint, mode, stateField, cachedStateVar) {
 			this.disposingField = disposingField;
 			this.disposeInFinallyVar = disposeInFinallyVar;
 		}
@@ -376,7 +391,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			case ILCode.Brtrue:
 				// Ignore $disposing checks. Next instr is a store to $PC (state field)
 				var ldfld = expr.Arguments[0];
-				if (ldfld.Operand == disposingField && ldfld.Code == ILCode.Ldfld && ldfld.Arguments[0].MatchThis()) {
+				if (ldfld.Code == ILCode.Ldfld && ldfld.Arguments[0].MatchThis() && (ldfld.Operand as IField).ResolveFieldWithinSameModule() == disposingField) {
 					ranges[body[i + 1]].UnionWith(nodeRange);
 					return null;
 				}

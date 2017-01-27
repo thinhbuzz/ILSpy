@@ -63,10 +63,13 @@ namespace ICSharpCode.NRefactory.VB.Visitors {
 			members.Push(new MemberInfo());
 			
 			var expr = new MultiLineLambdaExpression() {
-				IsSub = true,
 				Body = (BlockStatement)anonymousMethodExpression.Body.AcceptVisitor(this, data)
 			};
-			
+			if (anonymousMethodExpression.IsAsync)
+				expr.Modifiers |= LambdaExpressionModifiers.Async;
+			var retStmt = anonymousMethodExpression.Body.Descendants.OfType<CSharp.ReturnStatement>().FirstOrDefault();
+			expr.IsSub = retStmt == null || retStmt.Expression.IsNull;
+
 			ConvertNodes(anonymousMethodExpression.Parameters, expr.Parameters);
 			
 			if (members.Pop().inIterator) {
@@ -1150,6 +1153,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors {
 					Type = (AstType)foreachStatement.VariableType.AcceptVisitor(this, data)
 				}
 			};
+			stmt.HiddenInitializer = ICSharpCode.Decompiler.Ast.NRefactoryExtensions.GetAllRecursiveBinSpans(foreachStatement.HiddenInitializer);
 			stmt.HiddenGetEnumeratorBinSpans = ICSharpCode.Decompiler.Ast.NRefactoryExtensions.GetAllRecursiveBinSpans(foreachStatement.HiddenGetEnumeratorNode);
 			stmt.HiddenMoveNextBinSpans = ICSharpCode.Decompiler.Ast.NRefactoryExtensions.GetAllRecursiveBinSpans(foreachStatement.HiddenMoveNextNode);
 			stmt.HiddenGetCurrentBinSpans = ICSharpCode.Decompiler.Ast.NRefactoryExtensions.GetAllRecursiveBinSpans(foreachStatement.HiddenGetCurrentNode);
@@ -1615,7 +1619,11 @@ namespace ICSharpCode.NRefactory.VB.Visitors {
 			ConvertNodes(fieldDeclaration.Attributes, decl.Attributes);
 			if (IsOwnerAModule(fieldDeclaration))
 				fieldDeclaration.Modifiers &= ~CSharp.Modifiers.Static;
-			decl.Modifiers = ConvertModifiers(fieldDeclaration.Modifiers, fieldDeclaration);
+			// private is optional in C# but required in VB
+			var modifiers = fieldDeclaration.Modifiers;
+			if ((modifiers & CSharp.Modifiers.VisibilityMask) == CSharp.Modifiers.None)
+				modifiers |= CSharp.Modifiers.Private;
+			decl.Modifiers = ConvertModifiers(modifiers, fieldDeclaration);
 			ConvertNodes(fieldDeclaration.Variables, decl.Variables);
 			
 			members.Pop();

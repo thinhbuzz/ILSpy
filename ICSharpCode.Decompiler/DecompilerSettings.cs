@@ -54,6 +54,8 @@ namespace ICSharpCode.Decompiler {
 			SortCustomAttributes = true;
 			UseSourceCodeOrder = false;
 			OneCustomAttributePerLine = false;
+			TypeAddInternalModifier = true;
+			MemberAddPrivateModifier = true;
 			return this;
 		}
 
@@ -518,6 +520,28 @@ namespace ICSharpCode.Decompiler {
 		}
 		bool oneCustomAttributePerLine = true;
 
+		public bool TypeAddInternalModifier {
+			get { return typeAddInternalModifier; }
+			set {
+				if (typeAddInternalModifier != value) {
+					typeAddInternalModifier = value;
+					OnPropertyChanged(nameof(TypeAddInternalModifier));
+				}
+			}
+		}
+		bool typeAddInternalModifier = true;
+
+		public bool MemberAddPrivateModifier {
+			get { return memberAddPrivateModifier; }
+			set {
+				if (memberAddPrivateModifier != value) {
+					memberAddPrivateModifier = value;
+					OnPropertyChanged(nameof(MemberAddPrivateModifier));
+				}
+			}
+		}
+		bool memberAddPrivateModifier = true;
+
 		CSharpFormattingOptions csharpFormattingOptions;
 
 		public CSharpFormattingOptions CSharpFormattingOptions {
@@ -591,6 +615,8 @@ namespace ICSharpCode.Decompiler {
 			if (UseSourceCodeOrder != other.UseSourceCodeOrder) return false;
 			if (AllowFieldInitializers != other.AllowFieldInitializers) return false;
 			if (OneCustomAttributePerLine != other.OneCustomAttributePerLine) return false;
+			if (TypeAddInternalModifier != other.TypeAddInternalModifier) return false;
+			if (MemberAddPrivateModifier != other.MemberAddPrivateModifier) return false;
 
 			//TODO: CSharpFormattingOptions. This isn't currently used but it has a ton of properties
 
@@ -634,6 +660,8 @@ namespace ICSharpCode.Decompiler {
 				h ^= UseSourceCodeOrder				? 0 : 0x00000020U;
 				h ^= AllowFieldInitializers			? 0 : 0x00000010U;
 				h ^= OneCustomAttributePerLine		? 0 : 0x00000008U;
+				h ^= TypeAddInternalModifier		? 0 : 0x00000004U;
+				h ^= MemberAddPrivateModifier		? 0 : 0x00000002U;
 
 				for (int i = 0; i < decompilationObjects.Length; i++)
 					h ^= (uint)decompilationObjects[i] << (i * 8);
@@ -682,6 +710,8 @@ namespace ICSharpCode.Decompiler {
 			other.UseSourceCodeOrder = this.UseSourceCodeOrder;
 			other.AllowFieldInitializers = this.AllowFieldInitializers;
 			other.OneCustomAttributePerLine = this.OneCustomAttributePerLine;
+			other.TypeAddInternalModifier = this.TypeAddInternalModifier;
+			other.MemberAddPrivateModifier = this.MemberAddPrivateModifier;
 			//TODO: CSharpFormattingOptions
 			return other;
 		}

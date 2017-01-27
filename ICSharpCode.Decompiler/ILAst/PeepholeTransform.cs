@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using dnlib.DotNet;
+using dnSpy.Contracts.Decompiler;
 
 namespace ICSharpCode.Decompiler.ILAst {
 	public partial class ILAstOptimizer
@@ -69,7 +70,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 						}
 						expr.Arguments.Clear();
 						return true;
-					} else if (args[0].Match(ILCode.Ldc_I8, out val64)) {
+					} else if (MatchLdci8(args[0], out val64)) {
 						if (sig.Params.Count != 1)
 							return false;
 						var paramType = sig.Params[0].RemovePinnedAndModifiers().GetElementType();
@@ -139,7 +140,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 						expr.InferredType = ldcExpr.InferredType;
 						expr.ExpectedType = null;
 						return true;
-					} else if (args[1].Match(ILCode.Ldc_I8, out val64)) {
+					} else if (MatchLdci8(args[1], out val64)) {
 						if (sig.Params.Count != 1)
 							return false;
 						var paramType = sig.Params[0].RemovePinnedAndModifiers().GetElementType();
@@ -202,6 +203,19 @@ namespace ICSharpCode.Decompiler.ILAst {
 				expr.Operand = value;
 				expr.InferredType = f.DeclaringType.ToTypeSig();
 				return true;
+			}
+			return false;
+		}
+
+		static bool MatchLdci8(ILExpression expr, out long value) {
+			if (expr.Match(ILCode.Ldc_I8, out value))
+				return true;
+			if (expr.Code == ILCode.Conv_I8 || expr.Code == ILCode.Conv_U8) {
+				int value32;
+				if (expr.Arguments[0].Match(ILCode.Ldc_I4, out value32)) {
+					value = expr.Code == ILCode.Conv_I8 ? (long)value32 : (long)(uint)value32;
+					return true;
+				}
 			}
 			return false;
 		}
@@ -1001,7 +1015,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			// Create fixed statement from i to j
 			fixedStmt = new ILFixedStatement();
 			fixedStmt.Initializers.Add(initValue);
-			fixedStmt.BodyBlock = new ILBlock(body.GetRange(initEndPos, j - initEndPos)); // from initEndPos to j-1 (inclusive)
+			fixedStmt.BodyBlock = new ILBlock(body.GetRange(initEndPos, j - initEndPos), CodeBracesRangeFlags.FixedBraces); // from initEndPos to j-1 (inclusive)
 			if (context.CalculateBinSpans) {
 				for (int k = i; k < initEndPos; k++)
 					initValue.BinSpans.AddRange(body[k].GetSelfAndChildrenRecursiveBinSpans().ToArray());
@@ -1211,6 +1225,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 			var a = expr.Arguments[0];
 			ILCode c;
 			switch (a.Code) {
+					case ILCode.Cnull: c = ILCode.Cnotnull; break;
+					case ILCode.Cnotnull: c = ILCode.Cnull; break;
 					case ILCode.Ceq: c = ILCode.Cne; break;
 					case ILCode.Cne: c = ILCode.Ceq; break;
 					case ILCode.Cgt: c = ILCode.Cle; break;

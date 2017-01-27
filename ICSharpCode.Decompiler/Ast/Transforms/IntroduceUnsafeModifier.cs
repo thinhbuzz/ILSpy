@@ -16,6 +16,7 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using System.Linq;
 using ICSharpCode.NRefactory.CSharp;
 
 namespace ICSharpCode.Decompiler.Ast.Transforms {
@@ -45,7 +46,15 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				result |= child.AcceptVisitor(this, data);
 			}
 			if (result && node is EntityDeclaration && !(node is Accessor)) {
-				((EntityDeclaration)node).Modifiers |= Modifiers.Unsafe;
+				var ed = (EntityDeclaration)node;
+				ed.Modifiers |= Modifiers.Unsafe;
+
+				// Make sure the comments are still shown before the method and its modifiers
+				var comments = ed.GetChildrenByRole(Roles.Comment).Reverse().ToArray();
+				foreach (var c in comments) {
+					c.Remove();
+					ed.InsertChildAfter(null, c, Roles.Comment);
+				}
 				return false;
 			}
 			return result;

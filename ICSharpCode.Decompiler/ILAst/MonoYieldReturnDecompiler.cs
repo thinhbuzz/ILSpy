@@ -43,12 +43,23 @@ namespace ICSharpCode.Decompiler.ILAst {
 			if (body.Count == 0)
 				return false;
 
-			int i = 0;
 			ILVariable enumVar;
 			ILExpression newobj;
-			if (!body[i].Match(ILCode.Stloc, out enumVar, out newobj))
-				return false;
 			IMethod ctor;
+
+			int i = 0;
+
+			// Check if it could be an IEnumerator method with just a yield break in it
+			if (body.Count == 1) {
+				if (!body[i].Match(ILCode.Ret, out newobj))
+					return false;
+				enumVar = null;
+			}
+			else {
+				if (!body[i].Match(ILCode.Stloc, out enumVar, out newobj))
+					return false;
+			}
+
 			if (!newobj.Match(ILCode.Newobj, out ctor))
 				return false;
 			enumeratorCtor = GetMethodDefinition(ctor);
@@ -56,6 +67,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 				return false;
 			if (!IsCompilerGeneratorEnumerator(enumeratorCtor.DeclaringType))
 				return false;
+
+			if (method.Body.Count == 1)
+				return true;
 
 			i++;
 			if (!InitializeFieldToParameterMap(method, enumVar, ref i))
@@ -155,7 +169,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				stateField = localStateField;
 		}
 
-		protected override void ConstructExceptionTable() {
+		protected override void AnalyzeDispose() {
 			disposeMethod = MethodUtils.GetMethod_Dispose(enumeratorType).FirstOrDefault();
 			var ilMethod = CreateILAst(disposeMethod);
 			InitializeDisposeMethod(ilMethod);
@@ -168,7 +182,20 @@ namespace ICSharpCode.Decompiler.ILAst {
 			if (body.Count == 0)
 				throw new SymbolicAnalysisFailedException();
 
-			disposeInFinallyVar = FindDisposeLocal(ilMethod);
+			// If it's an IEnumerator method with just a yield break in it, we haven't found the state field yet
+			if (stateField == null) {
+				const int index = 1;
+				IField f;
+				List<ILExpression> args;
+				if (index + 1 >= body.Count || !body[index].Match(ILCode.Stfld, out f, out args) || args.Count != 2 || !args[0].MatchThis() || !args[1].MatchLdcI4(-1))
+					throw new SymbolicAnalysisFailedException();
+				var field = GetFieldDefinition(f);
+				if (field?.DeclaringType != enumeratorType)
+					throw new SymbolicAnalysisFailedException();
+				stateField = field;
+			}
+
+			disposeInFinallyVar = MonoStateMachineUtils.FindDisposeLocal(ilMethod);
 
 			int bodyLength;
 			if (!FindReturnLabels(body, out bodyLength, out returnFalseLabel, out returnTrueLabel))
@@ -186,54 +213,6 @@ namespace ICSharpCode.Decompiler.ILAst {
 		ILLabel returnFalseLabel, returnTrueLabel;
 		List<KeyValuePair<ILLabel, StateRange>> labels;
 		ILVariable disposeInFinallyVar;
-
-		// Finds the compiler generated boolean local used by finally blocks that determines whether
-		// the code in the finally block should execute or not.
-		ILVariable FindDisposeLocal(ILBlock ilMethod) {
-			ILVariable local = null;
-			foreach (var block in ilMethod.GetSelfAndChildrenRecursive<ILTryCatchBlock>()) {
-				var body = block.FinallyBlock?.Body;
-				if (body == null || body.Count < 2)
-					continue;
-				ILLabel lbl;
-				ILExpression logicnot;
-				if (!body[0].Match(ILCode.Brtrue, out lbl, out logicnot))
-					continue;
-				if (!body[1].Match(ILCode.Endfinally))
-					continue;
-				ILExpression ldloc;
-				if (!logicnot.Match(ILCode.LogicNot, out ldloc))
-					continue;
-				ILVariable v;
-				if (!ldloc.Match(ILCode.Ldloc, out v) || v.IsParameter || v.Type.GetElementType() != ElementType.Boolean)
-					continue;
-				if (!CheckDisposeLocalInTryBlock(block.TryBlock, v))
-					continue;
-				if (local == null)
-					local = v;
-				else if (local != v)
-					throw new SymbolicAnalysisFailedException();
-			}
-			return local;
-		}
-
-		// Verify that it's written to once and value is 1 (true)
-		bool CheckDisposeLocalInTryBlock(ILBlock tryBlock, ILVariable local) {
-			int count = 0;
-			var body = tryBlock.Body;
-			for (int i = 0; i < body.Count; i++) {
-				ILVariable v;
-				ILExpression ldci4;
-				if (!body[i].Match(ILCode.Stloc, out v, out ldci4))
-					continue;
-				if (v != local)
-					continue;
-				if (!ldci4.MatchLdcI4(1))
-					return false;
-				count++;
-			}
-			return count >= 1;
-		}
 
 		bool FindReturnLabels(List<ILNode> body, out int bodyLength, out ILLabel retZeroLabel, out ILLabel retOneLabel) {
 			bodyLength = 0;
@@ -279,12 +258,15 @@ namespace ICSharpCode.Decompiler.ILAst {
 				ldci4.Match(ILCode.Ldc_I4, out val);
 		}
 
+		ILExpression CreateYieldReturn(ILExpression arg) => new ILExpression(ILCode.YieldReturn, null, arg);
+		ILExpression CreateYieldBreak() => new ILExpression(ILCode.YieldBreak, null);
+
 		void ConvertBody(List<ILNode> body, int startPos, int bodyLength) {
 			newBody = new List<ILNode>();
 			if (startPos != bodyLength)
 				newBody.Add(MakeGoTo(labels, 0));
 			ConvertBodyCore(body, newBody, startPos, bodyLength);
-			newBody.Add(new ILExpression(ILCode.YieldBreak, null));
+			newBody.Add(CreateYieldBreak());
 		}
 
 		List<ILNode> ConvertBodyCore(List<ILNode> body, List<ILNode> newBody, int startPos, int bodyLength) {
@@ -301,7 +283,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					if (field == null)
 						goto default;
 					if (field == currentField && expr.Arguments[0].MatchThis()) {
-						newBody.Add(new ILExpression(ILCode.YieldReturn, null, expr.Arguments[1]));
+						newBody.Add(CreateYieldReturn(expr.Arguments[1]));
 						break;
 					}
 					else if (field == stateField && expr.Arguments[0].MatchThis() && expr.Arguments[1].Match(ILCode.Ldc_I4, out val)) {
@@ -329,7 +311,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 						newBody.Add(new ILExpression(ILCode.Br, skipLbl));
 						newBody.Add(yieldOrGoToLabel);
 						if (lbl == returnFalseLabel)
-							newBody.Add(new ILExpression(ILCode.YieldBreak, null));
+							newBody.Add(CreateYieldBreak());
 						else
 							newBody.Add(MakeGoTo(labels, currentState));
 						newBody.Add(skipLbl);
@@ -341,7 +323,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				case ILCode.Leave:
 					lbl = (ILLabel)expr.Operand;
 					if (lbl == returnFalseLabel)
-						newBody.Add(new ILExpression(ILCode.YieldBreak, null));
+						newBody.Add(CreateYieldBreak());
 					else if (lbl == returnTrueLabel) {
 						newBody.Add(MakeGoTo(labels, currentState));
 						currentState = -1;
@@ -374,25 +356,23 @@ namespace ICSharpCode.Decompiler.ILAst {
 					//     .try {
 					//         IL_91:	// switch at beginning of method branches here
 					//         switch(IL_E0, ..., sub(ldloc(var_0_610), ldc.i4(2)))
-					if (pos == 1 && body[0] is ILLabel) {
-						arg = expr.Arguments[0];
-						if (arg.Code == ILCode.Sub && arg.Arguments[0].Match(ILCode.Ldloc, out v) && arg.Arguments[1].Match(ILCode.Ldc_I4, out val) && stateVariables.Contains(v)) {
-							var targetLabels = (ILLabel[])expr.Operand;
-							stateRanges.Clear();
-							for (int i = 0; i < targetLabels.Length; i++) {
-								var state = val + i;
-								var targetLabel = targetLabels[i];
-								StateRange stateRange;
-								if (stateRanges.TryGetValue(targetLabel, out stateRange))
-									stateRange.UnionWith(new StateRange(state, state));
-								else {
-									stateRange = new StateRange(state, state);
-									stateRanges.Add(targetLabel, stateRange);
-									labels.Add(new KeyValuePair<ILLabel, StateRange>(targetLabel, stateRange));
-								}
+					arg = expr.Arguments[0];
+					if (arg.Code == ILCode.Sub && arg.Arguments[0].Match(ILCode.Ldloc, out v) && arg.Arguments[1].Match(ILCode.Ldc_I4, out val) && stateVariables.Contains(v)) {
+						var targetLabels = (ILLabel[])expr.Operand;
+						stateRanges.Clear();
+						for (int i = 0; i < targetLabels.Length; i++) {
+							var state = val + i;
+							var targetLabel = targetLabels[i];
+							StateRange stateRange;
+							if (stateRanges.TryGetValue(targetLabel, out stateRange))
+								stateRange.UnionWith(new StateRange(state, state));
+							else {
+								stateRange = new StateRange(state, state);
+								stateRanges.Add(targetLabel, stateRange);
+								labels.Add(new KeyValuePair<ILLabel, StateRange>(targetLabel, stateRange));
 							}
-							break;
 						}
+						break;
 					}
 					goto default;
 
@@ -455,7 +435,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			Debug.Assert(targetLabel != null);
 			Debug.Assert(targetLabel != returnTrueLabel);
 			if (targetLabel == returnFalseLabel)
-				return new ILExpression(ILCode.YieldBreak, null);
+				return CreateYieldBreak();
 			return new ILExpression(ILCode.Br, targetLabel);
 		}
 

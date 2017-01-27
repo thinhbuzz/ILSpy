@@ -113,6 +113,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			SymbolicValue left, right;
 			switch (expr.Code) {
 				case ILCode.Sub:
+				case ILCode.Sub_Ovf:
 					left = Eval(expr.Arguments[0]);
 					right = Eval(expr.Arguments[1]);
 					if (left.Type != SymbolicValueType.State && left.Type != SymbolicValueType.IntegerConstant)

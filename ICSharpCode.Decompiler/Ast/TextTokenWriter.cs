@@ -209,7 +209,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			var node = nodeStack.Peek();
 			if (node is IndexerDeclaration)
 				memberRef = node.Annotation<PropertyDef>();
-			if (memberRef != null && (node is PrimitiveType || node is ConstructorInitializer || node is BaseReferenceExpression || node is ThisReferenceExpression || node is ObjectCreateExpression || node is AnonymousMethodExpression))
+			if (keyword != "async" && memberRef != null && (node is PrimitiveType || node is ConstructorInitializer || node is BaseReferenceExpression || node is ThisReferenceExpression || node is ObjectCreateExpression || node is AnonymousMethodExpression))
 				output.Write(keyword, memberRef, keyword == "new" ? DecompilerReferenceFlags.Hidden : DecompilerReferenceFlags.None, BoxedTextColor.Keyword);
 			else if (memberRef != null && node is IndexerDeclaration && keyword == "this")
 				output.Write(keyword, memberRef, DecompilerReferenceFlags.Definition, BoxedTextColor.Keyword);

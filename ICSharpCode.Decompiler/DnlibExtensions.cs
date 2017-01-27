@@ -243,8 +243,10 @@ namespace ICSharpCode.Decompiler {
 		{
 			if (type == null)
 				return false;
-			string name;
-			if (type.HasGeneratedName() && string.IsNullOrEmpty(type.GetNamespaceInternal()) && ((name = type.Name).Contains("AnonType") || name.Contains("AnonymousType"))) {
+			if (!string.IsNullOrEmpty(type.GetNamespaceInternal()))
+				return false;
+			string name = type.Name;
+			if (name.StartsWith("VB$AnonymousType_")|| (type.HasGeneratedName() && (name.Contains("AnonType") || name.Contains("AnonymousType")))) {
 				TypeDef td = type.ResolveTypeDef();
 				return td != null && td.IsCompilerGenerated();
 			}
@@ -358,10 +360,8 @@ namespace ICSharpCode.Decompiler {
 			type = type.RemovePinnedAndModifiers();
 			if (type == null)
 				return null;
-			if (type.IsGenericInstanceType) {
-				var git = (GenericInstSig)type;
-				return git.GenericType == null ? null : git.GenericType.TypeDefOrRef;
-			}
+			if (type.IsGenericInstanceType)
+				return ((GenericInstSig)type).GenericType?.TypeDefOrRef;
 			else if (type.IsTypeDefOrRef)
 				return ((TypeDefOrRefSig)type).TypeDefOrRef;
 			else

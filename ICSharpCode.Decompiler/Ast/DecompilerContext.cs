@@ -32,6 +32,7 @@ namespace ICSharpCode.Decompiler {
 		public MethodDef CurrentMethod;
 		public DecompilerSettings Settings = new DecompilerSettings();
 		public bool CurrentMethodIsAsync;
+		public bool CurrentMethodIsYieldReturn;
 		public readonly DecompilerCache Cache;
 		public bool CalculateBinSpans;
 
@@ -74,6 +75,7 @@ namespace ICSharpCode.Decompiler {
 			this.CurrentMethod = null;
 			this.Settings = new DecompilerSettings();
 			this.CurrentMethodIsAsync = false;
+			this.CurrentMethodIsYieldReturn = false;
 			this.Cache.Reset();
 		}
 	}

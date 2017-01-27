@@ -55,9 +55,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 				if (backingField == null)
 					continue;
-				if (!backingField.Name.StartsWith("<"))
+				if (!backingField.IsCompilerGenerated())
 					continue;
-
 				toProp[backingField] = prop;
 			}
 		}

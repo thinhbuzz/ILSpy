@@ -254,6 +254,11 @@ namespace ICSharpCode.Decompiler.ILAst {
 		NullCoalescing,
 		InitArray, // Array Initializer
 
+		// Check if nullable is null
+		Cnull,
+		// Check if nullable is not null
+		Cnotnull,
+
 		/// <summary>
 		/// Defines a barrier between the parent expression and the argument expression that prevents combining them
 		/// </summary>

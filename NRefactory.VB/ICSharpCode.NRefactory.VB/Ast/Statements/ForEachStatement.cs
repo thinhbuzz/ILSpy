@@ -25,6 +25,7 @@ namespace ICSharpCode.NRefactory.VB.Ast {
 			set { SetChildByRole(Roles.Body, value); }
 		}
 		
+		public IList<BinSpan> HiddenInitializer { get; set; }			// |foreach| (var c in args)
 		public IList<BinSpan> HiddenGetEnumeratorBinSpans { get; set; }	// foreach (var c in |args|)
 		public IList<BinSpan> HiddenMoveNextBinSpans { get; set; }		// foreach (var c |in| args)
 		public IList<BinSpan> HiddenGetCurrentBinSpans { get; set; }	// foreach (|var c| in args)

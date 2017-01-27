@@ -25,7 +25,13 @@ namespace ICSharpCode.NRefactory.VB {
 		
 		readonly Stack<AstNode> containerStack = new Stack<AstNode>();
 		readonly Stack<AstNode> positionStack = new Stack<AstNode>();
-		object currentMethodReference;
+		struct MethodRefs {
+			public object MethodReference;
+			public static MethodRefs Create() => new MethodRefs {
+				MethodReference = new object(),
+			};
+		}
+		MethodRefs currentMethodRefs;
 		object currentTryReference;
 		object currentDoReference;
 		object currentForReference;
@@ -694,9 +700,8 @@ namespace ICSharpCode.NRefactory.VB {
 			StartNode(constructorDeclaration);
 
 			WriteAttributes(constructorDeclaration.Attributes);
-			var reference = new object();
-			var oldRef = currentMethodReference;
-			currentMethodReference = reference;
+			var oldRef = currentMethodRefs;
+			currentMethodRefs = MethodRefs.Create();
 			int start = formatter.NextPosition;
 			int blockStart = start;
 			var builder = constructorDeclaration.Annotation<MethodDebugInfoBuilder>();
@@ -709,7 +714,7 @@ namespace ICSharpCode.NRefactory.VB {
 			DebugHidden(constructorDeclaration.Body.HiddenStart);
 			WriteKeyword("Sub");
 			WriteKeyword("New");
-			formatter.AddHighlightedKeywordReference(reference, start, formatter.NextPosition);
+			formatter.AddHighlightedKeywordReference(currentMethodRefs.MethodReference, start, formatter.NextPosition);
 			DebugEnd(constructorDeclaration, false);
 			WriteCommaSeparatedListInParenthesis(constructorDeclaration.Parameters, false, CodeBracesRangeFlags.Parentheses);
 			WriteBlock(constructorDeclaration.Body);
@@ -723,11 +728,11 @@ namespace ICSharpCode.NRefactory.VB {
 			WriteKeyword("Sub");
 			if (builder != null)
 				builder.EndPosition = formatter.NextPosition;
-			formatter.AddHighlightedKeywordReference(reference, start, formatter.NextPosition);
+			formatter.AddHighlightedKeywordReference(currentMethodRefs.MethodReference, start, formatter.NextPosition);
 			SaveDeclarationOffset();
 			DebugEnd(constructorDeclaration, false);
 			NewLine();
-			currentMethodReference = oldRef;
+			currentMethodRefs = oldRef;
 			
 			return EndNode(constructorDeclaration);
 		}
@@ -737,9 +742,8 @@ namespace ICSharpCode.NRefactory.VB {
 			StartNode(methodDeclaration);
 			
 			WriteAttributes(methodDeclaration.Attributes);
-			var reference = new object();
-			var oldRef = currentMethodReference;
-			currentMethodReference = reference;
+			var oldRef = currentMethodRefs;
+			currentMethodRefs = MethodRefs.Create();
 			int start = formatter.NextPosition;
 			int blockStart = start;
 			var builder = methodDeclaration.Annotation<MethodDebugInfoBuilder>();
@@ -753,7 +757,7 @@ namespace ICSharpCode.NRefactory.VB {
 			else
 				WriteKeyword("Function");
 			if (!methodDeclaration.Body.IsNull)
-				formatter.AddHighlightedKeywordReference(reference, start, formatter.NextPosition);
+				formatter.AddHighlightedKeywordReference(currentMethodRefs.MethodReference, start, formatter.NextPosition);
 			DebugEnd(methodDeclaration, false);
 			methodDeclaration.Name.AcceptVisitor(this, data);
 			WriteTypeParameters(methodDeclaration.TypeParameters, CodeBracesRangeFlags.AngleBrackets);
@@ -781,12 +785,12 @@ namespace ICSharpCode.NRefactory.VB {
 					WriteKeyword("Function");
 				if (builder != null)
 					builder.EndPosition = formatter.NextPosition;
-				formatter.AddHighlightedKeywordReference(reference, start, formatter.NextPosition);
+				formatter.AddHighlightedKeywordReference(currentMethodRefs.MethodReference, start, formatter.NextPosition);
 				DebugEnd(methodDeclaration, false);
 			}
 			SaveDeclarationOffset();
 			NewLine();
-			currentMethodReference = oldRef;
+			currentMethodRefs = oldRef;
 			
 			return EndNode(methodDeclaration);
 		}
@@ -822,7 +826,8 @@ namespace ICSharpCode.NRefactory.VB {
 			if (needsBody)
 				formatter.AddHighlightedKeywordReference(reference, start, formatter.NextPosition);
 			WriteIdentifier(propertyDeclaration.Name);
-			WriteCommaSeparatedListInParenthesis(propertyDeclaration.Parameters, false, CodeBracesRangeFlags.Parentheses);
+			if (propertyDeclaration.Parameters.Any())
+				WriteCommaSeparatedListInParenthesis(propertyDeclaration.Parameters, false, CodeBracesRangeFlags.Parentheses);
 			if (!propertyDeclaration.ReturnType.IsNull) {
 				Space();
 				WriteKeyword("As");
@@ -1251,6 +1256,11 @@ namespace ICSharpCode.NRefactory.VB {
 			}
 		}
 		
+		void SpaceIfNeeded() {
+			if (lastWritten != LastWritten.Whitespace)
+				Space();
+		}
+
 		void NewLine()
 		{
 			formatter.NewLine();
@@ -1586,9 +1596,8 @@ namespace ICSharpCode.NRefactory.VB {
 		{
 			StartNode(accessor);
 			WriteAttributes(accessor.Attributes);
-			var reference = new object();
-			var oldRef = currentMethodReference;
-			currentMethodReference = reference;
+			var oldRef = currentMethodRefs;
+			currentMethodRefs = MethodRefs.Create();
 			int start = formatter.NextPosition;
 			int blockStart = start;
 			var builder = accessor.Annotation<MethodDebugInfoBuilder>();
@@ -1608,7 +1617,7 @@ namespace ICSharpCode.NRefactory.VB {
 			} else if (accessor.Role == EventDeclaration.RaiseEventRole) {
 				WriteKeyword("RaiseEvent");
 			}
-			formatter.AddHighlightedKeywordReference(reference, start, formatter.NextPosition);
+			formatter.AddHighlightedKeywordReference(currentMethodRefs.MethodReference, start, formatter.NextPosition);
 			DebugEnd(accessor, false);
 			if (accessor.Parameters.Any())
 				WriteCommaSeparatedListInParenthesis(accessor.Parameters, false, CodeBracesRangeFlags.Parentheses);
@@ -1633,11 +1642,11 @@ namespace ICSharpCode.NRefactory.VB {
 			}
 			if (builder != null)
 				builder.EndPosition = formatter.NextPosition;
-			formatter.AddHighlightedKeywordReference(reference, start, formatter.NextPosition);
+			formatter.AddHighlightedKeywordReference(currentMethodRefs.MethodReference, start, formatter.NextPosition);
 			SaveDeclarationOffset();
 			DebugEnd(accessor, false);
 			NewLine();
-			currentMethodReference = oldRef;
+			currentMethodRefs = oldRef;
 			
 			return EndNode(accessor);
 		}
@@ -1846,7 +1855,7 @@ namespace ICSharpCode.NRefactory.VB {
 		{
 			StartNode(returnStatement);
 			int start = DebugStart(returnStatement, "Return");
-			formatter.AddHighlightedKeywordReference(currentMethodReference, start, formatter.NextPosition);
+			formatter.AddHighlightedKeywordReference(currentMethodRefs.MethodReference, start, formatter.NextPosition);
 			returnStatement.Expression.AcceptVisitor(this, data);
 			DebugEnd(returnStatement);
 			return EndNode(returnStatement);
@@ -2218,7 +2227,10 @@ namespace ICSharpCode.NRefactory.VB {
 					WriteKeyword("AddressOf");
 					break;
 				case UnaryOperatorType.Await:
+					SpaceIfNeeded();
+					int start = formatter.NextPosition;
 					WriteKeyword("Await");
+					formatter.AddHighlightedKeywordReference(currentMethodRefs.MethodReference, start, formatter.NextPosition);
 					break;
 				default:
 					throw new Exception("Invalid value for UnaryOperatorType");
@@ -2315,15 +2327,15 @@ namespace ICSharpCode.NRefactory.VB {
 			switch (exitStatement.ExitKind) {
 				case ExitKind.Sub:
 					WriteKeyword("Sub");
-					formatter.AddHighlightedKeywordReference(currentMethodReference, start, formatter.NextPosition);
+					formatter.AddHighlightedKeywordReference(currentMethodRefs.MethodReference, start, formatter.NextPosition);
 					break;
 				case ExitKind.Function:
 					WriteKeyword("Function");
-					formatter.AddHighlightedKeywordReference(currentMethodReference, start, formatter.NextPosition);
+					formatter.AddHighlightedKeywordReference(currentMethodRefs.MethodReference, start, formatter.NextPosition);
 					break;
 				case ExitKind.Property:
 					WriteKeyword("Property");
-					formatter.AddHighlightedKeywordReference(currentMethodReference, start, formatter.NextPosition);
+					formatter.AddHighlightedKeywordReference(currentMethodRefs.MethodReference, start, formatter.NextPosition);
 					break;
 				case ExitKind.Do:
 					WriteKeyword("Do");
@@ -2399,6 +2411,7 @@ namespace ICSharpCode.NRefactory.VB {
 			WriteKeyword("For");
 			WriteKeyword("Each");
 			formatter.AddHighlightedKeywordReference(reference, start, formatter.NextPosition);
+			DebugHidden(forEachStatement.HiddenInitializer);
 			DebugHidden(forEachStatement.Body.HiddenStart);
 			DebugEnd(forEachStatement, false);
 			Space();
@@ -2436,9 +2449,8 @@ namespace ICSharpCode.NRefactory.VB {
 			StartNode(operatorDeclaration);
 			
 			WriteAttributes(operatorDeclaration.Attributes);
-			var reference = new object();
-			var oldRef = currentMethodReference;
-			currentMethodReference = reference;
+			var oldRef = currentMethodRefs;
+			currentMethodRefs = MethodRefs.Create();
 			int start = formatter.NextPosition;
 			int blockStart = start;
 			var builder = operatorDeclaration.Annotation<MethodDebugInfoBuilder>();
@@ -2450,7 +2462,7 @@ namespace ICSharpCode.NRefactory.VB {
 			bool writeEndOperator = !operatorDeclaration.Body.IsNull || (operatorDeclaration.Body.HiddenEnd != null && operatorDeclaration.Body.HiddenEnd.Count > 0);
 			WriteKeyword("Operator");
 			if (writeEndOperator)
-				formatter.AddHighlightedKeywordReference(reference, start, formatter.NextPosition);
+				formatter.AddHighlightedKeywordReference(currentMethodRefs.MethodReference, start, formatter.NextPosition);
 			switch (operatorDeclaration.Operator) {
 				case OverloadableOperatorType.Add:
 				case OverloadableOperatorType.UnaryPlus:
@@ -2549,7 +2561,7 @@ namespace ICSharpCode.NRefactory.VB {
 				WriteKeyword("Operator");
 				if (builder != null)
 					builder.EndPosition = formatter.NextPosition;
-				formatter.AddHighlightedKeywordReference(reference, start, formatter.NextPosition);
+				formatter.AddHighlightedKeywordReference(currentMethodRefs.MethodReference, start, formatter.NextPosition);
 				DebugEnd(operatorDeclaration, false);
 			}
 			SaveDeclarationOffset();
@@ -2672,7 +2684,7 @@ namespace ICSharpCode.NRefactory.VB {
 		{
 			StartNode(yieldStatement);
 			int start = DebugStart(yieldStatement, "Yield");
-			formatter.AddHighlightedKeywordReference(currentMethodReference, start, formatter.NextPosition);
+			formatter.AddHighlightedKeywordReference(currentMethodRefs.MethodReference, start, formatter.NextPosition);
 			yieldStatement.Expression.AcceptVisitor(this, data);
 			DebugEnd(yieldStatement);
 			return EndNode(yieldStatement);
@@ -2860,13 +2872,18 @@ namespace ICSharpCode.NRefactory.VB {
 			var builder = singleLineFunctionLambdaExpression.Annotation<MethodDebugInfoBuilder>();
 			if (builder != null)
 				builder.StartPosition = formatter.NextPosition;
+			var oldRef = currentMethodRefs;
+			currentMethodRefs = MethodRefs.Create();
+			int start = formatter.NextPosition;
 			WriteModifiers(singleLineFunctionLambdaExpression.ModifierTokens);
 			WriteKeyword("Function");
+			formatter.AddHighlightedKeywordReference(currentMethodRefs.MethodReference, start, formatter.NextPosition);
 			WriteCommaSeparatedListInParenthesis(singleLineFunctionLambdaExpression.Parameters, false, CodeBracesRangeFlags.Parentheses);
 			Space();
 			singleLineFunctionLambdaExpression.EmbeddedExpression.AcceptVisitor(this, data);
 			if (builder != null)
 				builder.EndPosition = formatter.NextPosition;
+			currentMethodRefs = oldRef;
 
 			return EndNode(singleLineFunctionLambdaExpression);
 		}
@@ -2875,18 +2892,19 @@ namespace ICSharpCode.NRefactory.VB {
 		{
 			StartNode(multiLineLambdaExpression);
 
-			var reference = new object();
 			int start = formatter.NextPosition;
 			int blockStart = start;
 			var builder = multiLineLambdaExpression.Annotation<MethodDebugInfoBuilder>();
 			if (builder != null)
 				builder.StartPosition = start;
+			var oldRef = currentMethodRefs;
+			currentMethodRefs = MethodRefs.Create();
 			WriteModifiers(multiLineLambdaExpression.ModifierTokens);
 			if (multiLineLambdaExpression.IsSub)
 				WriteKeyword("Sub");
 			else
 				WriteKeyword("Function");
-			formatter.AddHighlightedKeywordReference(reference, start, formatter.NextPosition);
+			formatter.AddHighlightedKeywordReference(currentMethodRefs.MethodReference, start, formatter.NextPosition);
 			WriteCommaSeparatedListInParenthesis(multiLineLambdaExpression.Parameters, false, CodeBracesRangeFlags.Parentheses);
 			multiLineLambdaExpression.Body.AcceptVisitor(this, data);
 			start = formatter.NextPosition;
@@ -2899,8 +2917,9 @@ namespace ICSharpCode.NRefactory.VB {
 				WriteKeyword("Function");
 			if (builder != null)
 				builder.EndPosition = formatter.NextPosition;
-			formatter.AddHighlightedKeywordReference(reference, start, formatter.NextPosition);
-			
+			formatter.AddHighlightedKeywordReference(currentMethodRefs.MethodReference, start, formatter.NextPosition);
+			currentMethodRefs = oldRef;
+
 			return EndNode(multiLineLambdaExpression);
 		}
 		

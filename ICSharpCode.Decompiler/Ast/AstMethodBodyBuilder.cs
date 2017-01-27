@@ -43,13 +43,13 @@ namespace ICSharpCode.Decompiler.Ast {
 		bool valueParameterIsKeyword;
 		AutoPropertyProvider autoPropertyProvider;
 		readonly HashSet<ILVariable> localVariablesToDefine = new HashSet<ILVariable>(); // local variables that are missing a definition
-		readonly List<ILExpression> ILExpression_List = new List<ILExpression>();
+		readonly List<ILNode> ILNode_List = new List<ILNode>();
 
 		public void Reset()
 		{
 			autoPropertyProvider = null;
 			localVariablesToDefine.Clear();
-			ILExpression_List.Clear();
+			ILNode_List.Clear();
 		}
 		
 		/// <summary>
@@ -72,6 +72,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			Debug.Assert(oldCurrentMethod == null || oldCurrentMethod == methodDef);
 			context.CurrentMethod = methodDef;
 			context.CurrentMethodIsAsync = false;
+			context.CurrentMethodIsYieldReturn = false;
 			var builder = context.Cache.GetAstMethodBodyBuilder();
 			try {
 				builder.stringBuilder = sb;
@@ -105,9 +106,9 @@ namespace ICSharpCode.Decompiler.Ast {
 			}
 			
 			context.CancellationToken.ThrowIfCancellationRequested();
-			ILBlock ilMethod = new ILBlock();
+			ILBlock ilMethod = new ILBlock(CodeBracesRangeFlags.MethodBraces);
 			var astBuilder = context.Cache.GetILAstBuilder();
-			IEnumerable<ILVariable> localVariables;
+			HashSet<ILVariable> localVariables;
 			try {
 				ilMethod.Body = astBuilder.Build(methodDef, true, context);
 
@@ -121,8 +122,7 @@ namespace ICSharpCode.Decompiler.Ast {
 				}
 				context.CancellationToken.ThrowIfCancellationRequested();
 
-				localVariables = ilMethod.GetSelfAndChildrenRecursive<ILExpression>(ILExpression_List).Select(e => e.Operand as ILVariable)
-					.Where(v => v != null && !v.IsParameter).Distinct();
+				localVariables = new HashSet<ILVariable>(GetVariables(ilMethod));
 				Debug.Assert(context.CurrentMethod == methodDef);
 				NameVariables.AssignNamesToVariables(context, astBuilder.Parameters, localVariables, ilMethod, stringBuilder);
 
@@ -158,9 +158,24 @@ namespace ICSharpCode.Decompiler.Ast {
 			
 			return astBlock;
 		}
+
+		IEnumerable<ILVariable> GetVariables(ILBlock ilMethod) {
+			foreach (var n in ilMethod.GetSelfAndChildrenRecursive(ILNode_List)) {
+				var expr = n as ILExpression;
+				if (expr != null) {
+					var v = expr.Operand as ILVariable;
+					if (v != null && !v.IsParameter)
+						yield return v;
+					continue;
+				}
+				var cb = n as ILTryCatchBlock.CatchBlockBase;
+				if (cb != null && cb.ExceptionVariable != null)
+					yield return cb.ExceptionVariable;
+			}
+		}
 		
 		readonly List<SourceLocal> sourceLocalsList = new List<SourceLocal>();
-		SourceLocal[] CreateSourceLocals(IEnumerable<ILVariable> variables) {
+		SourceLocal[] CreateSourceLocals(HashSet<ILVariable> variables) {
 			foreach (var v in variables) {
 				if (v.OriginalVariable != null) {
 					var name = v.Name;
@@ -483,14 +498,24 @@ namespace ICSharpCode.Decompiler.Ast {
 					case ILCode.Mul_Ovf_Un: return new Ast.BinaryOperatorExpression(arg1, BinaryOperatorType.Multiply, arg2).WithAnnotation(AddCheckedBlocks.CheckedAnnotation);
 					case ILCode.Rem:        return new Ast.BinaryOperatorExpression(arg1, BinaryOperatorType.Modulus, arg2);
 					case ILCode.Rem_Un:     return new Ast.BinaryOperatorExpression(arg1, BinaryOperatorType.Modulus, arg2);
-					case ILCode.And:        return new Ast.BinaryOperatorExpression(arg1, BinaryOperatorType.BitwiseAnd, arg2);
-					case ILCode.Or:         return new Ast.BinaryOperatorExpression(arg1, BinaryOperatorType.BitwiseOr, arg2);
 					case ILCode.Xor:        return new Ast.BinaryOperatorExpression(arg1, BinaryOperatorType.ExclusiveOr, arg2);
 					case ILCode.Shl:        return new Ast.BinaryOperatorExpression(arg1, BinaryOperatorType.ShiftLeft, arg2);
 					case ILCode.Shr:        return new Ast.BinaryOperatorExpression(arg1, BinaryOperatorType.ShiftRight, arg2);
 					case ILCode.Shr_Un:     return new Ast.BinaryOperatorExpression(arg1, BinaryOperatorType.ShiftRight, arg2);
 					case ILCode.Neg:        return new Ast.UnaryOperatorExpression(UnaryOperatorType.Minus, arg1).WithAnnotation(AddCheckedBlocks.UncheckedAnnotation);
 					case ILCode.Not:        return new Ast.UnaryOperatorExpression(UnaryOperatorType.BitNot, arg1);
+
+					case ILCode.And:
+						// Roslyn replaces && and || with & and | if allowed; undo it
+						if (IsBooleanLocalOrParam(byteCode.Arguments[1]))
+							return new Ast.BinaryOperatorExpression(arg1, BinaryOperatorType.ConditionalAnd, arg2);
+						return new Ast.BinaryOperatorExpression(arg1, BinaryOperatorType.BitwiseAnd, arg2);
+					case ILCode.Or:
+						// Roslyn replaces && and || with & and | if allowed; undo it
+						if (IsBooleanLocalOrParam(byteCode.Arguments[1]))
+							return new Ast.BinaryOperatorExpression(arg1, BinaryOperatorType.ConditionalOr, arg2);
+						return new Ast.BinaryOperatorExpression(arg1, BinaryOperatorType.BitwiseOr, arg2);
+
 				case ILCode.PostIncrement:
 				case ILCode.PostIncrement_Ovf:
 				case ILCode.PostIncrement_Ovf_Un:
@@ -610,6 +635,8 @@ namespace ICSharpCode.Decompiler.Ast {
 					}
 					#endregion
 					#region Comparison
+					case ILCode.Cnull: return new Ast.BinaryOperatorExpression(UnpackDirectionExpression(arg1), BinaryOperatorType.Equality, new NullReferenceExpression());
+					case ILCode.Cnotnull: return new Ast.BinaryOperatorExpression(UnpackDirectionExpression(arg1), BinaryOperatorType.InEquality, new NullReferenceExpression());
 					case ILCode.Ceq: return new Ast.BinaryOperatorExpression(arg1, BinaryOperatorType.Equality, arg2);
 					case ILCode.Cne: return new Ast.BinaryOperatorExpression(arg1, BinaryOperatorType.InEquality, arg2);
 					case ILCode.Cgt: return new Ast.BinaryOperatorExpression(arg1, BinaryOperatorType.GreaterThan, arg2);
@@ -1048,7 +1075,16 @@ namespace ICSharpCode.Decompiler.Ast {
 					throw new Exception("Unknown OpCode: " + byteCode.Code);
 			}
 		}
-		
+
+		bool IsBooleanLocalOrParam(ILExpression expr) {
+			if (expr.Code != ILCode.Ldloc)
+				return false;
+			if (expr.ExpectedType != null)
+				return expr.ExpectedType.GetElementType() == ElementType.Boolean;
+			var v = (ILVariable)expr.Operand;
+			return (v.Type ?? v.OriginalParameter?.Type ?? v.OriginalVariable?.Type).GetElementType() == ElementType.Boolean;
+		}
+
 		internal static bool CanInferAnonymousTypePropertyNamesFromArguments(IList<Expression> args, IList<Parameter> parameters)
 		{
 			int skip = parameters.GetParametersSkip();
@@ -1286,10 +1322,13 @@ namespace ICSharpCode.Decompiler.Ast {
 			return MethodSemanticsAttributes.None;
 		}
 
-		static Expression UnpackDirectionExpression(Expression target)
+		Expression UnpackDirectionExpression(Expression target)
 		{
 			if (target is DirectionExpression) {
-				return ((DirectionExpression)target).Expression.Detach();
+				var expr = ((DirectionExpression)target).Expression.Detach();
+				if (context.CalculateBinSpans)
+					target.AddAllRecursiveBinSpansTo(expr);
+				return expr;
 			} else {
 				return target;
 			}

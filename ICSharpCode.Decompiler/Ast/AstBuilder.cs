@@ -122,8 +122,12 @@ namespace ICSharpCode.Decompiler.Ast {
 					return true;
 				if (settings.ForceShowAllMembers)
 					return false;
-				if (settings.AnonymousMethods && method.HasGeneratedName() && method.IsCompilerGenerated())
-					return true;
+				if (settings.AnonymousMethods) {
+					if (method.Name.StartsWith("_Lambda$__") && method.IsCompilerGenerated())
+						return true;
+					if (method.HasGeneratedName() && method.IsCompilerGenerated())
+						return true;
+				}
 			}
 
 			TypeDef type = member as TypeDef;
@@ -174,6 +178,26 @@ namespace ICSharpCode.Decompiler.Ast {
 
 		static bool IsAutomaticPropertyBackingField(FieldDef field)
 		{
+			string name = field.Name;
+			if (string.IsNullOrEmpty(name))
+				return false;
+			// VB's auto prop backing fields are named "_" + PropertyName
+			if (name[0] == '_') {
+				foreach (var prop in field.DeclaringType.Properties) {
+					string propName = prop.Name;
+					if (propName.Length == name.Length - 1) {
+						bool same = true;
+						for (int i = 0; i < propName.Length; i++) {
+							if (name[i + 1] != propName[i]) {
+								same = false;
+								break;
+							}
+						}
+						if (same)
+							return true;
+					}
+				}
+			}
 			return field.HasGeneratedName() && field.Name.EndsWith("BackingField", StringComparison.Ordinal);
 		}
 
@@ -184,7 +208,11 @@ namespace ICSharpCode.Decompiler.Ast {
 
 		static bool IsClosureType(TypeDef type)
 		{
-			return type.HasGeneratedName() && type.IsCompilerGenerated() && (type.Name == "<>c" || type.Name.StartsWith("<>c__") || type.Name.Contains("DisplayClass") || type.Name.Contains("AnonStorey"));
+			if (!type.IsCompilerGenerated())
+				return false;
+			if (type.Name.StartsWith("_Closure$__"))
+				return true;
+			return type.HasGeneratedName() && (type.Name == "<>c" || type.Name.StartsWith("<>c__") || type.Name.Contains("DisplayClass") || type.Name.Contains("AnonStorey"));
 		}
 		
 		/// <summary>
@@ -816,9 +844,13 @@ namespace ICSharpCode.Decompiler.Ast {
 		Modifiers ConvertModifiers(TypeDef typeDef)
 		{
 			Modifiers modifiers = Modifiers.None;
-			if (typeDef.IsNestedPrivate)
-				modifiers |= Modifiers.Private;
-			else if (typeDef.IsNestedAssembly || typeDef.IsNestedFamilyAndAssembly || typeDef.IsNotPublic)
+			if (typeDef.IsNestedPrivate) {
+				if (context.Settings.MemberAddPrivateModifier)
+					modifiers |= Modifiers.Private;
+			} else if (typeDef.IsNotPublic) {
+				if (context.Settings.TypeAddInternalModifier)
+					modifiers |= Modifiers.Internal;
+			} else if (typeDef.IsNestedAssembly || typeDef.IsNestedFamilyAndAssembly)
 				modifiers |= Modifiers.Internal;
 			else if (typeDef.IsNestedFamily)
 				modifiers |= Modifiers.Protected;
@@ -840,9 +872,10 @@ namespace ICSharpCode.Decompiler.Ast {
 		Modifiers ConvertModifiers(FieldDef fieldDef)
 		{
 			Modifiers modifiers = Modifiers.None;
-			if (fieldDef.IsPrivate)
-				modifiers |= Modifiers.Private;
-			else if (fieldDef.IsAssembly || fieldDef.IsFamilyAndAssembly)
+			if (fieldDef.IsPrivate) {
+				if (context.Settings.MemberAddPrivateModifier)
+					modifiers |= Modifiers.Private;
+			} else if (fieldDef.IsAssembly || fieldDef.IsFamilyAndAssembly)
 				modifiers |= Modifiers.Internal;
 			else if (fieldDef.IsFamily)
 				modifiers |= Modifiers.Protected;
@@ -874,8 +907,10 @@ namespace ICSharpCode.Decompiler.Ast {
 			if (methodDef == null)
 				return Modifiers.None;
 			Modifiers modifiers = Modifiers.None;
-			if (methodDef.IsPrivate)
-				modifiers |= Modifiers.Private;
+			if (methodDef.IsPrivate) {
+				if (context.Settings.MemberAddPrivateModifier)
+					modifiers |= Modifiers.Private;
+			}
 			else if (methodDef.IsAssembly || methodDef.IsFamilyAndAssembly)
 				modifiers |= Modifiers.Internal;
 			else if (methodDef.IsFamily)
@@ -891,21 +926,44 @@ namespace ICSharpCode.Decompiler.Ast {
 			if (methodDef.IsAbstract) {
 				modifiers |= Modifiers.Abstract;
 				if (!methodDef.IsNewSlot)
-					modifiers |= Modifiers.Override;
+					modifiers |= GetOverrideModifierOrDefault(methodDef, Modifiers.None);
 			} else if (methodDef.IsFinal) {
 				if (!methodDef.IsNewSlot) {
-					modifiers |= Modifiers.Sealed | Modifiers.Override;
+					modifiers |= Modifiers.Sealed | GetOverrideModifierOrDefault(methodDef, Modifiers.None);
 				}
 			} else if (methodDef.IsVirtual) {
+				var virtualModifier = methodDef.DeclaringType.IsSealed ? Modifiers.None : Modifiers.Virtual;
 				if (methodDef.IsNewSlot)
-					modifiers |= Modifiers.Virtual;
+					modifiers |= virtualModifier;
 				else
-					modifiers |= Modifiers.Override;
+					modifiers |= GetOverrideModifierOrDefault(methodDef, virtualModifier);
 			}
 			if (!methodDef.HasBody && !methodDef.IsAbstract)
 				modifiers |= Modifiers.Extern;
 			
 			return modifiers;
+		}
+
+		// mcs doesn't set IsNewSlot if it doesn't override anything so verify that
+		// it's a method override.
+		static Modifiers GetOverrideModifierOrDefault(MethodDef method, Modifiers defaultValue) {
+			var baseType = method.DeclaringType.BaseType;
+			var name = method.Name;
+			int paramCount = method.MethodSig.GetParamCount();
+			while (baseType != null) {
+				var type = baseType.Resolve();
+				// If we failed to resolve it, assume it's a method override
+				if (type == null)
+					return Modifiers.Override;
+				foreach (var m in type.Methods) {
+					// This method doesn't handle generic base classes so assume it matches if name
+					// and param count matches.
+					if (m.IsVirtual && m.Name == name && m.MethodSig.GetParamCount() == paramCount)
+						return Modifiers.Override;
+				}
+				baseType = type.BaseType;
+			}
+			return defaultValue;
 		}
 
 		#endregion
@@ -1063,11 +1121,11 @@ namespace ICSharpCode.Decompiler.Ast {
 				MethodDebugInfoBuilder ms;
 				astMethod.Body = CreateMethodBody(methodDef, astMethod.Parameters, false, MethodKind.Method, out ms);
 				astMethod.AddAnnotation(ms);
-				if (context.CurrentMethodIsAsync) {
+				if (context.CurrentMethodIsAsync)
 					astMethod.Modifiers |= Modifiers.Async;
-					context.CurrentMethodIsAsync = false;
-				}
 			}
+			else
+				ClearCurrentMethodState();
 			ConvertAttributes(astMethod, methodDef);
 			if (methodDef.HasCustomAttributes && astMethod.Parameters.Count > 0) {
 				if (methodDef.IsDefined(systemRuntimeCompilerServicesString, extensionAttributeString))
@@ -1341,9 +1399,15 @@ namespace ICSharpCode.Decompiler.Ast {
 				return msig;
 			return GenericArgumentResolver.Resolve(msig, typeGenArgs, methodGenArgs);
 		}
+
+		void ClearCurrentMethodState() {
+			context.CurrentMethodIsAsync = false;
+			context.CurrentMethodIsYieldReturn = false;
+		}
 		
 		BlockStatement CreateMethodBody(MethodDef method, IEnumerable<ParameterDeclaration> parameters, bool valueParameterIsKeyword, MethodKind methodKind, out MethodDebugInfoBuilder builder)
 		{
+			ClearCurrentMethodState();
 			if (method.Body == null) {
 				builder = null;
 				return null;
@@ -1693,7 +1757,12 @@ namespace ICSharpCode.Decompiler.Ast {
 		
 		void ConvertAttributes(EntityDeclaration attributedNode, MethodDef methodDef)
 		{
-			ConvertCustomAttributes(Context.MetadataTextColorProvider, attributedNode, methodDef, context.Settings, stringBuilder);
+			var options = ConvertCustomAttributesFlags.None;
+			if (context.CurrentMethodIsAsync)
+				options |= ConvertCustomAttributesFlags.IsAsync;
+			if (context.CurrentMethodIsYieldReturn)
+				options |= ConvertCustomAttributesFlags.IsYieldReturn;
+			ConvertCustomAttributes(Context.MetadataTextColorProvider, attributedNode, methodDef, context.Settings, stringBuilder, options: options);
 			ConvertSecurityAttributes(Context.MetadataTextColorProvider, attributedNode, methodDef, stringBuilder);
 			
 			MethodImplAttributes implAttributes = methodDef.ImplAttributes & ~MethodImplAttributes.CodeTypeMask;
@@ -1935,13 +2004,20 @@ namespace ICSharpCode.Decompiler.Ast {
 			return customAttributeProvider.CustomAttributes.OrderBy(a => { sb.Clear(); return FullNameCreator.FullName(a.AttributeType, false, null, sb); });
 		}
 
+		[Flags]
+		enum ConvertCustomAttributesFlags {
+			None = 0,
+			IsAsync = 1,
+			IsYieldReturn = 2,
+		}
 		static readonly UTF8String extensionAttributeString = new UTF8String("ExtensionAttribute");
 		static readonly UTF8String systemDiagnosticsString = new UTF8String("System.Diagnostics");
 		static readonly UTF8String debuggerStepThroughAttributeString = new UTF8String("DebuggerStepThroughAttribute");
+		static readonly UTF8String debuggerHiddenAttributeString = new UTF8String("DebuggerHiddenAttribute");
 		static readonly UTF8String asyncStateMachineAttributeString = new UTF8String("AsyncStateMachineAttribute");
 		static readonly UTF8String debuggerBrowsableAttributeString = new UTF8String("DebuggerBrowsableAttribute");
 		static readonly UTF8String iteratorStateMachineAttributeString = new UTF8String("IteratorStateMachineAttribute");
-		static void ConvertCustomAttributes(MetadataTextColorProvider metadataTextColorProvider, AstNode attributedNode, IHasCustomAttribute customAttributeProvider, DecompilerSettings settings, StringBuilder sb, string attributeTarget = null)
+		static void ConvertCustomAttributes(MetadataTextColorProvider metadataTextColorProvider, AstNode attributedNode, IHasCustomAttribute customAttributeProvider, DecompilerSettings settings, StringBuilder sb, string attributeTarget = null, ConvertCustomAttributesFlags options = ConvertCustomAttributesFlags.None)
 		{
 			if (customAttributeProvider != null && customAttributeProvider.HasCustomAttributes) {
 				EntityDeclaration entityDecl = attributedNode as EntityDeclaration;
@@ -1952,6 +2028,8 @@ namespace ICSharpCode.Decompiler.Ast {
 				bool onePerLine = attributeTarget == "module" || attributeTarget == "assembly" ||
 					// Params ignore the option
 					(settings.OneCustomAttributePerLine && entityDecl != null);
+				bool isAsync = (options & ConvertCustomAttributesFlags.IsAsync) != 0;
+				bool isYieldReturn = (options & ConvertCustomAttributesFlags.IsYieldReturn) != 0;
 				foreach (var customAttribute in SortCustomAttributes(customAttributeProvider, settings.SortCustomAttributes, sb)) {
 					var attributeType = customAttribute.AttributeType;
 					if (attributeType == null)
@@ -1964,11 +2042,10 @@ namespace ICSharpCode.Decompiler.Ast {
 						// don't show the ParamArrayAttribute (it's converted to the 'params' modifier)
 						continue;
 					}
-					// if the method is async, remove [DebuggerStepThrough] and [Async
-					if (entityDecl != null && entityDecl.HasModifier(Modifiers.Async)) {
-						if (attributeType.Compare(systemDiagnosticsString, debuggerStepThroughAttributeString))
-							continue;
-					}
+					if (isAsync && attributeType.Compare(systemDiagnosticsString, debuggerStepThroughAttributeString))
+						continue;
+					if ((isYieldReturn || isAsync) && attributeType.Compare(systemDiagnosticsString, debuggerHiddenAttributeString))
+						continue;
 					if (isFieldOrEvent && attributeType.Compare(systemDiagnosticsString, debuggerBrowsableAttributeString))
 						continue;
 					if (isParameter && attributeType.Compare(systemRuntimeCompilerServicesString, dynamicAttributeString))

@@ -853,7 +853,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					ehs.ExceptWith(nestedEHs);
 					int tryEndIdx = 0;
 					while (tryEndIdx < body.Count && body[tryEndIdx].Offset < tryEnd) tryEndIdx++;
-					tryCatchBlock.TryBlock = new ILBlock(ConvertToAst(body.CutRange(0, tryEndIdx), nestedEHs));
+					tryCatchBlock.TryBlock = new ILBlock(ConvertToAst(body.CutRange(0, tryEndIdx), nestedEHs), CodeBracesRangeFlags.TryBraces);
 				}
 				
 				// Cut all handlers
@@ -876,9 +876,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 						ConvertExceptionVariable(eh, catchBlock, ldexception);
 						tryCatchBlock.CatchBlocks.Add(catchBlock);
 					} else if (eh.HandlerType == ExceptionHandlerType.Finally) {
-						tryCatchBlock.FinallyBlock = new ILBlock(handlerAst);
+						tryCatchBlock.FinallyBlock = new ILBlock(handlerAst, CodeBracesRangeFlags.FinallyBraces);
 					} else if (eh.HandlerType == ExceptionHandlerType.Fault) {
-						tryCatchBlock.FaultBlock = new ILBlock(handlerAst);
+						tryCatchBlock.FaultBlock = new ILBlock(handlerAst, CodeBracesRangeFlags.FaultBraces);
 					} else if (eh.HandlerType == ExceptionHandlerType.Filter) {
 						ILTryCatchBlock.CatchBlock catchBlock = new ILTryCatchBlock.CatchBlock(context.CalculateBinSpans, handlerAst) {
 							ExceptionType = eh.CatchType.ToTypeSig(),

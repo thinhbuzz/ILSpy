@@ -77,6 +77,9 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				if (result != null)
 					return result;
 			}
+			result = TransformForeachArrayOrString(expressionStatement);
+			if (result != null)
+				return result;
 			result = TransformFor(expressionStatement);
 			if (result != null)
 				return result;
@@ -100,7 +103,9 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 		
 		public override AstNode VisitWhileStatement(WhileStatement whileStatement, object data)
 		{
-			return TransformDoWhile(whileStatement) ?? base.VisitWhileStatement(whileStatement, data);
+			return TransformDoWhile(whileStatement) ??
+				TransformWhileTrueToForLoop(whileStatement) ??
+				base.VisitWhileStatement(whileStatement, data);
 		}
 		
 		public override AstNode VisitIfElseStatement(IfElseStatement ifElseStatement, object data)
@@ -308,7 +313,23 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			}
 			return null;
 		}
-		
+
+		static AstType GetParameterOrVariableType(AstNode node, string identifier) {
+			while (node != null) {
+				while (node.PrevSibling != null) {
+					node = node.PrevSibling;
+					var varDecl = node as VariableDeclarationStatement;
+					if (varDecl != null && varDecl.Variables.Count == 1 && varDecl.Variables.Single().Name == identifier)
+						return varDecl.Type;
+					var paramDecl = node as ParameterDeclaration;
+					if (paramDecl != null && paramDecl.Name == identifier)
+						return paramDecl.Type;
+				}
+				node = node.Parent;
+			}
+			return null;
+		}
+
 		/// <summary>
 		/// Gets whether the old variable value (assigned inside 'targetStatement' or earlier)
 		/// is read anywhere in the remaining scope of the variable declaration.
@@ -609,7 +630,195 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			return foreachStatement;
 		}
 		#endregion
-		
+
+		/// <summary>
+		/// $variable = 0;
+		/// </summary>
+		static readonly AstNode variableZeroAssignPattern = new ExpressionStatement(
+			new AssignmentExpression(
+				new NamedNode("initializer", new IdentifierExpression(Pattern.AnyString)),
+				AssignmentOperatorType.Assign,
+				new PrimitiveExpression(0)
+			));
+		static readonly WhileStatement foreachStringOrArrayPattern = new WhileStatement {
+			// $i < $loopArray.Length
+			Condition = new BinaryOperatorExpression {
+				Left = new NamedNode("i", new IdentifierExpression(Pattern.AnyString)),
+				Operator = BinaryOperatorType.LessThan,
+				Right = new NamedNode("endExpr",
+					new MemberReferenceExpression {
+						Target = new NamedNode("loopArray", new IdentifierExpression(Pattern.AnyString)),
+						MemberName = "Length"
+					})
+			},
+			EmbeddedStatement = new BlockStatement {
+				Statements = {
+					// $loopVar = $loopArray[$i]
+					// $loopVar = (TYPE)$loopArray[$i]
+					new NamedNode(
+						"variable",
+						new ExpressionStatement(
+							new AssignmentExpression {
+								Left = new NamedNode("loopVar", new IdentifierExpression(Pattern.AnyString)),
+								Operator = AssignmentOperatorType.Assign,
+								Right = new Choice {
+									new IndexerExpression {
+										Target = new Backreference("loopArray"),
+										Arguments = { new Backreference("i") }
+									},
+									new IndexerExpression {
+										Target = new Backreference("loopArray"),
+										Arguments = { new Backreference("i") }
+									}.CastTo(new AnyNode())
+								}
+							})),
+					new Repeat(new AnyNode("statement")),
+					// $i = $i + 1
+					new NamedNode(
+						"increment",
+						new ExpressionStatement(
+							new AssignmentExpression {
+								Left = new Backreference("i"),
+								Operator = AssignmentOperatorType.Assign,
+								Right = new BinaryOperatorExpression {
+									Left = new Backreference("i"),
+									Operator = BinaryOperatorType.Add,
+									Right = new PrimitiveExpression(1)
+								}
+							}))
+				}
+			}};
+
+		public ForeachStatement TransformForeachArrayOrString(ExpressionStatement node)
+		{
+			ExpressionStatement loopFieldNode = null;
+			AstNode next = node;
+			// If it's a loop over an array or string field, or if there's a cast, the expression is first stored in a local.
+			var loopFieldMatch = variableAssignPattern.Match(next);
+			if (loopFieldMatch.Success) {
+				loopFieldNode = (ExpressionStatement)next;
+				next = next.NextSibling;
+			}
+			var loopVarMatch = variableZeroAssignPattern.Match(next);
+			if (!loopVarMatch.Success) {
+				loopVarMatch = variableZeroAssignPattern.Match(loopFieldNode);
+				if (!loopVarMatch.Success)
+					return null;
+				next = loopFieldNode;
+				loopFieldNode = null;
+				loopFieldMatch = default(Match);
+			}
+			var loopIndexVarNode = (ExpressionStatement)next;
+			var whileMatch = foreachStringOrArrayPattern.Match(loopIndexVarNode.NextSibling);
+			if (!whileMatch.Success)
+				return null;
+			var whileStmt = (WhileStatement)loopIndexVarNode.NextSibling;
+
+			var loopArray = whileMatch.Get<IdentifierExpression>("loopArray").Single();
+			var typeInfo = loopArray.Annotation<TypeInformation>();
+			var type = (typeInfo?.InferredType ?? typeInfo?.ExpectedType).RemovePinnedAndModifiers();
+			if (type.GetElementType() != ElementType.SZArray && type.GetElementType() != ElementType.String)
+				return null;
+
+			// Verify that the local where the field is stored is used in the loop
+			if (loopFieldMatch.Success && !loopArray.IsMatch(loopFieldMatch.Get("variable").Single())) {
+				// It wasn't a temp local
+				loopFieldNode = null;
+			}
+
+			// Verify that the same local ("i") is used outside and inside the loop
+			var loopInit = loopVarMatch.Get<IdentifierExpression>("initializer").Single();
+			var loopInit2 = whileMatch.Get("i").Single();
+			if (!loopInit.IsMatch(loopInit2))
+				return null;
+
+			var varDecl = FindVariableDeclaration(node, loopInit.Identifier);
+			if (!IsVariableValueUnused(varDecl, whileStmt))
+				return null;
+
+			// Make sure the loop variable, or compiler generated array local, isn't used by any of the other statements
+			var stmts = whileMatch.Get("statement");
+			if (loopFieldNode != null) {
+				var id = ((IdentifierExpression)((AssignmentExpression)(loopFieldNode).Expression).Left).Identifier;
+				if (stmts.Cast<AstNode>().Any(a => a.DescendantsAndSelf.OfType<IdentifierExpression>().Any(i => i.Identifier == loopInit.Identifier || i.Identifier == id)))
+					return null;
+			}
+			else {
+				if (stmts.Cast<AstNode>().Any(a => a.DescendantsAndSelf.OfType<IdentifierExpression>().Any(i => i.Identifier == loopInit.Identifier)))
+					return null;
+			}
+
+			var arrayType = GetParameterOrVariableType(whileStmt, loopArray.Identifier);
+			AstType elemType;
+			if (arrayType is ComposedType) {
+				var composedType = (ComposedType)arrayType;
+				if (!composedType.ArraySpecifiers.Any())
+					return null;
+				elemType = composedType.BaseType;
+			}
+			else if (arrayType is PrimitiveType) {
+				var primType = (PrimitiveType)arrayType;
+				if (primType.KnownTypeCode != NRefactory.TypeSystem.KnownTypeCode.String)
+					return null;
+				elemType = new PrimitiveType("char").WithAnnotation(context.CurrentModule.CorLibTypes.Char.TypeDefOrRef);
+			}
+			else
+				return null;
+
+			// First statement in while loop, eg.: c = array[i];
+			var loadFromArrayStmt = whileMatch.Get<ExpressionStatement>("variable").Single();
+			var loadFromArrayExpr = ((AssignmentExpression)loadFromArrayStmt.Expression).Right;
+			if (loadFromArrayExpr is CastExpression)
+				elemType = ((CastExpression)loadFromArrayExpr).Type;
+
+			var whileBlock = (BlockStatement)whileStmt.EmbeddedStatement;
+
+			var body = new BlockStatement();
+			body.Statements.AddRange(stmts.Cast<Statement>().Select(a => a.Detach()));
+
+			Expression inExpr;
+			if (loopFieldNode != null)
+				inExpr = ((AssignmentExpression)(loopFieldNode).Expression).Right.Clone();
+			else
+				inExpr = loopArray.Clone();
+
+			loopFieldNode?.Detach();
+			loopIndexVarNode.Detach();
+
+			var foreachStatement = new ForeachStatement {
+				VariableType = elemType.Clone().Detach(),
+				VariableNameToken = whileMatch.Get<IdentifierExpression>("loopVar").Single().IdentifierToken.Detach(),
+				InExpression = inExpr,
+				EmbeddedStatement = body,
+			};
+			foreachStatement.WithAnnotation(((AssignmentExpression)loadFromArrayStmt.Expression).Left.Annotation<ILVariable>());
+
+			if (context.CalculateBinSpans) {
+				var incStmt = whileMatch.Get<ExpressionStatement>("increment").Single();
+				inExpr.RemoveAllBinSpansRecursive();
+				body.HiddenStart = whileBlock.HiddenStart;
+				body.HiddenEnd = whileBlock.HiddenEnd;
+				// Temp local (if source is a field or a cast, otherwise the statement doesn't exist)
+				// array = (int[])args;
+				foreachStatement.HiddenInitializer = loopFieldNode;         // |foreach| (var c in args)
+				// Compiler generated index
+				// i = 0;
+				foreachStatement.HiddenGetEnumeratorNode = loopIndexVarNode;// foreach (var c in |args|)
+				// Condition and increment get to share the same location, there's not enough space left
+				// i < array.Length
+				// i = i + 1;
+				foreachStatement.HiddenMoveNextNode = incStmt;              // foreach (var c |in| args)
+				whileStmt.Condition.AddAllRecursiveBinSpansTo(incStmt);
+				// Store value in local
+				// c = array[i];
+				foreachStatement.HiddenGetCurrentNode = loadFromArrayStmt;  // foreach (|var c| in args)
+			}
+
+			whileStmt.ReplaceWith(foreachStatement);
+
+			return foreachStatement;
+		}
+
 		#region for
 		static readonly WhileStatement forPattern = new WhileStatement {
 			Condition = new BinaryOperatorExpression {
@@ -661,6 +870,36 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 		}
 		#endregion
 		
+		static readonly WhileStatement whileTrueLoopPattern = new WhileStatement {
+				Condition = new PrimitiveExpression(true),
+				EmbeddedStatement = new BlockStatement {
+					Statements = {
+						new Repeat(new AnyNode("statement")),
+					}
+				}
+			};
+		ForStatement TransformWhileTrueToForLoop(WhileStatement whileLoop) {
+			var m = whileTrueLoopPattern.Match(whileLoop);
+			if (!m.Success)
+				return null;
+
+			var forStatement = new ForStatement();
+			forStatement.EmbeddedStatement = whileLoop.EmbeddedStatement.Detach();
+			if (context.CalculateBinSpans) {
+				var blockStmt = (BlockStatement)forStatement.EmbeddedStatement;
+				if (blockStmt.HiddenStart == null)
+					blockStmt.HiddenStart = whileLoop.Condition;
+				else {
+					var node = new EmptyStatement();
+					blockStmt.HiddenStart.AddAllRecursiveBinSpansTo(node);
+					whileLoop.Condition.AddAllRecursiveBinSpansTo(node);
+					blockStmt.HiddenStart = node;
+				}
+			}
+			whileLoop.ReplaceWith(forStatement);
+			return forStatement;
+		}
+
 		#region doWhile
 		static readonly WhileStatement doWhilePattern = new WhileStatement {
 			Condition = new PrimitiveExpression(true),

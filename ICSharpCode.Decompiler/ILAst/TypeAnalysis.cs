@@ -823,6 +823,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 					}
 					#endregion
 					#region Comparison instructions
+				case ILCode.Cnull:
+				case ILCode.Cnotnull:
+					return typeSystem.Boolean;
 				case ILCode.Ceq:
 				case ILCode.Cne:
 					if (forceInferChildren)
@@ -844,6 +847,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					return typeSystem.Boolean;
 					#endregion
 					#region Branch instructions
+				case ILCode.Endfilter:
 				case ILCode.Brtrue:
 					if (forceInferChildren)
 						InferTypeForExpression(expr.Arguments.Single(), typeSystem.Boolean);

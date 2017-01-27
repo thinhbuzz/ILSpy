@@ -18,7 +18,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
-
+using dnSpy.Contracts.Decompiler;
 using ICSharpCode.Decompiler.FlowAnalysis;
 
 namespace ICSharpCode.Decompiler.ILAst {
@@ -188,7 +188,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 							ILWhileLoop whileLoop;
 							basicBlock.Body.Add(whileLoop = new ILWhileLoop() {
 								Condition = condExpr,
-								BodyBlock = new ILBlock() {
+								BodyBlock = new ILBlock(CodeBracesRangeFlags.LoopBraces) {
 									EntryGoto = new ILExpression(ILCode.Br, trueLabel),
 									Body = FindLoops(loopContents, node, false)
 								}
@@ -210,7 +210,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 							Body = new List<ILNode>() {
 								new ILLabel() { Name = "Loop_" + (nextLabelIndex++).ToString() },
 								new ILWhileLoop() {
-									BodyBlock = new ILBlock() {
+									BodyBlock = new ILBlock(CodeBracesRangeFlags.LoopBraces) {
 										EntryGoto = new ILExpression(ILCode.Br, (ILLabel)basicBlock.Body.First()),
 										Body = FindLoops(loopContents, node, true)
 									}
@@ -371,8 +371,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 							// Convert the brtrue to ILCondition
 							ILCondition ilCond = new ILCondition() {
 								Condition  = condExpr,
-								TrueBlock  = new ILBlock() { EntryGoto = new ILExpression(ILCode.Br, trueLabel) },
-								FalseBlock = new ILBlock() { EntryGoto = new ILExpression(ILCode.Br, falseLabel) }
+								TrueBlock  = new ILBlock(CodeBracesRangeFlags.ConditionalBraces) { EntryGoto = new ILExpression(ILCode.Br, trueLabel) },
+								FalseBlock = new ILBlock(CodeBracesRangeFlags.ConditionalBraces) { EntryGoto = new ILExpression(ILCode.Br, falseLabel) }
 							};
 							var tail = block.Body.RemoveTail(ILCode.Brtrue, ILCode.Br);
 							if (context.CalculateBinSpans) {

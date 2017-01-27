@@ -99,13 +99,20 @@ namespace ICSharpCode.Decompiler.ILAst
 
 				public static Pattern operator !(Pattern a)
 				{
+					var ilp = a as ILPattern;
+					if (ilp != null) {
+						if (ilp.code == ILCode.Cnull)
+							return new ILPattern(ILCode.Cnotnull, a.Arguments);
+						if (ilp.code == ILCode.Cnotnull)
+							return new ILPattern(ILCode.Cnull, a.Arguments);
+					}
 					return new ILPattern(ILCode.LogicNot, a);
 				}
 			}
 
 			sealed class ILPattern : Pattern
 			{
-				readonly ILCode code;
+				internal readonly ILCode code;
 
 				public ILPattern(ILCode code, params Pattern[] arguments)
 					: base(arguments)
@@ -370,9 +377,9 @@ namespace ICSharpCode.Decompiler.ILAst
 
 			static readonly Pattern VariableRefA = new VariablePattern(ILCode.Ldloca, false), VariableRefB = new VariablePattern(ILCode.Ldloca, true);
 			static readonly Pattern VariableA = new VariablePattern(ILCode.Ldloc, false), VariableB = new VariablePattern(ILCode.Ldloc, true);
-			static readonly Pattern VariableAHasValue = new MethodPattern(ILCode.CallGetter, "get_HasValue", VariableRefA);
+			static readonly Pattern VariableAHasValue = new ILPattern(ILCode.Cnotnull, VariableRefA);
 			static readonly Pattern VariableAGetValueOrDefault = new MethodPattern(ILCode.Call, "GetValueOrDefault", VariableRefA);
-			static readonly Pattern VariableBHasValue = new MethodPattern(ILCode.CallGetter, "get_HasValue", VariableRefB);
+			static readonly Pattern VariableBHasValue = new ILPattern(ILCode.Cnotnull, VariableRefB);
 			static readonly Pattern VariableBGetValueOrDefault = new MethodPattern(ILCode.Call, "GetValueOrDefault", VariableRefB);
 			static readonly Pattern CeqHasValue = new ILPattern(ILCode.Ceq, VariableAHasValue, VariableBHasValue);
 			static readonly Pattern CneHasValue = new ILPattern(ILCode.Cne, VariableAHasValue, VariableBHasValue);
