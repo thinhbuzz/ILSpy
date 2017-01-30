@@ -2042,7 +2042,7 @@ namespace ICSharpCode.Decompiler.Ast {
 						// don't show the ParamArrayAttribute (it's converted to the 'params' modifier)
 						continue;
 					}
-					if (isAsync && attributeType.Compare(systemDiagnosticsString, debuggerStepThroughAttributeString))
+					if ((isYieldReturn || isAsync) && attributeType.Compare(systemDiagnosticsString, debuggerStepThroughAttributeString))
 						continue;
 					if ((isYieldReturn || isAsync) && attributeType.Compare(systemDiagnosticsString, debuggerHiddenAttributeString))
 						continue;

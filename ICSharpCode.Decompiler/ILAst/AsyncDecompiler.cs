@@ -61,6 +61,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 		protected Dictionary<FieldDef, ILVariable> fieldToParameterMap = new Dictionary<FieldDef, ILVariable>();
 
 		protected ILLabel exitLabel;
+		// See Microsoft.CodeAnalysis.CSharp.MethodToStateMachineRewriter.cachedThis for info on why and when it's cached
+		protected ILVariable cachedThisVar;
 
 		protected AsyncDecompiler(DecompilerContext context, AutoPropertyProvider autoPropertyProvider) {
 			this.context = context;
@@ -131,7 +133,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				ValidateCatchBlock(tryCatchBlock.CatchBlocks[0], finalState, exitLabel);
 			var newTopLevelBody = AnalyzeStateMachine(body);
 			MarkGeneratedVariables(newTopLevelBody);
-			YieldReturnDecompiler.TranslateFieldsToLocalAccess(newTopLevelBody, fieldToParameterMap);
+			YieldReturnDecompiler.TranslateFieldsToLocalAccess(newTopLevelBody, fieldToParameterMap, cachedThisVar);
 			return newTopLevelBody;
 		}
 		#endregion

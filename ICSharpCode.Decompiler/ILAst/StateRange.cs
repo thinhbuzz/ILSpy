@@ -186,16 +186,23 @@ namespace ICSharpCode.Decompiler.ILAst {
 					targetRange.UnionWith(nodeRange, val.Constant + 1, int.MaxValue);
 					break;
 				}
-				else if (mode == StateRangeAnalysisMode.IteratorDispose) {
-					// Could be an optimized switch using branch instructions
-					if (val.Type == SymbolicValueType.StateGreaterThan) {
-						ranges[(ILLabel)expr.Operand].UnionWith(nodeRange, val.Constant + 1, int.MaxValue);
-						nextRange = ranges[body[i + 1]];
-						nextRange.UnionWith(nodeRange, int.MinValue, val.Constant);
-						break;
-					}
-					else
-						goto default;
+				else if (val.Type == SymbolicValueType.StateIsInRange) {
+					ranges[(ILLabel)expr.Operand].UnionWith(nodeRange, val.Constant, val.Constant2);
+					nextRange = ranges[body[i + 1]];
+					if (val.Constant != int.MinValue)
+						nextRange.UnionWith(nodeRange, int.MinValue, val.Constant - 1);
+					if (val.Constant2 != int.MaxValue)
+						nextRange.UnionWith(nodeRange, val.Constant2 + 1, int.MaxValue);
+					break;
+				}
+				else if (val.Type == SymbolicValueType.StateIsNotInRange) {
+					if (val.Constant != int.MinValue)
+						ranges[(ILLabel)expr.Operand].UnionWith(nodeRange, int.MinValue, val.Constant - 1);
+					if (val.Constant2 != int.MaxValue)
+						ranges[(ILLabel)expr.Operand].UnionWith(nodeRange, val.Constant2 + 1, int.MaxValue);
+					nextRange = ranges[body[i + 1]];
+					nextRange.UnionWith(nodeRange, val.Constant, val.Constant2);
+					break;
 				}
 				else
 					goto default;

@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using dnlib.DotNet;
 using dnSpy.Contracts.Decompiler;
 
@@ -43,6 +44,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 		protected FieldDef currentField;
 		protected Dictionary<FieldDef, ILVariable> fieldToParameterMap = new Dictionary<FieldDef, ILVariable>();
 		protected List<ILNode> newBody;
+
+		// See Microsoft.CodeAnalysis.CSharp.MethodToStateMachineRewriter.cachedThis for info on why and when it's cached
+		protected ILVariable cachedThisVar;
 
 		protected YieldReturnDecompiler(DecompilerContext context, AutoPropertyProvider autoPropertyProvider) {
 			this.context = context;
@@ -251,46 +255,59 @@ namespace ICSharpCode.Decompiler.ILAst {
 		protected abstract void AnalyzeMoveNext();
 
 		#region TranslateFieldsToLocalAccess
-		void TranslateFieldsToLocalAccess() => TranslateFieldsToLocalAccess(newBody, fieldToParameterMap);
-		internal static void TranslateFieldsToLocalAccess(List<ILNode> newBody, Dictionary<FieldDef, ILVariable> fieldToParameterMap) {
+		void TranslateFieldsToLocalAccess() => TranslateFieldsToLocalAccess(newBody, fieldToParameterMap, cachedThisVar);
+		internal static void TranslateFieldsToLocalAccess(List<ILNode> newBody, Dictionary<FieldDef, ILVariable> fieldToParameterMap, ILVariable cachedThisField = null) {
+			ILVariable realThisParameter = null;
+			if (cachedThisField != null) {
+				foreach (var kv in fieldToParameterMap) {
+					if (kv.Value.OriginalParameter?.IsHiddenThisParameter == true) {
+						realThisParameter = kv.Value;
+						break;
+					}
+				}
+				if (realThisParameter == null)
+					throw new SymbolicAnalysisFailedException();
+			}
 			var fieldToLocalMap = new DefaultDictionary<FieldDef, ILVariable>(f => new ILVariable { Name = f.Name.String, Type = f.FieldType });
 			List<ILExpression> listExpr = null;
 			foreach (ILNode node in newBody) {
 				foreach (ILExpression expr in node.GetSelfAndChildrenRecursive(listExpr ?? (listExpr = new List<ILExpression>()))) {
-					FieldDef field = GetFieldDefinition(expr.Operand as IField);
-					if (field != null) {
-						switch (expr.Code) {
-						case ILCode.Ldfld:
-							if (expr.Arguments[0].MatchThis()) {
-								expr.Code = ILCode.Ldloc;
-								if (fieldToParameterMap.ContainsKey(field))
-									expr.Operand = fieldToParameterMap[field];
-								else
-									expr.Operand = fieldToLocalMap[field];
-								expr.Arguments.Clear();
-							}
-							break;
-						case ILCode.Stfld:
-							if (expr.Arguments[0].MatchThis()) {
-								expr.Code = ILCode.Stloc;
-								if (fieldToParameterMap.ContainsKey(field))
-									expr.Operand = fieldToParameterMap[field];
-								else
-									expr.Operand = fieldToLocalMap[field];
-								expr.Arguments.RemoveAt(0);
-							}
-							break;
-						case ILCode.Ldflda:
-							if (expr.Arguments[0].MatchThis()) {
-								expr.Code = ILCode.Ldloca;
-								if (fieldToParameterMap.ContainsKey(field))
-									expr.Operand = fieldToParameterMap[field];
-								else
-									expr.Operand = fieldToLocalMap[field];
-								expr.Arguments.Clear();
-							}
-							break;
+					FieldDef field;
+					switch (expr.Code) {
+					case ILCode.Ldfld:
+						if (expr.Arguments[0].MatchThis() && (field = GetFieldDefinition(expr.Operand as IField)) != null) {
+							expr.Code = ILCode.Ldloc;
+							if (fieldToParameterMap.ContainsKey(field))
+								expr.Operand = fieldToParameterMap[field];
+							else
+								expr.Operand = fieldToLocalMap[field];
+							expr.Arguments.Clear();
 						}
+						break;
+					case ILCode.Stfld:
+						if (expr.Arguments[0].MatchThis() && (field = GetFieldDefinition(expr.Operand as IField)) != null) {
+							expr.Code = ILCode.Stloc;
+							if (fieldToParameterMap.ContainsKey(field))
+								expr.Operand = fieldToParameterMap[field];
+							else
+								expr.Operand = fieldToLocalMap[field];
+							expr.Arguments.RemoveAt(0);
+						}
+						break;
+					case ILCode.Ldflda:
+						if (expr.Arguments[0].MatchThis() && (field = GetFieldDefinition(expr.Operand as IField)) != null) {
+							expr.Code = ILCode.Ldloca;
+							if (fieldToParameterMap.ContainsKey(field))
+								expr.Operand = fieldToParameterMap[field];
+							else
+								expr.Operand = fieldToLocalMap[field];
+							expr.Arguments.Clear();
+						}
+						break;
+					case ILCode.Ldloc:
+						if (expr.Operand == cachedThisField)
+							expr.Operand = realThisParameter;
+						break;
 					}
 				}
 			}

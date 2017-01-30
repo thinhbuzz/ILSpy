@@ -170,10 +170,28 @@ namespace ICSharpCode.Decompiler.ILAst {
 			if (body[pos].Match(ILCode.Stloc, out v, out cachedStateInit)) {
 				ILExpression instanceExpr;
 				IField loadedField;
-				if (!cachedStateInit.Match(ILCode.Ldfld, out loadedField, out instanceExpr) || loadedField.ResolveFieldWithinSameModule() != stateField || !instanceExpr.MatchThis())
-					throw new SymbolicAnalysisFailedException();
-				cachedStateVar = v;
-				pos++;
+				if (cachedStateInit.Match(ILCode.Ldfld, out loadedField, out instanceExpr) && loadedField.ResolveFieldWithinSameModule() == stateField && instanceExpr.MatchThis()) {
+					cachedStateVar = v;
+					pos++;
+				}
+			}
+
+			// C#7 caches original 'this' parameter in a local
+			// stloc(cachedThis, ldfld(<>4__this, ldloc(this)))
+			ILExpression ldfld;
+			if (body[pos].Match(ILCode.Stloc, out v, out ldfld)) {
+				ILExpression ldthis;
+				IField f;
+				if (ldfld.Match(ILCode.Ldfld, out f, out ldthis) && ldthis.MatchThis()) {
+					var fd = f.ResolveFieldWithinSameModule();
+					if (fd?.DeclaringType == stateMachineType && fd.FieldType.RemovePinnedAndModifiers().Resolve() == context.CurrentType) {
+						ILVariable realVar;
+						if (fieldToParameterMap.TryGetValue(fd, out realVar) && realVar.IsParameter && realVar.OriginalParameter.IsHiddenThisParameter) {
+							cachedThisVar = v;
+							pos++;
+						}
+					}
+				}
 			}
 
 			tryCatchBlock = GetMainTryCatchBlock(body[pos++]);

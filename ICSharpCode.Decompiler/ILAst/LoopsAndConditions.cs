@@ -297,12 +297,13 @@ namespace ICSharpCode.Decompiler.ILAst {
 								frontiers.UnionWith(fallTarget.DominanceFrontier.Except(new [] { fallTarget }));
 							
 							foreach(ILLabel condLabel in caseLabels) {
-								ControlFlowNode condTarget = null;
+								ControlFlowNode condTarget;
 								labelToCfNode.TryGetValue(condLabel, out condTarget);
 								if (condTarget != null)
 									frontiers.UnionWith(condTarget.DominanceFrontier.Except(new [] { condTarget }));
 							}
-							
+
+							bool includedDefault = false;
 							for (int i = 0; i < caseLabels.Length; i++) {
 								ILLabel condLabel = caseLabels[i];
 								
@@ -314,6 +315,11 @@ namespace ICSharpCode.Decompiler.ILAst {
 										EntryGoto = new ILExpression(ILCode.Br, condLabel)
 									};
 									ilSwitch.CaseBlocks.Add(caseBlock);
+									if (!includedDefault && condLabel == fallLabel) {
+										includedDefault = true;
+										block.Body.RemoveTail(ILCode.Br);
+										caseBlock.Values = null;
+									}
 									
 									ControlFlowNode condTarget = null;
 									labelToCfNode.TryGetValue(condLabel, out condTarget);
@@ -330,11 +336,11 @@ namespace ICSharpCode.Decompiler.ILAst {
 										});
 									}
 								}
-								caseBlock.Values.Add(i + addValue);
+								caseBlock.Values?.Add(i + addValue);
 							}
 							
 							// Heuristis to determine if we want to use fallthough as default case
-							if (fallTarget != null && !frontiers.Contains(fallTarget)) {
+							if (!includedDefault && fallTarget != null && !frontiers.Contains(fallTarget)) {
 								HashSet<ControlFlowNode> content = FindDominatedNodes(scope, fallTarget);
 								if (content.Any()) {
 									var caseBlock = new ILSwitch.CaseBlock() { EntryGoto = new ILExpression(ILCode.Br, fallLabel) };

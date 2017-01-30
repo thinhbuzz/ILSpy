@@ -320,6 +320,26 @@ namespace ICSharpCode.Decompiler.ILAst {
 			returnFalseLabel = body.ElementAtOrDefault(bodyLength - 1) as ILLabel;
 			// Note: in Roslyn-compiled code, returnFalseLabel may be null.
 
+			// C#7 caches original 'this' parameter in a local
+			// stloc(cachedThis, ldfld(<>4__this, ldloc(this)))
+			ILExpression ldfld;
+			ILVariable v;
+			const int CACHED_THIS_INDEX = 1;
+			if (body.Count > CACHED_THIS_INDEX && body[CACHED_THIS_INDEX].Match(ILCode.Stloc, out v, out ldfld)) {
+				ILExpression ldthis;
+				IField f;
+				if (ldfld.Match(ILCode.Ldfld, out f, out ldthis) && ldthis.MatchThis()) {
+					var fd = f.ResolveFieldWithinSameModule();
+					if (fd?.DeclaringType == this.enumeratorType && fd.FieldType.RemovePinnedAndModifiers().Resolve() == context.CurrentType) {
+						ILVariable realVar;
+						if (fieldToParameterMap.TryGetValue(fd, out realVar) && realVar.IsParameter && realVar.OriginalParameter.IsHiddenThisParameter) {
+							cachedThisVar = v;
+							body.RemoveAt(CACHED_THIS_INDEX);
+						}
+					}
+				}
+			}
+
 			var rangeAnalysis = new MicrosoftStateRangeAnalysis(body[0], StateRangeAnalysisMode.IteratorMoveNext, stateField);
 			int pos = rangeAnalysis.AssignStateRanges(body, bodyLength);
 			rangeAnalysis.EnsureLabelAtPos(body, ref pos, ref bodyLength);

@@ -54,20 +54,33 @@ namespace ICSharpCode.Decompiler.ILAst {
 		/// </summary>
 		StateInEquals,
 		/// <summary>
-		/// bool: State > Constant
+		/// Converted from signed greater than comparisons
 		/// </summary>
-		StateGreaterThan,
+		StateIsInRange,
+		/// <summary>
+		/// Converted from unsigned greater than comparisons
+		/// </summary>
+		StateIsNotInRange,
 	}
-	
+
 	struct SymbolicValue
 	{
 		public readonly int Constant;
+		public readonly int Constant2;
 		public readonly SymbolicValueType Type;
 		
 		public SymbolicValue(SymbolicValueType type, int constant = 0)
 		{
 			this.Type = type;
 			this.Constant = constant;
+			this.Constant2 = 0;
+		}
+
+		public SymbolicValue(SymbolicValueType type, int constant1, int constant2)
+		{
+			this.Type = type;
+			this.Constant = constant1;
+			this.Constant2 = constant2;
 		}
 
 		public SymbolicValue AsBool()
@@ -81,7 +94,11 @@ namespace ICSharpCode.Decompiler.ILAst {
 		}
 		public override string ToString()
 		{
-			return string.Format("[SymbolicValue {0}: {1}]", this.Type, this.Constant);
+			if (Type == SymbolicValueType.StateIsInRange)
+				return $"[SymbolicValue {Type}: [{Constant}..{Constant2}]]";
+			if (Type == SymbolicValueType.StateIsNotInRange)
+				return $"[SymbolicValue {Type}: ![{Constant}..{Constant2}]]";
+			return $"[SymbolicValue {Type}: {Constant}]";
 		}
 	}
 	
@@ -111,6 +128,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		public SymbolicValue Eval(ILExpression expr)
 		{
 			SymbolicValue left, right;
+			int lo, hi;
 			switch (expr.Code) {
 				case ILCode.Sub:
 				case ILCode.Sub_Ovf:
@@ -159,7 +177,27 @@ namespace ICSharpCode.Decompiler.ILAst {
 					right = Eval(expr.Arguments[1]);
 					if (left.Type != SymbolicValueType.State || right.Type != SymbolicValueType.IntegerConstant)
 						return Failed();
-					return new SymbolicValue(SymbolicValueType.StateGreaterThan, right.Constant);
+					return new SymbolicValue(SymbolicValueType.StateIsInRange, right.Constant - left.Constant + 1, int.MaxValue);
+				case ILCode.Cgt_Un:
+					left = Eval(expr.Arguments[0]);
+					right = Eval(expr.Arguments[1]);
+					if (left.Type != SymbolicValueType.State || right.Type != SymbolicValueType.IntegerConstant)
+						return Failed();
+					lo = -left.Constant;
+					hi = lo + right.Constant;
+					if (lo > hi)
+						return Failed();
+					return new SymbolicValue(SymbolicValueType.StateIsNotInRange, lo, hi);
+				case ILCode.Cle_Un:
+					left = Eval(expr.Arguments[0]);
+					right = Eval(expr.Arguments[1]);
+					if (left.Type != SymbolicValueType.State || right.Type != SymbolicValueType.IntegerConstant)
+						return Failed();
+					lo = -left.Constant;
+					hi = lo + right.Constant;
+					if (lo > hi)
+						return Failed();
+					return new SymbolicValue(SymbolicValueType.StateIsInRange, lo, hi);
 				default:
 					return Failed();
 			}
