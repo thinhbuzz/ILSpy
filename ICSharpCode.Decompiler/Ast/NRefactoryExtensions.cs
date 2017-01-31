@@ -164,6 +164,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			}
 			var fe = node as ForeachStatement;
 			if (fe != null) {
+				binSpans.AddRange(fe.HiddenInitializer.GetAllRecursiveBinSpans());
 				binSpans.AddRange(fe.HiddenGetCurrentNode.GetAllRecursiveBinSpans());
 				binSpans.AddRange(fe.HiddenMoveNextNode.GetAllRecursiveBinSpans());
 				binSpans.AddRange(fe.HiddenGetEnumeratorNode.GetAllRecursiveBinSpans());

@@ -209,6 +209,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			subContext.CurrentMethodIsAsync = false;
 			subContext.CurrentMethodIsYieldReturn = false;
 			subContext.ReservedVariableNames.AddRange(currentlyUsedVariableNames);
+			subContext.CalculateBinSpans = false;
 			MethodDebugInfoBuilder builder;
 			BlockStatement body = AstMethodBodyBuilder.CreateMethodBody(method, subContext, autoPropertyProvider, ame.Parameters, false, stringBuilder, out builder);
 			ame.AddAnnotation(builder);
@@ -411,11 +412,13 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				// Delete the variable declaration statement:
 				VariableDeclarationStatement displayClassVarDecl = PatternStatementTransform.FindVariableDeclaration(stmt, variable.Name);
 				if (displayClassVarDecl != null)
-					displayClassVarDecl.Remove();//TODO: Save BinSpans
+					displayClassVarDecl.Remove();
 
 				// Delete the assignment statement:
 				AstNode cur = stmt.NextSibling;
-				stmt.Remove();//TODO: Save BinSpans
+				if (context.CalculateBinSpans)
+					SaveBinSpans(stmt);
+				stmt.Remove();
 				
 				// Delete any following statements as long as they assign parameters to the display class
 				BlockStatement rootBlock = blockStatement.Ancestors.OfType<BlockStatement>().LastOrDefault() ?? blockStatement;
@@ -438,7 +441,8 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 					);
 					Match m = closureFieldAssignmentPattern.Match(cur);
 					if (m.Success) {
-						FieldDef fieldDef = m.Get<MemberReferenceExpression>("left").Single().Annotation<IField>().ResolveFieldWithinSameModule();
+						var leftStmt = m.Get<MemberReferenceExpression>("left").Single();
+						FieldDef fieldDef = leftStmt.Annotation<IField>().ResolveFieldWithinSameModule();
 						AstNode right = m.Get<AstNode>("right").Single();
 						bool isParameter = false;
 						bool isDisplayClassParentPointerAssignment = false;
@@ -473,7 +477,11 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 						if (isParameter || isDisplayClassParentPointerAssignment) {
 							if (fieldDef != null)
 								dict[fieldDef] = right;
-							cur.Remove();//TODO: Save BinSpans
+							if (context.CalculateBinSpans) {
+								SaveBinSpans(cur);
+								cur.RemoveAllBinSpansRecursive();
+							}
+							cur.Remove();
 						} else {
 							break;
 						}
@@ -528,6 +536,189 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			}
 			currentlyUsedVariableNames.RemoveRange(numberOfVariablesOutsideBlock, currentlyUsedVariableNames.Count - numberOfVariablesOutsideBlock);
 			return null;
+		}
+
+		// Moves bin spans to next node or previous node
+		void SaveBinSpans(AstNode removed) {
+			var next = removed.NextSibling as Statement;
+			if (next != null) {
+				var chst = next as CheckedStatement;
+				if (chst != null) {
+					AddToHiddenStart(chst.Body, removed);
+					return;
+				}
+
+				var dowh = next as DoWhileStatement;
+				if (dowh != null) {
+					AddToHiddenStart((BlockStatement)dowh.EmbeddedStatement, removed);
+					return;
+				}
+
+				var fxst = next as FixedStatement;
+				if (fxst != null) {
+					AddToHiddenStart((BlockStatement)fxst.EmbeddedStatement, removed);
+					return;
+				}
+
+				var fest = next as ForeachStatement;
+				if (fest != null) {
+					AddToHiddenStart((BlockStatement)fest.EmbeddedStatement, removed);
+					return;
+				}
+
+				var fost = next as ForStatement;
+				if (fost != null) {
+					AddToHiddenStart((BlockStatement)fost.EmbeddedStatement, removed);
+					return;
+				}
+
+				var ifelse = next as IfElseStatement;
+				if (ifelse != null) {
+					AddToHiddenStart((BlockStatement)ifelse.TrueStatement, removed);
+					return;
+				}
+
+				var lost = next as LockStatement;
+				if (lost != null) {
+					AddToHiddenStart((BlockStatement)lost.EmbeddedStatement, removed);
+					return;
+				}
+
+				var swst = next as SwitchStatement;
+				if (swst != null) {
+					swst.Expression.AddAnnotation(removed);
+					return;
+				}
+
+				var trst = next as TryCatchStatement;
+				if (trst != null) {
+					AddToHiddenStart(trst.TryBlock, removed);
+					return;
+				}
+
+				var unst = next as UncheckedStatement;
+				if (unst != null) {
+					AddToHiddenStart(unst.Body, removed);
+					return;
+				}
+
+				var unsst = next as UnsafeStatement;
+				if (unsst != null) {
+					AddToHiddenStart(unsst.Body, removed);
+					return;
+				}
+
+				var usst = next as UsingStatement;
+				if (usst != null) {
+					AddToHiddenStart((BlockStatement)usst.EmbeddedStatement, removed);
+					return;
+				}
+
+				var whst = next as WhileStatement;
+				if (whst != null) {
+					AddToHiddenStart((BlockStatement)whst.EmbeddedStatement, removed);
+					return;
+				}
+
+				removed.AddAllRecursiveBinSpansTo(next);
+				return;
+			}
+
+			var prev = removed.PrevSibling as Statement;
+			if (prev != null) {
+				var chst = prev as CheckedStatement;
+				if (chst != null) {
+					AddToHiddenEnd(chst.Body, removed);
+					return;
+				}
+
+				var dowh = prev as DoWhileStatement;
+				if (dowh != null) {
+					AddToHiddenEnd((BlockStatement)dowh.EmbeddedStatement, removed);
+					return;
+				}
+
+				var fxst = prev as FixedStatement;
+				if (fxst != null) {
+					AddToHiddenEnd((BlockStatement)fxst.EmbeddedStatement, removed);
+					return;
+				}
+
+				var fest = prev as ForeachStatement;
+				if (fest != null) {
+					AddToHiddenEnd((BlockStatement)fest.EmbeddedStatement, removed);
+					return;
+				}
+
+				var fost = prev as ForStatement;
+				if (fost != null) {
+					AddToHiddenEnd((BlockStatement)fost.EmbeddedStatement, removed);
+					return;
+				}
+
+				var ifelse = prev as IfElseStatement;
+				if (ifelse != null) {
+					AddToHiddenEnd((BlockStatement)ifelse.TrueStatement, removed);
+					return;
+				}
+
+				var lost = prev as LockStatement;
+				if (lost != null) {
+					AddToHiddenEnd((BlockStatement)lost.EmbeddedStatement, removed);
+					return;
+				}
+
+				var swst = prev as SwitchStatement;
+				if (swst != null) {
+					swst.HiddenEnd = NRefactoryExtensions.CreateHidden(removed, swst.HiddenEnd);
+					return;
+				}
+
+				var trst = prev as TryCatchStatement;
+				if (trst != null) {
+					AddToHiddenEnd(trst.TryBlock, removed);
+					return;
+				}
+
+				var unst = prev as UncheckedStatement;
+				if (unst != null) {
+					AddToHiddenEnd(unst.Body, removed);
+					return;
+				}
+
+				var unsst = prev as UnsafeStatement;
+				if (unsst != null) {
+					AddToHiddenEnd(unsst.Body, removed);
+					return;
+				}
+
+				var usst = prev as UsingStatement;
+				if (usst != null) {
+					AddToHiddenEnd((BlockStatement)usst.EmbeddedStatement, removed);
+					return;
+				}
+
+				var whst = prev as WhileStatement;
+				if (whst != null) {
+					AddToHiddenEnd((BlockStatement)whst.EmbeddedStatement, removed);
+					return;
+				}
+
+				removed.AddAllRecursiveBinSpansTo(prev);
+				return;
+			}
+		}
+
+		static void AddToHiddenStart(BlockStatement blk, AstNode removed) {
+			if (blk == null)
+				return;
+			blk.HiddenStart = NRefactoryExtensions.CreateHidden(BinSpan.OrderAndCompact(removed.GetAllRecursiveBinSpans()), blk.HiddenStart);
+		}
+
+		static void AddToHiddenEnd(BlockStatement blk, AstNode removed) {
+			if (blk == null)
+				return;
+			blk.HiddenEnd = NRefactoryExtensions.CreateHidden(BinSpan.OrderAndCompact(removed.GetAllRecursiveBinSpans()), blk.HiddenEnd);
 		}
 
 		void EnsureVariableNameIsAvailable(AstNode currentNode, string name)
