@@ -952,8 +952,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 		List<ILNode> ConvertToAst(List<ByteCode> body)
 		{
 			List<ILNode> ast = new List<ILNode>();
-			
-			// Convert stack-based IL code to ILAst tree
+
+			// Add dup's bin spans to the next instruction
+			int dupStart = -1;
 			foreach(ByteCode byteCode in body) {
 				if (byteCode.StackBefore == null) {
 					// Unreachable code
@@ -961,8 +962,20 @@ namespace ICSharpCode.Decompiler.ILAst {
 				}
 				
 				ILExpression expr = new ILExpression(byteCode.Code, byteCode.Operand);
-				if (context.CalculateBinSpans)
-					expr.BinSpans.Add(new BinSpan(byteCode.Offset, byteCode.EndOffset - byteCode.Offset));
+				if (context.CalculateBinSpans) {
+					if (byteCode.Code == ILCode.Dup) {
+						if (dupStart < 0)
+							dupStart = (int)byteCode.Offset;
+					}
+					else {
+						if (dupStart < 0)
+							expr.BinSpans.Add(new BinSpan(byteCode.Offset, byteCode.EndOffset - byteCode.Offset));
+						else {
+							expr.BinSpans.Add(new BinSpan((uint)dupStart, byteCode.EndOffset - (uint)dupStart));
+							dupStart = -1;
+						}
+					}
+				}
 				if (byteCode.Prefixes != null && byteCode.Prefixes.Length > 0) {
 					ILExpressionPrefix[] prefixes = new ILExpressionPrefix[byteCode.Prefixes.Length];
 					for (int i = 0; i < prefixes.Length; i++) {
