@@ -94,6 +94,30 @@ namespace ICSharpCode.Decompiler.Disassembler {
 		
 		public static void WriteTo(this Instruction instruction, IDecompilerOutput writer, DisassemblerOptions options, uint baseRva, long baseOffs, IInstructionBytesReader byteReader, MethodDef method, out int startLocation)
 		{
+			if (options.ShowPdbInfo && instruction.SequencePoint != null) {
+				var seqPoint = instruction.SequencePoint;
+				writer.Write("/* (", BoxedTextColor.Comment);
+				const int HIDDEN = 0xFEEFEE;
+				if (seqPoint.StartLine == HIDDEN)
+					writer.Write("hidden", BoxedTextColor.Comment);
+				else {
+					writer.Write(seqPoint.StartLine.ToString(), BoxedTextColor.Comment);
+					writer.Write(",", BoxedTextColor.Comment);
+					writer.Write(seqPoint.StartColumn.ToString(), BoxedTextColor.Comment);
+				}
+				writer.Write(")-(", BoxedTextColor.Comment);
+				if (seqPoint.EndLine == HIDDEN)
+					writer.Write("hidden", BoxedTextColor.Comment);
+				else {
+					writer.Write(seqPoint.EndLine.ToString(), BoxedTextColor.Comment);
+					writer.Write(",", BoxedTextColor.Comment);
+					writer.Write(seqPoint.EndColumn.ToString(), BoxedTextColor.Comment);
+				}
+				writer.Write(") ", BoxedTextColor.Comment);
+				writer.Write(seqPoint.Document.Url, BoxedTextColor.Comment);
+				writer.Write(" */", BoxedTextColor.Comment);
+				writer.WriteLine();
+			}
 			if (options != null && (options.ShowTokenAndRvaComments || options.ShowILBytes)) {
 				writer.Write("/* ", BoxedTextColor.Comment);
 
