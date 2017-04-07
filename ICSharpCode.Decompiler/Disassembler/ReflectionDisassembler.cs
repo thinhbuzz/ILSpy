@@ -91,6 +91,11 @@ namespace ICSharpCode.Decompiler.Disassembler {
 		/// Sort members if true
 		/// </summary>
 		public bool SortMembers;
+
+		/// <summary>
+		/// Shows line numbers if a PDB file has been loaded
+		/// </summary>
+		public bool ShowPdbInfo;
 	}
 
 	/// <summary>
