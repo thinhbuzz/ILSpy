@@ -913,6 +913,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				case NativeType.Ptr:
 				case NativeType.IInspectable:
 				case NativeType.HString:
+				case NativeType.LPUTF8Str:
 				default:
 					output.Write(nativeType.ToString(), BoxedTextColor.Keyword);
 					break;
