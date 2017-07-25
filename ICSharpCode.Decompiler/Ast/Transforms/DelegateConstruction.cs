@@ -125,7 +125,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 
 						// Replace 'new DelegateClass(<method>)' with '<method>' if it's an event adder/remover
 						var parent = objectCreateExpression.Parent as AssignmentExpression;
-						if (parent != null && (parent.Operator == AssignmentOperatorType.Add || parent.Operator == AssignmentOperatorType.Subtract)) {
+						if (context.Settings.RemoveNewDelegateClass && parent != null && (parent.Operator == AssignmentOperatorType.Add || parent.Operator == AssignmentOperatorType.Subtract)) {
 							var delType = objectCreateExpression.Annotation<IMethod>()?.DeclaringType;
 							var invokeMethod = delType.ResolveTypeDef()?.FindMethod(nameInvoke);
 							if (invokeMethod != null) {

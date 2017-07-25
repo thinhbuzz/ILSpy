@@ -56,6 +56,7 @@ namespace ICSharpCode.Decompiler {
 			OneCustomAttributePerLine = false;
 			TypeAddInternalModifier = true;
 			MemberAddPrivateModifier = true;
+			RemoveNewDelegateClass = false;
 			return this;
 		}
 
@@ -542,6 +543,17 @@ namespace ICSharpCode.Decompiler {
 		}
 		bool memberAddPrivateModifier = true;
 
+		public bool RemoveNewDelegateClass {
+			get { return removeNewDelegateClass; }
+			set {
+				if (removeNewDelegateClass != value) {
+					removeNewDelegateClass = value;
+					OnPropertyChanged(nameof(RemoveNewDelegateClass));
+				}
+			}
+		}
+		bool removeNewDelegateClass = true;
+
 		CSharpFormattingOptions csharpFormattingOptions;
 
 		public CSharpFormattingOptions CSharpFormattingOptions {
@@ -617,6 +629,7 @@ namespace ICSharpCode.Decompiler {
 			if (OneCustomAttributePerLine != other.OneCustomAttributePerLine) return false;
 			if (TypeAddInternalModifier != other.TypeAddInternalModifier) return false;
 			if (MemberAddPrivateModifier != other.MemberAddPrivateModifier) return false;
+			if (RemoveNewDelegateClass != other.RemoveNewDelegateClass) return false;
 
 			//TODO: CSharpFormattingOptions. This isn't currently used but it has a ton of properties
 
@@ -662,6 +675,7 @@ namespace ICSharpCode.Decompiler {
 				h ^= OneCustomAttributePerLine		? 0 : 0x00000008U;
 				h ^= TypeAddInternalModifier		? 0 : 0x00000004U;
 				h ^= MemberAddPrivateModifier		? 0 : 0x00000002U;
+				h ^= RemoveNewDelegateClass			? 0 : 0x00000001U;
 
 				for (int i = 0; i < decompilationObjects.Length; i++)
 					h ^= (uint)decompilationObjects[i] << (i * 8);
@@ -712,6 +726,7 @@ namespace ICSharpCode.Decompiler {
 			other.OneCustomAttributePerLine = this.OneCustomAttributePerLine;
 			other.TypeAddInternalModifier = this.TypeAddInternalModifier;
 			other.MemberAddPrivateModifier = this.MemberAddPrivateModifier;
+			other.RemoveNewDelegateClass = this.RemoveNewDelegateClass;
 			//TODO: CSharpFormattingOptions
 			return other;
 		}
