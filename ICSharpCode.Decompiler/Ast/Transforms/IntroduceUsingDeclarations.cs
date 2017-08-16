@@ -64,6 +64,11 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 
 			importedNamespaces.Add(new NamespaceRef(context.CurrentModule.CorLibTypes.AssemblyRef, "System")); // always import System, even when not necessary
 			importedOrDeclaredNamespaces.Add("System");
+			if (context.CalculateBinSpans) {
+				Debug.Assert(context.UsingNamespaces.Count == 0);
+				foreach (var nsRef in importedNamespaces)
+					context.UsingNamespaces.Add(nsRef.Namespace);
+			}
 			
 			if (context.Settings.UsingDeclarations) {
 				// Now add using declarations for those namespaces:

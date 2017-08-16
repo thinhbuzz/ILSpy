@@ -24,6 +24,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using dnlib.DotNet;
+using dnlib.DotNet.Emit;
 using dnSpy.Contracts.Decompiler;
 using dnSpy.Contracts.Text;
 using ICSharpCode.Decompiler.Ast.Transforms;
@@ -1438,7 +1439,7 @@ namespace ICSharpCode.Decompiler.Ast {
 					emptyStmt.AddAnnotation(new List<BinSpan> { new BinSpan(0, (uint)method.Body.GetCodeSize()) });
 				bs.Statements.Add(emptyStmt);
 				bs.InsertChildAfter(null, new Comment(msg, CommentType.MultiLine), Roles.Comment);
-				builder = new MethodDebugInfoBuilder(method);
+				builder = new MethodDebugInfoBuilder(method, method.Body.Variables.Select(a => new SourceLocal(a, CreateLocalName(a), a.Type)).ToArray());
 				return bs;
 
 			case DecompiledBodyKind.Empty:
@@ -1489,6 +1490,13 @@ namespace ICSharpCode.Decompiler.Ast {
 			default:
 				throw new InvalidOperationException();
 			}
+		}
+
+		static string CreateLocalName(Local local) {
+			var name = local.Name;
+			if (!string.IsNullOrEmpty(name))
+				return name;
+			return "V_" + local.Index.ToString();
 		}
 
 		static MethodDef GetBaseConstructorForEmptyBody(MethodDef method) {

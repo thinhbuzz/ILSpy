@@ -27,7 +27,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 	/// <summary>
 	/// Disassembles a method body.
 	/// </summary>
-	public sealed class MethodBodyDisassembler
+	sealed class MethodBodyDisassembler
 	{
 		readonly IDecompilerOutput output;
 		readonly bool detectControlStructure;
@@ -42,7 +42,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			this.options = options;
 		}
 		
-		public void Disassemble(MethodDef method, MethodDebugInfoBuilder builder)
+		public void Disassemble(MethodDef method, MethodDebugInfoBuilder builder, InstructionOperandConverter instructionOperandConverter)
 		{
 			// start writing IL code
 			CilBody body = method.Body;
@@ -76,20 +76,21 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				output.WriteLine();
 				output.IncreaseIndent();
 				foreach (var v in method.Body.Variables) {
+					var local = (SourceLocal)instructionOperandConverter.Convert(v);
 					var bh2 = BracePairHelper.Create(output, "[", CodeBracesRangeFlags.SquareBrackets);
-					bool hasName = !string.IsNullOrEmpty(v.Name);
+					bool hasName = !string.IsNullOrEmpty(local.Local.Name);
 					if (hasName)
-						output.Write(v.Index.ToString(), BoxedTextColor.Number);
+						output.Write(local.Local.Index.ToString(), BoxedTextColor.Number);
 					else
-						output.Write(v.Index.ToString(), v, DecompilerReferenceFlags.Local | DecompilerReferenceFlags.Definition, BoxedTextColor.Number);
+						output.Write(local.Local.Index.ToString(), local, DecompilerReferenceFlags.Local | DecompilerReferenceFlags.Definition, BoxedTextColor.Number);
 					bh2.Write("]");
 					output.Write(" ", BoxedTextColor.Text);
-					v.Type.WriteTo(output);
+					local.Type.WriteTo(output);
 					if (hasName) {
 						output.Write(" ", BoxedTextColor.Text);
-						output.Write(DisassemblerHelpers.Escape(v.Name), v, DecompilerReferenceFlags.Local | DecompilerReferenceFlags.Definition, BoxedTextColor.Local);
+						output.Write(DisassemblerHelpers.Escape(local.Name), local, DecompilerReferenceFlags.Local | DecompilerReferenceFlags.Definition, BoxedTextColor.Local);
 					}
-					if (v.Index + 1 < method.Body.Variables.Count)
+					if (local.Local.Index + 1 < method.Body.Variables.Count)
 						output.Write(",", BoxedTextColor.Punctuation);
 					output.WriteLine();
 				}
@@ -105,14 +106,14 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				if (detectControlStructure && body.Instructions.Count > 0) {
 					int index = 0;
 					HashSet<uint> branchTargets = GetBranchTargets(body.Instructions);
-					WriteStructureBody(body, new ILStructure(body), branchTargets, ref index, builder, method.Body.GetCodeSize(), baseRva, baseOffs, byteReader, method);
+					WriteStructureBody(body, new ILStructure(body), branchTargets, ref index, builder, instructionOperandConverter, method.Body.GetCodeSize(), baseRva, baseOffs, byteReader, method);
 				}
 				else {
 					var instructions = method.Body.Instructions;
 					for (int i = 0; i < instructions.Count; i++) {
 						var inst = instructions[i];
 						int startLocation;
-						inst.WriteTo(output, options, baseRva, baseOffs, byteReader, method, out startLocation);
+						inst.WriteTo(output, options, baseRva, baseOffs, byteReader, method, instructionOperandConverter, out startLocation);
 
 						if (builder != null) {
 							var next = i + 1 < instructions.Count ? instructions[i + 1] : null;
@@ -208,7 +209,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			return bh;
 		}
 		
-		void WriteStructureBody(CilBody body, ILStructure s, HashSet<uint> branchTargets, ref int index, MethodDebugInfoBuilder builder, int codeSize, uint baseRva, long baseOffs, IInstructionBytesReader byteReader, MethodDef method)
+		void WriteStructureBody(CilBody body, ILStructure s, HashSet<uint> branchTargets, ref int index, MethodDebugInfoBuilder builder, InstructionOperandConverter instructionOperandConverter, int codeSize, uint baseRva, long baseOffs, IInstructionBytesReader byteReader, MethodDef method)
 		{
 			bool isFirstInstructionInStructure = true;
 			bool prevInstructionWasBranch = false;
@@ -222,14 +223,14 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				if (childIndex < s.Children.Count && s.Children[childIndex].StartOffset <= offset && offset < s.Children[childIndex].EndOffset) {
 					ILStructure child = s.Children[childIndex++];
 					var bh = WriteStructureHeader(child);
-					WriteStructureBody(body, child, branchTargets, ref index, builder, codeSize, baseRva, baseOffs, byteReader, method);
+					WriteStructureBody(body, child, branchTargets, ref index, builder, instructionOperandConverter, codeSize, baseRva, baseOffs, byteReader, method);
 					WriteStructureFooter(child, bh);
 				} else {
 					if (!isFirstInstructionInStructure && (prevInstructionWasBranch || branchTargets.Contains(offset))) {
 						output.WriteLine(); // put an empty line after branches, and in front of branch targets
 					}
 					int startLocation;
-					inst.WriteTo(output, options, baseRva, baseOffs, byteReader, method, out startLocation);
+					inst.WriteTo(output, options, baseRva, baseOffs, byteReader, method, instructionOperandConverter, out startLocation);
 					
 					if (builder != null) {
 						var next = index + 1 < instructions.Count ? instructions[index + 1] : null;

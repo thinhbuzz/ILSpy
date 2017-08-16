@@ -502,10 +502,9 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 						capturedVariableName = capturedVariableName.Substring(10);
 					EnsureVariableNameIsAvailable(blockStatement, capturedVariableName);
 					currentlyUsedVariableNames.Add(capturedVariableName);
-					ILVariable ilVar = new ILVariable
+					ILVariable ilVar = new ILVariable(capturedVariableName)
 					{
 						GeneratedByDecompiler = true,
-						Name = capturedVariableName,
 						Type = field.FieldType,
 					};
 					variablesToDeclare.Add(Tuple.Create(AstBuilder.ConvertType(field.FieldType, stringBuilder, field), ilVar));

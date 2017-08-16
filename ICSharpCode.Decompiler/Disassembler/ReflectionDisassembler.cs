@@ -25,6 +25,47 @@ using dnSpy.Contracts.Decompiler;
 using dnSpy.Contracts.Text;
 
 namespace ICSharpCode.Decompiler.Disassembler {
+	sealed class InstructionOperandConverter {
+		readonly Dictionary<object, object> dict;
+		readonly List<SourceLocal> sourceLocals;
+
+		public InstructionOperandConverter() {
+			dict = new Dictionary<object, object>();
+			sourceLocals = new List<SourceLocal>();
+		}
+
+		public object Convert(object obj) {
+			if (obj != null && dict.TryGetValue(obj, out var other))
+				return other;
+			return obj;
+		}
+
+		public void Clear() {
+			dict.Clear();
+			sourceLocals.Clear();
+		}
+
+		public SourceLocal[] GetSourceLocals() => sourceLocals.ToArray();
+
+		public void Add(MethodDef method) {
+			var body = method.Body;
+			if (body != null) {
+				foreach (var local in body.Variables) {
+					var sourceLocal = new SourceLocal(local, CreateLocalName(local), local.Type);
+					sourceLocals.Add(sourceLocal);
+					dict.Add(local, sourceLocal);
+				}
+			}
+		}
+
+		static string CreateLocalName(Local local) {
+			var name = local.Name;
+			if (!string.IsNullOrEmpty(name))
+				return name;
+			return "V_" + local.Index.ToString();
+		}
+	}
+
 	struct BracePairHelper {
 		readonly IDecompilerOutput output;
 		readonly CodeBracesRangeFlags flags;
@@ -105,6 +146,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 	{
 		readonly IDecompilerOutput output;
 		readonly DisassemblerOptions options;
+		readonly InstructionOperandConverter instructionOperandConverter;
 		bool isInType; // whether we are currently disassembling a whole type (-> defaultCollapsed for foldings)
 		MethodBodyDisassembler methodBodyDisassembler;
 		IMemberDef currentMember;
@@ -116,6 +158,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			this.output = output;
 			this.options = options;
 			this.methodBodyDisassembler = new MethodBodyDisassembler(output, detectControlStructure, options);
+			this.instructionOperandConverter = new InstructionOperandConverter();
 		}
 		
 		#region Disassemble Method
@@ -344,9 +387,11 @@ namespace ICSharpCode.Decompiler.Disassembler {
 
 			MethodDebugInfoBuilder builder = null;
 			if (method.HasBody) {
-				builder = new MethodDebugInfoBuilder(method);
+				instructionOperandConverter.Clear();
+				instructionOperandConverter.Add(method);
+				builder = new MethodDebugInfoBuilder(method, instructionOperandConverter.GetSourceLocals());
 				builder.StartPosition = methodStartPosition;
-				methodBodyDisassembler.Disassemble(method, builder);
+				methodBodyDisassembler.Disassemble(method, builder, instructionOperandConverter);
 			}
 
 			int methodEndPosition = CloseBlock(bh1, addLineSep, "end of method " + DisassemblerHelpers.Escape(method.DeclaringType.Name) + "::" + DisassemblerHelpers.Escape(method.Name));

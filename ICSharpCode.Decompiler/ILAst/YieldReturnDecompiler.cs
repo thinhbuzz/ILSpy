@@ -268,7 +268,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				if (realThisParameter == null)
 					throw new SymbolicAnalysisFailedException();
 			}
-			var fieldToLocalMap = new DefaultDictionary<FieldDef, ILVariable>(f => new ILVariable { Name = f.Name.String, Type = f.FieldType });
+			var fieldToLocalMap = new DefaultDictionary<FieldDef, ILVariable>(f => new ILVariable(string.IsNullOrEmpty(f.Name) ? "_f_" + f.Rid.ToString("X") : f.Name.String) { Type = f.FieldType });
 			List<ILExpression> listExpr = null;
 			foreach (ILNode node in newBody) {
 				foreach (ILExpression expr in node.GetSelfAndChildrenRecursive(listExpr ?? (listExpr = new List<ILExpression>()))) {

@@ -92,7 +92,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			WriteOffsetReference(writer, exceptionHandler.HandlerEnd, method);
 		}
 		
-		public static void WriteTo(this Instruction instruction, IDecompilerOutput writer, DisassemblerOptions options, uint baseRva, long baseOffs, IInstructionBytesReader byteReader, MethodDef method, out int startLocation)
+		internal static void WriteTo(this Instruction instruction, IDecompilerOutput writer, DisassemblerOptions options, uint baseRva, long baseOffs, IInstructionBytesReader byteReader, MethodDef method, InstructionOperandConverter instructionOperandConverter, out int startLocation)
 		{
 			if (options.ShowPdbInfo && instruction.SequencePoint != null) {
 				var seqPoint = instruction.SequencePoint;
@@ -181,7 +181,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 						writer.Write(" ", BoxedTextColor.Text);
 					}
 				}
-				WriteOperand(writer, instruction.Operand, method);
+				WriteOperand(writer, instructionOperandConverter?.Convert(instruction.Operand) ?? instruction.Operand, method);
 			}
 			if (options != null && options.GetOpCodeDocumentation != null) {
 				var doc = options.GetOpCodeDocumentation(instruction.OpCode);
@@ -622,13 +622,10 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				WriteLabelList(writer, targetInstructions, method);
 				return;
 			}
-			
-			Local variable = operand as Local;
+
+			SourceLocal variable = operand as SourceLocal;
 			if (variable != null) {
-				if (string.IsNullOrEmpty(variable.Name))
-					writer.Write(variable.Index.ToString(), variable, DecompilerReferenceFlags.None, BoxedTextColor.Number);
-				else
-					writer.Write(Escape(variable.Name), variable, DecompilerReferenceFlags.None, BoxedTextColor.Local);
+				writer.Write(Escape(variable.Name), variable, DecompilerReferenceFlags.None, BoxedTextColor.Local);
 				return;
 			}
 			

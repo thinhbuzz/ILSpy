@@ -489,7 +489,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				int argIdx = 0;
 				int popCount = byteCode.PopCount >= 0 ? byteCode.PopCount : byteCode.StackBefore.Length;
 				for (int i = byteCode.StackBefore.Length - popCount; i < byteCode.StackBefore.Length; i++) {
-					ILVariable tmpVar = new ILVariable() { Name = "arg_" + byteCode.Offset.ToString("X2") + "_" + argIdx.ToString(), GeneratedByDecompiler = true };
+					ILVariable tmpVar = new ILVariable("arg_" + byteCode.Offset.ToString("X2") + "_" + argIdx.ToString()) { GeneratedByDecompiler = true };
 					byteCode.StackBefore[i] = new StackSlot(byteCode.StackBefore[i].Definitions, tmpVar);
 					foreach(ByteCode pushedBy in byteCode.StackBefore[i].Definitions) {
 						if (pushedBy.StoreTo == null) {
@@ -551,7 +551,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					// Let's make sure that they have also a single store - us
 					if (singleStore) {
 						// Great - we can reduce everything into single variable
-						ILVariable tmpVar = new ILVariable() { Name = string.Format("expr_{0:X2}", byteCode.Offset), GeneratedByDecompiler = true };
+						ILVariable tmpVar = new ILVariable("expr_" + byteCode.Offset.ToString("X2")) { GeneratedByDecompiler = true };
 						locVars.Clear();
 						locVars.Add(tmpVar);
 						foreach(ByteCode bc in StackAnalysis_body) {
@@ -723,8 +723,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				// If any of the uses is ldloca with a nondeterministic usage pattern, use  single variable
 				if (!optimize || varDef.Type is PinnedSig || uses.Any(b => b.VariablesBefore[varDef.Index].UnknownDefinition || (b.Code == ILCode.Ldloca && !IsDeterministicLdloca(b)))) {				
 					newVars = new List<VariableInfo>(1) { new VariableInfo() {
-						Variable = new ILVariable() {
-							Name = string.IsNullOrEmpty(varDef.Name) ? "var_" + varDef.Index : varDef.Name,
+						Variable = new ILVariable(string.IsNullOrEmpty(varDef.Name) ? "var_" + varDef.Index : varDef.Name) {
 							Type = varDef.Type is PinnedSig ? ((PinnedSig)varDef.Type).Next : varDef.Type,
 							OriginalVariable = varDef
 						},
@@ -734,8 +733,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				} else {
 					// Create a new variable for each definition
 					newVars = defs.Select(def => new VariableInfo() {
-						Variable = new ILVariable() {
-							Name = (string.IsNullOrEmpty(varDef.Name) ? "var_" + varDef.Index : varDef.Name) + "_" + def.Offset.ToString("X2"),
+						Variable = new ILVariable((string.IsNullOrEmpty(varDef.Name) ? "var_" + varDef.Index : varDef.Name) + "_" + def.Offset.ToString("X2")) {
 							Type = varDef.Type,
 							OriginalVariable = varDef
 					    },
@@ -789,13 +787,12 @@ namespace ICSharpCode.Decompiler.ILAst {
 			ILVariable thisParameter = null;
 			if (methodDef.HasThis) {
 				TypeDef type = methodDef.DeclaringType;
-				thisParameter = new ILVariable();
+				thisParameter = new ILVariable("this");
 				thisParameter.Type = DnlibExtensions.IsValueType(type) ? new ByRefSig(type.ToTypeSig()) : type.ToTypeSig();
-				thisParameter.Name = "this";
 				thisParameter.OriginalParameter = methodDef.Parameters[0];
 			}
 			foreach (Parameter p in methodDef.Parameters.SkipNonNormal()) {
-				this.Parameters.Add(new ILVariable { Type = p.Type, Name = p.Name, OriginalParameter = p });
+				this.Parameters.Add(new ILVariable(string.IsNullOrEmpty(p.Name) ? "A_" + p.Index.ToString() : p.Name) { Type = p.Type, OriginalParameter = p });
 			}
 			if (this.Parameters.Count > 0 && (methodDef.SemanticsAttributes & (MethodSemanticsAttributes.Setter | MethodSemanticsAttributes.AddOn | MethodSemanticsAttributes.RemoveOn)) != 0) {
 				// last parameter must be 'value', so rename it
@@ -931,7 +928,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				{
 					// The exception is just poped - optimize it all away;
 					if (context.Settings.AlwaysGenerateExceptionVariableForCatchBlocksUnlessTypeIsObject && (eh.CatchType != null && !eh.CatchType.IsSystemObject()))
-						catchBlock.ExceptionVariable = new ILVariable() { Name = "ex_" + eh.HandlerStart.GetOffset().ToString("X2"), GeneratedByDecompiler = true };
+						catchBlock.ExceptionVariable = new ILVariable("ex_" + eh.HandlerStart.GetOffset().ToString("X2")) { GeneratedByDecompiler = true };
 					else
 						catchBlock.ExceptionVariable = null;
 					if (context.CalculateBinSpans)
@@ -941,7 +938,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					catchBlock.ExceptionVariable = ldexception.StoreTo[0];
 				}
 			} else {
-				ILVariable exTemp = new ILVariable() { Name = "ex_" + eh.HandlerStart.GetOffset().ToString("X2"), GeneratedByDecompiler = true };
+				ILVariable exTemp = new ILVariable("ex_" + eh.HandlerStart.GetOffset().ToString("X2")) { GeneratedByDecompiler = true };
 				catchBlock.ExceptionVariable = exTemp;
 				foreach (ILVariable storeTo in ldexception.StoreTo) {
 					catchBlock.Body.Insert(0, new ILExpression(ILCode.Stloc, storeTo, new ILExpression(ILCode.Ldloc, exTemp)));
@@ -1002,7 +999,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				} else if (byteCode.StoreTo.Count == 1) {
 					ast.Add(new ILExpression(ILCode.Stloc, byteCode.StoreTo[0], expr));
 				} else {
-					ILVariable tmpVar = new ILVariable() { Name = "expr_" + byteCode.Offset.ToString("X2"), GeneratedByDecompiler = true };
+					ILVariable tmpVar = new ILVariable("expr_" + byteCode.Offset.ToString("X2")) { GeneratedByDecompiler = true };
 					ast.Add(new ILExpression(ILCode.Stloc, tmpVar, expr));
 					foreach(ILVariable storeTo in byteCode.StoreTo.AsEnumerable().Reverse()) {
 						ast.Add(new ILExpression(ILCode.Stloc, storeTo, new ILExpression(ILCode.Ldloc, tmpVar)));

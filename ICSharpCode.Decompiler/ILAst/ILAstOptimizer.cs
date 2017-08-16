@@ -792,7 +792,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 							expr.BinSpans.AddRange(ldflda.BinSpans);
 
 						var initobjType = expr.Operand;
-						var initobjVar = new ILVariable { Name = "rop_" + (readOnlyPropTempLocalNameCounter++).ToString(), GeneratedByDecompiler = true };
+						var initobjVar = new ILVariable("rop_" + (readOnlyPropTempLocalNameCounter++).ToString()) { GeneratedByDecompiler = true };
 						var newInitobj = new ILExpression(ILCode.Initobj, initobjType, new ILExpression(ILCode.Ldloca, initobjVar));
 						body.Insert(i++, newInitobj);
 
@@ -918,7 +918,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			return modified;
 		}
 
-		ILVariable CreateTempLocal() => new ILVariable { Name = "_tmp_" + (tmpLocalCounter++).ToString(), GeneratedByDecompiler = true };
+		ILVariable CreateTempLocal() => new ILVariable("_tmp_" + (tmpLocalCounter++).ToString()) { GeneratedByDecompiler = true };
 		int tmpLocalCounter;
 
 		bool IsVisualBasicModule() {

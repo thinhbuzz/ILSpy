@@ -177,11 +177,9 @@ namespace ICSharpCode.Decompiler.Ast {
 		readonly List<SourceLocal> sourceLocalsList = new List<SourceLocal>();
 		SourceLocal[] CreateSourceLocals(HashSet<ILVariable> variables) {
 			foreach (var v in variables) {
-				if (v.OriginalVariable != null) {
-					var name = v.Name;
-					Debug.Assert(name != null);
-					sourceLocalsList.Add(new SourceLocal(v.OriginalVariable, name));
-				}
+				if (v.IsParameter)
+					continue;
+				sourceLocalsList.Add(v.GetSourceLocal());
 			}
 			var array = sourceLocalsList.ToArray();
 			sourceLocalsList.Clear();

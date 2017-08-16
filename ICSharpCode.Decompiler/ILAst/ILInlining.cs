@@ -508,7 +508,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 						// un-inline the arguments of the ldArg instruction
 						ILVariable[] uninlinedArgs = new ILVariable[copiedExpr.Arguments.Count];
 						for (int j = 0; j < uninlinedArgs.Length; j++) {
-							uninlinedArgs[j] = new ILVariable { GeneratedByDecompiler = true, Name = v.Name + "_cp_" + j.ToString() };
+							uninlinedArgs[j] = new ILVariable(v.Name + "_cp_" + j.ToString()) { GeneratedByDecompiler = true };
 							block.Body.Insert(i++, new ILExpression(ILCode.Stloc, uninlinedArgs[j], copiedExpr.Arguments[j]));
 							recalc = true;
 						}

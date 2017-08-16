@@ -277,7 +277,7 @@ namespace ICSharpCode.Decompiler.FlowAnalysis {
 			foreach (Instruction inst in this.Instructions) {
 				writer.WriteLine();
 				int startLocation;
-				Disassembler.DisassemblerHelpers.WriteTo(inst, new TextWriterDecompilerOutput(writer), null, 0, 0, null, null, out startLocation);
+				Disassembler.DisassemblerHelpers.WriteTo(inst, new TextWriterDecompilerOutput(writer), null, 0, 0, null, null, null, out startLocation);
 			}
 			if (UserData != null) {
 				writer.WriteLine();

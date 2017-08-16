@@ -19,6 +19,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using dnlib.DotNet;
@@ -409,14 +410,14 @@ namespace ICSharpCode.Decompiler.ILAst {
 					ExceptionType.WriteTo(output, ILNameSyntax.TypeName);
 					if (ExceptionVariable != null) {
 						output.Write(" ", BoxedTextColor.Text);
-						output.Write(ExceptionVariable.Name, (object)ExceptionVariable.OriginalVariable ?? (object)ExceptionVariable.OriginalParameter ?? ExceptionVariable.Id, DecompilerReferenceFlags.Local | DecompilerReferenceFlags.Definition, BoxedTextColor.Local);
+						output.Write(ExceptionVariable.Name, ExceptionVariable.GetTextReferenceObject(), DecompilerReferenceFlags.Local | DecompilerReferenceFlags.Definition, BoxedTextColor.Local);
 					}
 				}
 				else {
 					output.Write("handler", BoxedTextColor.Keyword);
 					if (ExceptionVariable != null) {
 						output.Write(" ", BoxedTextColor.Text);
-						output.Write(ExceptionVariable.Name, (object)ExceptionVariable.OriginalVariable ?? (object)ExceptionVariable.OriginalParameter ?? ExceptionVariable.Id, DecompilerReferenceFlags.Local | DecompilerReferenceFlags.Definition, BoxedTextColor.Local);
+						output.Write(ExceptionVariable.Name, ExceptionVariable.GetTextReferenceObject(), DecompilerReferenceFlags.Local | DecompilerReferenceFlags.Definition, BoxedTextColor.Local);
 					}
 				}
 				UpdateDebugInfo(builder, startLoc, output.NextPosition, StlocBinSpans);
@@ -436,7 +437,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				output.Write("filter", BoxedTextColor.Keyword);
 				if (ExceptionVariable != null) {
 					output.Write(" ", BoxedTextColor.Text);
-					output.Write(ExceptionVariable.Name, (object)ExceptionVariable.OriginalVariable ?? (object)ExceptionVariable.OriginalParameter ?? ExceptionVariable.Id, DecompilerReferenceFlags.Local | DecompilerReferenceFlags.Definition, BoxedTextColor.Local);
+					output.Write(ExceptionVariable.Name, ExceptionVariable.GetTextReferenceObject(), DecompilerReferenceFlags.Local | DecompilerReferenceFlags.Definition, BoxedTextColor.Local);
 					output.Write(" ", BoxedTextColor.Text);
 				}
 				base.WriteTo(output, builder);
@@ -502,19 +503,25 @@ namespace ICSharpCode.Decompiler.ILAst {
 	
 	public class ILVariable
 	{
+		public ILVariable(string name) => Name = name;
 		public string Name;
 		public bool GeneratedByDecompiler;
 		public TypeSig Type;
 		public Local OriginalVariable;
 		public Parameter OriginalParameter;
-		public object Id {
-			get {
-				if (id == null)
-					Interlocked.CompareExchange(ref id, new object(), null);
-				return id;
-			}
+		public SourceLocal GetSourceLocal() {
+			Debug.Assert(OriginalParameter == null);
+			Debug.Assert(Name != null);
+			if (sourceLocal == null)
+				Interlocked.CompareExchange(ref sourceLocal, new SourceLocal(OriginalVariable, Name, Type), null);
+			return sourceLocal;
 		}
-		object id;
+		SourceLocal sourceLocal;
+		public object GetTextReferenceObject() {
+			if (OriginalParameter != null)
+				return OriginalParameter;
+			return GetSourceLocal();
+		}
 
 		public bool IsPinned {
 			get { return OriginalVariable != null && OriginalVariable.Type is PinnedSig; }
@@ -666,7 +673,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			var startLoc = output.NextPosition;
 			if (Operand is ILVariable && ((ILVariable)Operand).GeneratedByDecompiler) {
 				var v = (ILVariable)Operand;
-				var op = (object)v.OriginalVariable ?? (object)v.OriginalParameter ?? v.Id;
+				var op = v.GetTextReferenceObject();
 				if (Code == ILCode.Stloc && this.InferredType == null) {
 					output.Write(((ILVariable)Operand).Name, op, DecompilerReferenceFlags.Local, ((ILVariable)Operand).IsParameter ? BoxedTextColor.Parameter : BoxedTextColor.Local);
 					output.Write(" ", BoxedTextColor.Text);
@@ -735,7 +742,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					output.Write(field.Name, field, DecompilerReferenceFlags.None, CSharpMetadataTextColorProvider.Instance.GetColor(field));
 				} else if (Operand is ILVariable) {
 					var v = (ILVariable)Operand;
-					var op = (object)v.OriginalVariable ?? (object)v.OriginalParameter ?? v.Id;
+					var op = v.GetTextReferenceObject();
 					output.Write(v.Name, op, DecompilerReferenceFlags.Local, v.IsParameter ? BoxedTextColor.Parameter : BoxedTextColor.Local);
 				} else {
 					DisassemblerHelpers.WriteOperand(output, Operand);

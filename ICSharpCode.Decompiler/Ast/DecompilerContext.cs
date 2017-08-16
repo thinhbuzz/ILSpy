@@ -35,6 +35,7 @@ namespace ICSharpCode.Decompiler {
 		public bool CurrentMethodIsYieldReturn;
 		public readonly DecompilerCache Cache;
 		public bool CalculateBinSpans;
+		public readonly List<string> UsingNamespaces = new List<string>();
 
 		public static DecompilerContext CreateTestContext(ModuleDef currentModule)
 		{
@@ -76,6 +77,7 @@ namespace ICSharpCode.Decompiler {
 			this.Settings = new DecompilerSettings();
 			this.CurrentMethodIsAsync = false;
 			this.CurrentMethodIsYieldReturn = false;
+			this.UsingNamespaces.Clear();
 			this.Cache.Reset();
 		}
 	}

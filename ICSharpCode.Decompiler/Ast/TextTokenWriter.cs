@@ -125,13 +125,8 @@ namespace ICSharpCode.Decompiler.Ast {
 		{
 			AstNode node = nodeStack.Peek();
 			ILVariable variable = node.Annotation<ILVariable>();
-			if (variable != null) {
-				if (variable.OriginalParameter != null)
-					return variable.OriginalParameter;
-				if (variable.OriginalVariable != null)
-					return variable.OriginalVariable;
-				return variable.Id;
-			}
+			if (variable != null)
+				return variable.GetTextReferenceObject();
 
 			var gotoStatement = node as GotoStatement;
 			if (gotoStatement != null)
@@ -156,13 +151,8 @@ namespace ICSharpCode.Decompiler.Ast {
 
 			if (node is VariableInitializer || node is CatchClause || node is ForeachStatement) {
 				var variable = node.Annotation<ILVariable>();
-				if (variable != null) {
-					if (variable.OriginalParameter != null)
-						return variable.OriginalParameter;
-					if (variable.OriginalVariable != null)
-						return variable.OriginalVariable;
-					return variable.Id;
-				}
+				if (variable != null)
+					return variable.GetTextReferenceObject();
 			}
 
 			var label = node as LabelStatement;
@@ -398,6 +388,10 @@ namespace ICSharpCode.Decompiler.Ast {
 				throw new InvalidOperationException();
 			
 			if (node.Annotation<MethodDebugInfoBuilder>() != null) {
+				if (context.CalculateBinSpans) {
+					foreach (var ns in context.UsingNamespaces)
+						currentMethodDebugInfoBuilder.Scope.Imports.Add(ImportInfo.CreateNamespace(ns));
+				}
 				output.AddDebugInfo(currentMethodDebugInfoBuilder.Create());
 				currentMethodDebugInfoBuilder = parentMethodDebugInfoBuilder.Pop();
 			}
