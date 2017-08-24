@@ -239,7 +239,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			
 			var annotation = body.Annotation<ParameterDeclarationAnnotation>();
 			if (annotation != null) {
-				lambda.Parameters.AddRange(annotation.Parameters);
+				lambda.Parameters.AddRange(annotation.GetParameters());
 			} else {
 				// No parameter declaration annotation found.
 				if (!emptyArrayPattern.IsMatch(parameterArray))
