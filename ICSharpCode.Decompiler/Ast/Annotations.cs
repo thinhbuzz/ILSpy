@@ -25,7 +25,23 @@ namespace ICSharpCode.Decompiler.Ast {
 	/// </summary>
 	public class ParameterDeclarationAnnotation
 	{
-		public readonly List<ParameterDeclaration> Parameters = new List<ParameterDeclaration>();
+		readonly List<ParameterDeclaration> Parameters = new List<ParameterDeclaration>();
+		bool returnedParameters;
+
+		public IEnumerable<ParameterDeclaration> GetParameters() {
+			if (!returnedParameters)
+				returnedParameters = true;
+			else {
+				for (int i = 0; i < Parameters.Count; i++) {
+					var p = Parameters[i];
+					var cp = p.Clone();
+					cp.AddAnnotationsFrom(p);
+					Parameters[i] = cp;
+				}
+			}
+
+			return Parameters;
+		}
 		
 		public ParameterDeclarationAnnotation(ILExpression expr, StringBuilder sb)
 		{
