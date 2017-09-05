@@ -1439,7 +1439,7 @@ namespace ICSharpCode.Decompiler.Ast {
 					emptyStmt.AddAnnotation(new List<BinSpan> { new BinSpan(0, (uint)method.Body.GetCodeSize()) });
 				bs.Statements.Add(emptyStmt);
 				bs.InsertChildAfter(null, new Comment(msg, CommentType.MultiLine), Roles.Comment);
-				builder = new MethodDebugInfoBuilder(method, method.Body.Variables.Select(a => new SourceLocal(a, CreateLocalName(a), a.Type)).ToArray());
+				builder = new MethodDebugInfoBuilder(context.SettingsVersion, method, method.Body.Variables.Select(a => new SourceLocal(a, CreateLocalName(a), a.Type)).ToArray());
 				return bs;
 
 			case DecompiledBodyKind.Empty:

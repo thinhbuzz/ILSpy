@@ -154,7 +154,7 @@ namespace ICSharpCode.Decompiler.Ast {
 				astBlock.Statements.InsertBefore(insertionPoint, newVarDecl);
 			}
 
-			builder = new MethodDebugInfoBuilder(methodDef, CreateSourceLocals(localVariables));
+			builder = new MethodDebugInfoBuilder(context.SettingsVersion, methodDef, CreateSourceLocals(localVariables));
 			
 			return astBlock;
 		}

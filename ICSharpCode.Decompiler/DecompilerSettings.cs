@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading;
 using ICSharpCode.NRefactory.CSharp;
 
 namespace ICSharpCode.Decompiler {
@@ -578,9 +579,13 @@ namespace ICSharpCode.Decompiler {
 		public event PropertyChangedEventHandler PropertyChanged;
 
 		protected virtual void OnPropertyChanged(string propertyName) {
+			Interlocked.Increment(ref settingsVersion);
 			PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 			OnModified();
 		}
+
+		public int SettingsVersion => settingsVersion;
+		volatile int settingsVersion;
 
 		public DecompilerSettings Clone() {
 			// DON'T use MemberwiseClone() since we want to return a DecompilerSettings, not any

@@ -93,8 +93,9 @@ namespace ICSharpCode.Decompiler.Disassembler {
 
 	public class DisassemblerOptions
 	{
-		public DisassemblerOptions(CancellationToken cancellationToken, ModuleDef ownerModule)
+		public DisassemblerOptions(int optionsVersion, CancellationToken cancellationToken, ModuleDef ownerModule)
 		{
+			this.OptionsVersion = optionsVersion;
 			this.CancellationToken = cancellationToken;
 			this.OwnerModule = ownerModule;
 		}
@@ -137,6 +138,11 @@ namespace ICSharpCode.Decompiler.Disassembler {
 		/// Shows line numbers if a PDB file has been loaded
 		/// </summary>
 		public bool ShowPdbInfo;
+
+		/// <summary>
+		/// Gets incremented when the options change
+		/// </summary>
+		public readonly int OptionsVersion;
 	}
 
 	/// <summary>
@@ -389,7 +395,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			if (method.HasBody) {
 				instructionOperandConverter.Clear();
 				instructionOperandConverter.Add(method);
-				builder = new MethodDebugInfoBuilder(method, instructionOperandConverter.GetSourceLocals());
+				builder = new MethodDebugInfoBuilder(options.OptionsVersion, method, instructionOperandConverter.GetSourceLocals());
 				builder.StartPosition = methodStartPosition;
 				methodBodyDisassembler.Disassemble(method, builder, instructionOperandConverter);
 			}

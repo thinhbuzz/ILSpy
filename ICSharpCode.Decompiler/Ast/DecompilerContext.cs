@@ -31,6 +31,7 @@ namespace ICSharpCode.Decompiler {
 		public TypeDef CurrentType;
 		public MethodDef CurrentMethod;
 		public DecompilerSettings Settings = new DecompilerSettings();
+		public readonly int SettingsVersion;
 		public bool CurrentMethodIsAsync;
 		public bool CurrentMethodIsYieldReturn;
 		public readonly DecompilerCache Cache;
@@ -39,17 +40,18 @@ namespace ICSharpCode.Decompiler {
 
 		public static DecompilerContext CreateTestContext(ModuleDef currentModule)
 		{
-			var ctx = new DecompilerContext(currentModule);
+			var ctx = new DecompilerContext(0, currentModule);
 			ctx.Settings.InitializeForTest();
 			return ctx;
 		}
 
-		public DecompilerContext(ModuleDef currentModule, MetadataTextColorProvider metadataTextColorProvider = null)
-			: this(currentModule, metadataTextColorProvider, false) {
+		public DecompilerContext(int settingsVersion, ModuleDef currentModule, MetadataTextColorProvider metadataTextColorProvider = null)
+			: this(settingsVersion, currentModule, metadataTextColorProvider, false) {
 		}
 
-		public DecompilerContext(ModuleDef currentModule, MetadataTextColorProvider metadataTextColorProvider, bool calculateBinSpans)
+		public DecompilerContext(int settingsVersion, ModuleDef currentModule, MetadataTextColorProvider metadataTextColorProvider, bool calculateBinSpans)
 		{
+			this.SettingsVersion = settingsVersion;
 			this.CurrentModule = currentModule;
 			this.CalculateBinSpans = calculateBinSpans;
 			this.Cache = new DecompilerCache(this);
