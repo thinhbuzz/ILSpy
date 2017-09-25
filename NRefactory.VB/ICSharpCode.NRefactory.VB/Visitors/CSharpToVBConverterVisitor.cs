@@ -1560,9 +1560,11 @@ namespace ICSharpCode.NRefactory.VB.Visitors {
 			if (def == null)
 				return false;
 			var td = def.DeclaringType;
-			return td != null && td.DeclaringType == null && td.IsSealed && td.IsAbstract;
+			return td != null && td.DeclaringType == null && td.IsSealed && td.IsDefined(stringMicrosoftVisualBasicCompilerServices, stringStandardModuleAttribute);
 		}
-		
+		static readonly UTF8String stringMicrosoftVisualBasicCompilerServices = new UTF8String("Microsoft.VisualBasic.CompilerServices");
+		static readonly UTF8String stringStandardModuleAttribute = new UTF8String("StandardModuleAttribute");
+
 		public AstNode VisitEventDeclaration(CSharp.EventDeclaration eventDeclaration, object data)
 		{
 			members.Push(new MemberInfo());

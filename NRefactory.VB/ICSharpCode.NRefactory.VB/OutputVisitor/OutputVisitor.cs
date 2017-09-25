@@ -26,7 +26,7 @@ namespace ICSharpCode.NRefactory.VB {
 		readonly Stack<AstNode> containerStack = new Stack<AstNode>();
 		readonly Stack<AstNode> positionStack = new Stack<AstNode>();
 		struct MethodRefs {
-			public object MethodReference;
+			public object MethodReference; 
 			public static MethodRefs Create() => new MethodRefs {
 				MethodReference = new object(),
 			};
@@ -150,11 +150,16 @@ namespace ICSharpCode.NRefactory.VB {
 					return CodeBracesRangeFlags.BlockKind_Interface;
 				if (td.IsValueType)
 					return CodeBracesRangeFlags.BlockKind_ValueType;
-				if (td.DeclaringType == null && td.IsSealed && td.IsAbstract)
+				if (IsModule(td))
 					return CodeBracesRangeFlags.BlockKind_Module;
 			}
 			return CodeBracesRangeFlags.BlockKind_Type;
 		}
+
+		static bool IsModule(TypeDef type) =>
+			type != null && type.DeclaringType == null && type.IsSealed && type.IsDefined(stringMicrosoftVisualBasicCompilerServices, stringStandardModuleAttribute);
+		static readonly UTF8String stringMicrosoftVisualBasicCompilerServices = new UTF8String("Microsoft.VisualBasic.CompilerServices");
+		static readonly UTF8String stringStandardModuleAttribute = new UTF8String("StandardModuleAttribute");
 
 		bool MaybeNewLinesAfterUsings(AstNode node)
 		{
@@ -260,7 +265,9 @@ namespace ICSharpCode.NRefactory.VB {
 				parameterDeclaration.Type.AcceptVisitor(this, data);
 			}
 			if (!parameterDeclaration.OptionalValue.IsNull) {
+				Space();
 				WriteToken("=", ParameterDeclaration.Roles.Assign, BoxedTextColor.Operator);
+				Space();
 				parameterDeclaration.OptionalValue.AcceptVisitor(this, data);
 			}
 			SaveDeclarationOffset();
@@ -2463,6 +2470,7 @@ namespace ICSharpCode.NRefactory.VB {
 			WriteKeyword("Operator");
 			if (writeEndOperator)
 				formatter.AddHighlightedKeywordReference(currentMethodRefs.MethodReference, start, formatter.NextPosition);
+			Space();
 			switch (operatorDeclaration.Operator) {
 				case OverloadableOperatorType.Add:
 				case OverloadableOperatorType.UnaryPlus:
