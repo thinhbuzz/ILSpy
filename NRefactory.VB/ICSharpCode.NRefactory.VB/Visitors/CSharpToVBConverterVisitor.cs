@@ -1845,7 +1845,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors {
 					var p = m.DeclaringType.Properties.FirstOrDefault(a => a.GetMethod == m || a.SetMethod == m);
 					if (p == null)
 						continue;
-					yield return new ImplementsResult(o.MethodDeclaration.DeclaringType, p.Name, o.MethodDeclaration);
+					yield return new ImplementsResult(o.MethodDeclaration.DeclaringType, p.Name, (object)GetProperty(o.MethodDeclaration) ?? o.MethodDeclaration);
 				}
 			}
 			var comparer = new SigComparer(0, prop.Module);
@@ -1869,6 +1869,34 @@ namespace ICSharpCode.NRefactory.VB.Visitors {
 			}
 		}
 
+		static PropertyDef GetProperty(IMethodDefOrRef method) {
+			var md = method.ResolveMethodDef();
+			if (md == null)
+				return null;
+			foreach (var p in md.DeclaringType.Properties) {
+				if (p.GetMethods.Contains(md))
+					return p;
+				if (p.SetMethods.Contains(md))
+					return p;
+				if (p.OtherMethods.Contains(md))
+					return p;
+			}
+			return null;
+		}
+
+		static EventDef GetEvent(IMethodDefOrRef method) {
+			var md = method.ResolveMethodDef();
+			if (md == null)
+				return null;
+			foreach (var e in md.DeclaringType.Events) {
+				if (e.AddMethod == md || e.RemoveMethod == md || e.InvokeMethod == md)
+					return e;
+				if (e.OtherMethods.Contains(md))
+					return e;
+			}
+			return null;
+		}
+
 		static IEnumerable<ImplementsResult> GetEvents(EventDef evt) {
 			var em = evt.AddMethod ?? evt.RemoveMethod ?? evt.InvokeMethod;
 			if (em != null) {
@@ -1881,7 +1909,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors {
 					var e = m.DeclaringType.Events.FirstOrDefault(a => a.AddMethod == m || a.RemoveMethod == m || a.InvokeMethod == m);
 					if (e == null)
 						continue;
-					yield return new ImplementsResult(o.MethodDeclaration.DeclaringType, e.Name, o.MethodDeclaration);
+					yield return new ImplementsResult(o.MethodDeclaration.DeclaringType, e.Name, (object)GetEvent(o.MethodDeclaration) ?? o.MethodDeclaration);
 				}
 			}
 			var comparer = new SigComparer(0, evt.Module);
