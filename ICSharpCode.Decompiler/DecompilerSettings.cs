@@ -428,7 +428,7 @@ namespace ICSharpCode.Decompiler {
 			}
 		}
 
-		bool sortMembers = true;
+		bool sortMembers = false;
 
 		/// <summary>
 		/// Gets/sets whether to sort members
