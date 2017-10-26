@@ -23,6 +23,7 @@ using System.Linq;
 using ICSharpCode.Decompiler.ILAst;
 using dnlib.DotNet;
 using System.Text;
+using System.Globalization;
 
 namespace ICSharpCode.Decompiler.Ast {
 	public class NameVariables
@@ -399,10 +400,17 @@ namespace ICSharpCode.Decompiler.Ast {
 			sb.Clear();
 			// remove the backtick (generics)
 			int pos = name.LastIndexOf('`');
-			if (pos >= 0)
-				sb.Append(name, 0, pos);
-			else
-				sb.Append(name);
+			if (pos < 0)
+				pos = name.Length;
+			for (int i = 0; i < pos; i++) {
+				var c = name[i];
+				if (IsValidChar(c))
+					sb.Append(c);
+				else {
+					sb.Append("_u");
+					sb.Append(((ushort)c).ToString("X4"));
+				}
+			}
 
 			// remove field prefix:
 			if (sb.Length > 2 && sb[0] == 'm' && sb[1] == '_')
@@ -421,6 +429,50 @@ namespace ICSharpCode.Decompiler.Ast {
 				sb[i] = newChar;
 			}
 			return sb.ToString();
+		}
+
+		static bool IsValidChar(char c) {
+			if (0x21 <= c && c <= 0x7E)
+				return true;
+			if (c <= 0x20)
+				return false;
+
+			switch (char.GetUnicodeCategory(c)) {
+			case UnicodeCategory.UppercaseLetter:
+			case UnicodeCategory.LowercaseLetter:
+			case UnicodeCategory.OtherLetter:
+			case UnicodeCategory.DecimalDigitNumber:
+				return true;
+
+			case UnicodeCategory.TitlecaseLetter:
+			case UnicodeCategory.ModifierLetter:
+			case UnicodeCategory.NonSpacingMark:
+			case UnicodeCategory.SpacingCombiningMark:
+			case UnicodeCategory.EnclosingMark:
+			case UnicodeCategory.LetterNumber:
+			case UnicodeCategory.OtherNumber:
+			case UnicodeCategory.SpaceSeparator:
+			case UnicodeCategory.LineSeparator:
+			case UnicodeCategory.ParagraphSeparator:
+			case UnicodeCategory.Control:
+			case UnicodeCategory.Format:
+			case UnicodeCategory.Surrogate:
+			case UnicodeCategory.PrivateUse:
+			case UnicodeCategory.ConnectorPunctuation:
+			case UnicodeCategory.DashPunctuation:
+			case UnicodeCategory.OpenPunctuation:
+			case UnicodeCategory.ClosePunctuation:
+			case UnicodeCategory.InitialQuotePunctuation:
+			case UnicodeCategory.FinalQuotePunctuation:
+			case UnicodeCategory.OtherPunctuation:
+			case UnicodeCategory.MathSymbol:
+			case UnicodeCategory.CurrencySymbol:
+			case UnicodeCategory.ModifierSymbol:
+			case UnicodeCategory.OtherSymbol:
+			case UnicodeCategory.OtherNotAssigned:
+			default:
+				return false;
+			}
 		}
 	}
 }
