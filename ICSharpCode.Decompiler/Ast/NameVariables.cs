@@ -214,7 +214,7 @@ namespace ICSharpCode.Decompiler.Ast {
 		string GenerateNameForVariable(ILVariable variable, ILBlock methodBody)
 		{
 			string proposedName = null;
-			if (new SigComparer().Equals(variable.Type, context.CurrentType.Module.CorLibTypes.Int32)) {
+			if (new SigComparer().Equals(variable.GetVariableType(), context.CurrentType.Module.CorLibTypes.Int32)) {
 				// test whether the variable might be a loop counter
 				bool isLoopCounter = false;
 				foreach (ILWhileLoop loop in methodBody.GetSelfAndChildrenRecursive<ILWhileLoop>()) {
@@ -272,7 +272,7 @@ namespace ICSharpCode.Decompiler.Ast {
 				}
 			}
 			if (string.IsNullOrEmpty(proposedName)) {
-				proposedName = GetNameByType(variable.Type);
+				proposedName = GetNameByType(variable.GetVariableType());
 			}
 			
 			// remove any numbers from the proposed name

@@ -507,13 +507,14 @@ namespace ICSharpCode.Decompiler.ILAst {
 		public string Name;
 		public bool GeneratedByDecompiler;
 		public TypeSig Type;
+		public TypeSig GetVariableType() => Type ?? OriginalVariable?.Type ?? OriginalParameter?.Type;
 		public Local OriginalVariable;
 		public Parameter OriginalParameter;
 		public SourceLocal GetSourceLocal() {
 			Debug.Assert(OriginalParameter == null);
 			Debug.Assert(Name != null);
 			if (sourceLocal == null)
-				Interlocked.CompareExchange(ref sourceLocal, new SourceLocal(OriginalVariable, Name, Type), null);
+				Interlocked.CompareExchange(ref sourceLocal, new SourceLocal(OriginalVariable, Name, GetVariableType()), null);
 			return sourceLocal;
 		}
 		SourceLocal sourceLocal;
