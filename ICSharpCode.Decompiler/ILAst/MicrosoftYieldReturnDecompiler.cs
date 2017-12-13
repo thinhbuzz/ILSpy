@@ -335,6 +335,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 						if (fieldToParameterMap.TryGetValue(fd, out realVar) && realVar.IsParameter && realVar.OriginalParameter.IsHiddenThisParameter) {
 							cachedThisVar = v;
 							body.RemoveAt(CACHED_THIS_INDEX);
+							bodyLength--;
 						}
 					}
 				}
