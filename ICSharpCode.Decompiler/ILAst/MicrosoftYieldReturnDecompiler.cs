@@ -212,6 +212,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		#region Analysis of MoveNext()
 		protected override void AnalyzeMoveNext() {
 			ILBlock ilMethod = CreateILAst(methodMoveNext);
+			iteratorMoveNextMethod = methodMoveNext;
 
 			if (ilMethod.Body.Count == 0)
 				throw new SymbolicAnalysisFailedException();

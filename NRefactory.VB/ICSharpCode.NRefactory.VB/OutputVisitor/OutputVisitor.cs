@@ -962,11 +962,9 @@ namespace ICSharpCode.NRefactory.VB {
 		#endregion
 		
 		#region debug statements
-		int preventDebugStart = 0;
 		void DebugStart(AstNode node)
 		{
-			if (++preventDebugStart == 1)
-				formatter.DebugStart(node);
+			formatter.DebugStart(node);
 		}
 
 		void DebugHidden(object hiddenBinSpans)
@@ -988,8 +986,7 @@ namespace ICSharpCode.NRefactory.VB {
 		{
 			if (addSelf)
 				formatter.DebugExpression(node);
-			if (--preventDebugStart == 0)
-				formatter.DebugEnd(node);
+			formatter.DebugEnd(node);
 		}
 		#endregion
 		

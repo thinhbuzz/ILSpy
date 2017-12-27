@@ -178,6 +178,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		protected override void AnalyzeMoveNext() {
 			var moveNextMethod = MethodUtils.GetMethod_MoveNext(enumeratorType).FirstOrDefault();
 			var ilMethod = CreateILAst(moveNextMethod);
+			iteratorMoveNextMethod = moveNextMethod;
 			var body = ilMethod.Body;
 			if (body.Count == 0)
 				throw new SymbolicAnalysisFailedException();

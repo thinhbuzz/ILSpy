@@ -111,6 +111,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		protected override void AnalyzeMoveNext() {
 			var methodMoveNext = MethodUtils.GetMethod_MoveNext(enumeratorType).FirstOrDefault();
 			var ilMethod = CreateILAst(methodMoveNext);
+			iteratorMoveNextMethod = methodMoveNext;
 
 			var body = ilMethod.Body;
 			if (body.Count < 3)

@@ -44,6 +44,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		protected FieldDef currentField;
 		protected Dictionary<FieldDef, ILVariable> fieldToParameterMap = new Dictionary<FieldDef, ILVariable>();
 		protected List<ILNode> newBody;
+		protected MethodDef iteratorMoveNextMethod;
 
 		// See Microsoft.CodeAnalysis.CSharp.MethodToStateMachineRewriter.cachedThis for info on why and when it's cached
 		protected ILVariable cachedThisVar;
@@ -59,7 +60,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			VisualBasic11YieldReturnDecompiler.TryCreateCore(context, method, autoPropertyProvider);
 
 		#region Run() method
-		public static void Run(DecompilerContext context, ILBlock method, AutoPropertyProvider autoPropertyProvider, List<ILNode> list_ILNode, Func<ILBlock, ILInlining> getILInlining, List<ILExpression> listExpr, List<ILBlock> listBlock, Dictionary<ILLabel, int> labelRefCount) {
+		public static void Run(DecompilerContext context, ILBlock method, AutoPropertyProvider autoPropertyProvider, ref MethodDef inlinedMethod, List<ILNode> list_ILNode, Func<ILBlock, ILInlining> getILInlining, List<ILExpression> listExpr, List<ILBlock> listBlock, Dictionary<ILLabel, int> labelRefCount) {
 			if (!context.Settings.YieldReturn)
 				return; // abort if enumerator decompilation is disabled
 			var yrd = TryCreate(context, method, autoPropertyProvider);
@@ -67,6 +68,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				return;
 			try {
 				yrd.Run();
+				Debug.Assert(yrd.iteratorMoveNextMethod != null);
 			}
 			catch (SymbolicAnalysisFailedException) {
 				return;
@@ -75,6 +77,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			method.Body.Clear();
 			method.EntryGoto = null;
 			method.Body.AddRange(yrd.newBody);
+			inlinedMethod = yrd.iteratorMoveNextMethod;
 
 			// Repeat the inlining/copy propagation optimization because the conversion of field access
 			// to local variables can open up additional inlining possibilities.
@@ -130,7 +133,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 			var optimizer = this.context.Cache.GetILAstOptimizer();
 			try {
-				optimizer.Optimize(context, ilMethod, autoPropertyProvider, ILAstOptimizationStep.YieldReturn);
+				optimizer.Optimize(context, ilMethod, autoPropertyProvider, out _, ILAstOptimizationStep.YieldReturn);
 			}
 			finally {
 				this.context.Cache.Return(optimizer);

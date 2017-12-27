@@ -191,15 +191,16 @@ namespace ICSharpCode.Decompiler.ILAst {
 		}
 		LoopsAndConditions cached_LoopsAndConditions;
 
-		public void Optimize(DecompilerContext context, ILBlock method, ILAstOptimizationStep abortBeforeStep = ILAstOptimizationStep.None) =>
-			Optimize(context, method, null, abortBeforeStep);
+		public void Optimize(DecompilerContext context, ILBlock method, out MethodDef inlinedMethod, ILAstOptimizationStep abortBeforeStep = ILAstOptimizationStep.None) =>
+			Optimize(context, method, null, out inlinedMethod, abortBeforeStep);
 
 		readonly Func<ILBlock, ILInlining> del_getILInlining;
-		internal void Optimize(DecompilerContext context, ILBlock method, AutoPropertyProvider autoPropertyProvider, ILAstOptimizationStep abortBeforeStep = ILAstOptimizationStep.None)
+		internal void Optimize(DecompilerContext context, ILBlock method, AutoPropertyProvider autoPropertyProvider, out MethodDef inlinedMethod, ILAstOptimizationStep abortBeforeStep = ILAstOptimizationStep.None)
 		{
 			this.context = context;
 			this.corLib = context.CurrentMethod.Module.CorLibTypes;
 			this.method = method;
+			inlinedMethod = null;
 
 			try {
 				if (abortBeforeStep == ILAstOptimizationStep.RemoveVisualBasicCompilerCode) return;
@@ -229,8 +230,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 				inlining1.CopyPropagation(Optimize_List_ILNode);
 
 				if (abortBeforeStep == ILAstOptimizationStep.YieldReturn) return;
-				YieldReturnDecompiler.Run(context, method, autoPropertyProvider, Optimize_List_ILNode, del_getILInlining, Optimize_List_ILExpression, Optimize_List_ILBlock, Optimize_Dict_ILLabel_Int32);
-				var yrd = AsyncDecompiler.RunStep1(context, method, autoPropertyProvider, Optimize_List_ILExpression, Optimize_List_ILBlock, Optimize_Dict_ILLabel_Int32);
+				YieldReturnDecompiler.Run(context, method, autoPropertyProvider, ref inlinedMethod, Optimize_List_ILNode, del_getILInlining, Optimize_List_ILExpression, Optimize_List_ILBlock, Optimize_Dict_ILLabel_Int32);
+				var yrd = AsyncDecompiler.RunStep1(context, method, autoPropertyProvider, ref inlinedMethod, Optimize_List_ILExpression, Optimize_List_ILBlock, Optimize_Dict_ILLabel_Int32);
 
 				if (abortBeforeStep == ILAstOptimizationStep.AsyncAwait) return;
 				yrd?.RunStep2(context, method, Optimize_List_ILExpression, Optimize_List_ILBlock, Optimize_Dict_ILLabel_Int32, Optimize_List_ILNode, del_getILInlining);

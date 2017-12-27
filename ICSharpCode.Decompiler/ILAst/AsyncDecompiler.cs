@@ -82,7 +82,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		protected static readonly UTF8String nameGetResult = new UTF8String("GetResult");
 
 		#region RunStep1() method
-		public static AsyncDecompiler RunStep1(DecompilerContext context, ILBlock method, AutoPropertyProvider autoPropertyProvider, List<ILExpression> listExpr, List<ILBlock> listBlock, Dictionary<ILLabel, int> labelRefCount) {
+		public static AsyncDecompiler RunStep1(DecompilerContext context, ILBlock method, AutoPropertyProvider autoPropertyProvider, ref MethodDef inlinedMethod, List<ILExpression> listExpr, List<ILBlock> listBlock, Dictionary<ILLabel, int> labelRefCount) {
 			if (!context.Settings.AsyncAwait)
 				return null;
 			var yrd = TryCreate(context, method, autoPropertyProvider);
@@ -91,6 +91,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			List<ILNode> newTopLevelBody;
 			try {
 				newTopLevelBody = yrd.Run();
+				Debug.Assert(yrd.moveNextMethod != null);
 			}
 			catch (SymbolicAnalysisFailedException) {
 				return null;
@@ -100,6 +101,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			method.Body.Clear();
 			method.EntryGoto = null;
 			method.Body.AddRange(newTopLevelBody);
+			inlinedMethod = yrd.moveNextMethod;
 			ILAstOptimizer.RemoveRedundantCode(context, method, listExpr, listBlock, labelRefCount);
 			return yrd;
 		}
@@ -313,7 +315,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 			var optimizer = this.context.Cache.GetILAstOptimizer();
 			try {
-				optimizer.Optimize(context, ilMethod, autoPropertyProvider, ILAstOptimizationStep.YieldReturn);
+				optimizer.Optimize(context, ilMethod, autoPropertyProvider, out _, ILAstOptimizationStep.YieldReturn);
 			}
 			finally {
 				context.Cache.Return(optimizer);

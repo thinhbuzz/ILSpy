@@ -209,7 +209,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			subContext.CurrentMethodIsAsync = false;
 			subContext.CurrentMethodIsYieldReturn = false;
 			subContext.ReservedVariableNames.AddRange(currentlyUsedVariableNames);
-			subContext.CalculateBinSpans = false;
+			subContext.CalculateBinSpans = true;
 			MethodDebugInfoBuilder builder;
 			BlockStatement body = AstMethodBodyBuilder.CreateMethodBody(method, subContext, autoPropertyProvider, ame.Parameters, false, stringBuilder, out builder);
 			ame.AddAnnotation(builder);
