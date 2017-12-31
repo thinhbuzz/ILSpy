@@ -212,7 +212,6 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			subContext.CalculateBinSpans = true;
 			MethodDebugInfoBuilder builder;
 			BlockStatement body = AstMethodBodyBuilder.CreateMethodBody(method, subContext, autoPropertyProvider, ame.Parameters, false, stringBuilder, out builder);
-			ame.AddAnnotation(builder);
 			TransformationPipeline.RunTransformationsUntil(body, v => v is DelegateConstruction, subContext);
 			body.AcceptVisitor(this, null);
 			ame.IsAsync = subContext.CurrentMethodIsAsync;
@@ -256,9 +255,11 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				if (stmtBinSpans.Count > 0)
 					returnExpr.AddAnnotation(stmtBinSpans);
 				returnExpr.Remove();
+				returnExpr.AddAnnotation(builder);
 				lambda.Body = returnExpr;
 				replacement = lambda;
 			} else {
+				ame.AddAnnotation(builder);
 				ame.Body = body;
 				replacement = ame;
 			}

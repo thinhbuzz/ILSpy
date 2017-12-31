@@ -350,6 +350,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 	public class ILLabel: ILNode
 	{
 		public string Name;
+		public uint Offset = uint.MaxValue;
 		public object Reference => o ?? (o = new object());
 		object o;
 
@@ -507,17 +508,25 @@ namespace ICSharpCode.Decompiler.ILAst {
 		public string Name;
 		public bool GeneratedByDecompiler;
 		public TypeSig Type;
-		public TypeSig GetVariableType() => Type ?? OriginalVariable?.Type ?? OriginalParameter?.Type;
+		public TypeSig GetVariableType() => Type ?? OriginalVariable?.Type ?? OriginalParameter?.Type ?? new SentinelSig();
 		public Local OriginalVariable;
 		public Parameter OriginalParameter;
+		public FieldDef HoistedField;
 		public SourceLocal GetSourceLocal() {
 			Debug.Assert(OriginalParameter == null);
 			Debug.Assert(Name != null);
-			if (sourceLocal == null)
-				Interlocked.CompareExchange(ref sourceLocal, new SourceLocal(OriginalVariable, Name, GetVariableType()), null);
-			return sourceLocal;
+			if (sourceParamOrLocal == null)
+				Interlocked.CompareExchange(ref sourceParamOrLocal, HoistedField != null ? new SourceLocal(OriginalVariable, Name, HoistedField) : new SourceLocal(OriginalVariable, Name, GetVariableType()), null);
+			return (SourceLocal)sourceParamOrLocal;
 		}
-		SourceLocal sourceLocal;
+		public SourceParameter GetSourceParameter() {
+			Debug.Assert(OriginalParameter != null);
+			Debug.Assert(Name != null);
+			if (sourceParamOrLocal == null)
+				Interlocked.CompareExchange(ref sourceParamOrLocal, HoistedField != null ? new SourceParameter(OriginalParameter, Name, HoistedField) : new SourceParameter(OriginalParameter, Name, GetVariableType()), null);
+			return (SourceParameter)sourceParamOrLocal;
+		}
+		object sourceParamOrLocal;
 		public object GetTextReferenceObject() {
 			if (OriginalParameter != null)
 				return OriginalParameter;

@@ -408,7 +408,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 						branchTargets.Add(target);
 						// The target of a branch must have label
 						if (target.Label == null) {
-							target.Label = new ILLabel() { Name = target.Name };
+							target.Label = new ILLabel() { Name = target.Name, Offset = target.Offset };
 						}
 					}
 				} else if (byteCode.Operand is Instruction) {
@@ -416,7 +416,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					branchTargets.Add(target);
 					// The target of a branch must have label
 					if (target.Label == null) {
-						target.Label = new ILLabel() { Name = target.Name };
+						target.Label = new ILLabel() { Name = target.Name, Offset = target.Offset };
 					}
 				}
 				

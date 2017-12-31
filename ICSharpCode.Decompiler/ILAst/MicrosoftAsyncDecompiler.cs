@@ -24,8 +24,8 @@ using dnlib.DotNet;
 namespace ICSharpCode.Decompiler.ILAst {
 	/// <summary>
 	/// Supports
-	///		csc (11.0 - 14.0)
-	///		vbc (11.0 - 14.0)
+	///		csc (11.0 - 15.0)
+	///		vbc (11.0 - 15.0)
 	/// </summary>
 	sealed class MicrosoftAsyncDecompiler : AsyncDecompiler {
 		// These fields are set by MatchTaskCreationPattern()
@@ -275,7 +275,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			int pos = rangeAnalysis.AssignStateRanges(body, startPos, bodyLength);
 			rangeAnalysis.EnsureLabelAtPos(body, ref pos, ref bodyLength);
 
-			var labelStateRangeMapping = rangeAnalysis.CreateLabelRangeMapping(body, pos, bodyLength);
+			var labelStateRangeMapping = CreateLabelRangeMapping(rangeAnalysis, body, pos, bodyLength);
 			var newBody = ConvertBody(body, pos, bodyLength, labelStateRangeMapping);
 			newBody.Insert(0, MakeGoTo(labelStateRangeMapping, initialState));
 			newBody.Add(setResultAndExitLabel);
@@ -316,7 +316,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			int posInBody = rangeAnalysis.AssignStateRanges(body, pos, bodyLengthTmp);
 			if (posInBody == pos)
 				return false;
-			var newMapping = rangeAnalysis.CreateLabelRangeMapping(body, posInBody, bodyLengthTmp);
+			var newMapping = CreateLabelRangeMapping(rangeAnalysis, body, posInBody, bodyLengthTmp);
 			mapping.AddRange(newMapping);
 			pos = posInBody - 1;
 			return true;
@@ -414,7 +414,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 						int posInTryBody = rangeAnalysis.AssignStateRanges(tryBody, tryBodyLength);
 						rangeAnalysis.EnsureLabelAtPos(tryBody, ref posInTryBody, ref tryBodyLength);
 
-						var mappingInTryBlock = rangeAnalysis.CreateLabelRangeMapping(tryBody, posInTryBody, tryBodyLength);
+						var mappingInTryBlock = CreateLabelRangeMapping(rangeAnalysis, tryBody, posInTryBody, tryBodyLength);
 						var newTryBody = ConvertBody(tryBody, posInTryBody, tryBodyLength, mappingInTryBlock);
 						newTryBody.Insert(0, MakeGoTo(mappingInTryBlock, initialState));
 
@@ -541,10 +541,16 @@ namespace ICSharpCode.Decompiler.ILAst {
 				throw new SymbolicAnalysisFailedException();
 
 			// stfld(StateMachine::<>1__state, ldloc(this), ldc.i4(0))
-			if (MatchStateAssignment(newBody.LastOrDefault(), out targetStateID))
+			if (MatchStateAssignment(newBody.LastOrDefault(), out targetStateID)) {
+				AddYieldOffset(newBody, newBody.Count - 1, 1, targetStateID);
 				newBody.RemoveAt(newBody.Count - 1); // remove awaiter field assignment
-			else if (MatchRoslynStateAssignment(newBody, newBody.Count - 3, out targetStateID))
+			}
+			else if (MatchRoslynStateAssignment(newBody, newBody.Count - 3, out targetStateID)) {
+				AddYieldOffset(newBody, newBody.Count - 3, 3, targetStateID);
 				newBody.RemoveRange(newBody.Count - 3, 3); // remove awaiter field assignment
+			}
+			else
+				Debug.Fail("Couldn't find new async state machine state");
 		}
 		#endregion
 

@@ -16,7 +16,6 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -365,7 +364,15 @@ namespace ICSharpCode.Decompiler.ILAst {
 			}
 		}
 
-		ILExpression CreateYieldReturn(ILExpression arg) => new ILExpression(ILCode.YieldReturn, null, arg);
+		ILExpression CreateYieldReturn(ILExpression stExpr) {
+			var arg = stExpr.Arguments[1];
+			if (context.CalculateBinSpans) {
+				arg.BinSpans.AddRange(stExpr.BinSpans);
+				arg.BinSpans.AddRange(stExpr.Arguments[0].GetSelfAndChildrenRecursiveBinSpans());
+			}
+			return new ILExpression(ILCode.YieldReturn, null, arg);
+		}
+
 		ILExpression CreateYieldBreak() => new ILExpression(ILCode.YieldBreak, null);
 
 		void ConvertBody(List<ILNode> body, int startPos, int bodyLength) {
@@ -396,7 +403,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 							stateChanges.Add(new SetState(newBody.Count, currentState));
 						}
 						else if (field == currentField)
-							newBody.Add(CreateYieldReturn(expr.Arguments[1]));
+							newBody.Add(CreateYieldReturn(expr));
 						else
 							newBody.Add(body[pos]);
 						break;

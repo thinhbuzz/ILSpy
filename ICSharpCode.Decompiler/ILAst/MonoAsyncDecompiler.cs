@@ -188,6 +188,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				newBody.Add(new ILExpression(ILCode.Ret, null));
 
 			SaveAwaiterFields(newBody);
+			RemoveAsyncStepInfoState(initialState);
 
 			return newBody;
 		}
@@ -248,6 +249,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 						if (newBodyCount < 2)
 							throw new SymbolicAnalysisFailedException();
 
+						AddYieldOffset(body, pos, 1, val);
+
 						// stfld($awaiter0, ldloc(this), callvirt(GetAwaiter, ...))
 						IField awaiterField;
 						ILExpression ldloc, callGetAwaiter;
@@ -258,6 +261,11 @@ namespace ICSharpCode.Decompiler.ILAst {
 						if (callGetAwaiter.Arguments.Count != 1)
 							throw new SymbolicAnalysisFailedException();
 						var origExpr = callGetAwaiter.Arguments[0];
+						if (context.CalculateBinSpans) {
+							origExpr.BinSpans.AddRange(ldloc.BinSpans);
+							origExpr.BinSpans.AddRange(newBody[newBodyCount - 2].BinSpans);
+							origExpr.BinSpans.AddRange(callGetAwaiter.BinSpans);
+						}
 						var methodGetAwaiter = (IMethod)callGetAwaiter.Operand;
 						if (methodGetAwaiter.Name != nameGetAwaiter)
 							throw new SymbolicAnalysisFailedException();
@@ -298,6 +306,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 						if (pos >= bodyLength || !body[pos].Match(ILCode.Leave, out lbl) || lbl != exitLabel)
 							throw new SymbolicAnalysisFailedException();
+
+						AddResumeLabel(lbl, val);
 
 						newBody[newBody.Count - 2] = new ILExpression(ILCode.Await, null, origExpr);
 						newBody[newBody.Count - 1] = MakeGoTo(mapping, val);

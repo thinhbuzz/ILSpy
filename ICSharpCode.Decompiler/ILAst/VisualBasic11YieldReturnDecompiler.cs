@@ -193,7 +193,15 @@ namespace ICSharpCode.Decompiler.ILAst {
 		ILLabel returnLabel;
 		ILLabel returnFalseLabel;
 
-		ILExpression CreateYieldReturn(ILExpression arg) => new ILExpression(ILCode.YieldReturn, null, arg);
+		ILExpression CreateYieldReturn(ILExpression stExpr) {
+			var arg = stExpr.Arguments[1];
+			if (context.CalculateBinSpans) {
+				arg.BinSpans.AddRange(stExpr.BinSpans);
+				arg.BinSpans.AddRange(stExpr.Arguments[0].GetSelfAndChildrenRecursiveBinSpans());
+			}
+			return new ILExpression(ILCode.YieldReturn, null, arg);
+		}
+
 		ILExpression CreateYieldBreak() => new ILExpression(ILCode.YieldBreak, null);
 
 		void ConvertBody(List<ILNode> body, int startPos, int bodyLength) {
@@ -224,7 +232,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 							currentState = (int)expr.Arguments[1].Operand;
 						}
 						else if (field == currentField)
-							newBody.Add(CreateYieldReturn(expr.Arguments[1]));
+							newBody.Add(CreateYieldReturn(expr));
 						else
 							newBody.Add(body[pos]);
 						break;

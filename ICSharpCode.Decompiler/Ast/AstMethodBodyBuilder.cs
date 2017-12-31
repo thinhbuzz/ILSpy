@@ -110,13 +110,14 @@ namespace ICSharpCode.Decompiler.Ast {
 			var astBuilder = context.Cache.GetILAstBuilder();
 			MethodDef inlinedMethod = null;
 			HashSet<ILVariable> localVariables;
+			AsyncMethodDebugInfo asyncInfo;
 			try {
 				ilMethod.Body = astBuilder.Build(methodDef, true, context);
 
 				context.CancellationToken.ThrowIfCancellationRequested();
 				var optimizer = context.Cache.GetILAstOptimizer();
 				try {
-					optimizer.Optimize(context, ilMethod, autoPropertyProvider, out inlinedMethod);
+					optimizer.Optimize(context, ilMethod, autoPropertyProvider, out inlinedMethod, out asyncInfo);
 				}
 				finally {
 					context.Cache.Return(optimizer);
@@ -155,7 +156,7 @@ namespace ICSharpCode.Decompiler.Ast {
 				astBlock.Statements.InsertBefore(insertionPoint, newVarDecl);
 			}
 
-			builder = new MethodDebugInfoBuilder(context.SettingsVersion, inlinedMethod ?? methodDef, CreateSourceLocals(localVariables));
+			builder = new MethodDebugInfoBuilder(context.SettingsVersion, inlinedMethod ?? methodDef, CreateSourceLocals(localVariables), CreateSourceParameters(localVariables), asyncInfo);
 			
 			return astBlock;
 		}
@@ -184,6 +185,18 @@ namespace ICSharpCode.Decompiler.Ast {
 			}
 			var array = sourceLocalsList.ToArray();
 			sourceLocalsList.Clear();
+			return array;
+		}
+
+		readonly List<SourceParameter> sourceParametersList = new List<SourceParameter>();
+		SourceParameter[] CreateSourceParameters(HashSet<ILVariable> variables) {
+			foreach (var v in variables) {
+				if (!v.IsParameter)
+					continue;
+				sourceParametersList.Add(v.GetSourceParameter());
+			}
+			var array = sourceParametersList.ToArray();
+			sourceParametersList.Clear();
 			return array;
 		}
 

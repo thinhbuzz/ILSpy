@@ -75,6 +75,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 		static readonly UTF8String nameCreate = new UTF8String("Create");
 		static readonly UTF8String nameStart = new UTF8String("Start");
+		static readonly UTF8String nameAsyncValueTaskMethodBuilder1 = new UTF8String("AsyncValueTaskMethodBuilder`1");
 		static readonly UTF8String nameAsyncTaskMethodBuilder1 = new UTF8String("AsyncTaskMethodBuilder`1");
 		static readonly UTF8String nameAsyncTaskMethodBuilder = new UTF8String("AsyncTaskMethodBuilder");
 		static readonly UTF8String nameAsyncVoidMethodBuilder = new UTF8String("AsyncVoidMethodBuilder");
@@ -131,11 +132,16 @@ namespace ICSharpCode.Decompiler.ILAst {
 			ILTryCatchBlock tryCatchBlock;
 			int finalState;
 			AnalyzeMoveNext(out body, out tryCatchBlock, out finalState, out exitLabel);
-			if (tryCatchBlock != null)
+			if (tryCatchBlock != null) {
 				ValidateCatchBlock(tryCatchBlock.CatchBlocks[0], finalState, exitLabel);
+				var cb = tryCatchBlock.CatchBlocks[0];
+				catchHandlerOffset = GetOffset(cb.Body, 0, cb.Body.Count);
+				foreach (var span in cb.StlocBinSpans)
+					catchHandlerOffset = Math.Min(span.Start, catchHandlerOffset);
+			}
 			var newTopLevelBody = AnalyzeStateMachine(body);
 			MarkGeneratedVariables(newTopLevelBody);
-			YieldReturnDecompiler.TranslateFieldsToLocalAccess(newTopLevelBody, fieldToParameterMap, cachedThisVar);
+			YieldReturnDecompiler.TranslateFieldsToLocalAccess(newTopLevelBody, fieldToParameterMap, cachedThisVar, context.CalculateBinSpans);
 			return newTopLevelBody;
 		}
 		#endregion
@@ -169,7 +175,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			if (startMethod.Name != nameStart)
 				return false;
 			var name = startMethod.DeclaringType.Name;
-			if (name == nameAsyncTaskMethodBuilder1)
+			if (name == nameAsyncTaskMethodBuilder1 || name == nameAsyncValueTaskMethodBuilder1)
 				methodType = AsyncMethodType.TaskOfT;
 			else if (name == nameAsyncTaskMethodBuilder)
 				methodType = AsyncMethodType.Task;
@@ -315,7 +321,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 			var optimizer = this.context.Cache.GetILAstOptimizer();
 			try {
-				optimizer.Optimize(context, ilMethod, autoPropertyProvider, out _, ILAstOptimizationStep.YieldReturn);
+				optimizer.Optimize(context, ilMethod, autoPropertyProvider, out _, out _, ILAstOptimizationStep.YieldReturn);
 			}
 			finally {
 				context.Cache.Return(optimizer);
@@ -446,7 +452,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		#endregion
 
 		#region RunStep2() method
-		public void RunStep2(DecompilerContext context, ILBlock method, List<ILExpression> listExpr, List<ILBlock> listBlock, Dictionary<ILLabel, int> labelRefCount, List<ILNode> list_ILNode, Func<ILBlock, ILInlining> getILInlining) {
+		public void RunStep2(DecompilerContext context, ILBlock method, out AsyncMethodDebugInfo asyncInfo, List<ILExpression> listExpr, List<ILBlock> listBlock, Dictionary<ILLabel, int> labelRefCount, List<ILNode> list_ILNode, Func<ILBlock, ILInlining> getILInlining) {
 			Debug.Assert(context.CurrentMethodIsAsync);
 			Step2(method);
 			ILAstOptimizer.RemoveRedundantCode(context, method, listExpr, listBlock, labelRefCount);
@@ -455,9 +461,103 @@ namespace ICSharpCode.Decompiler.ILAst {
 			ILInlining inlining = getILInlining(method);
 			inlining.InlineAllVariables();
 			inlining.CopyPropagation(list_ILNode);
-		}
 
+			if (context.CalculateBinSpans) {
+				var stepInfos = new AsyncStepInfo[asyncStepInfoMap.Count];
+				int w = 0;
+				foreach (var kv in asyncStepInfoMap) {
+					var info = kv.Value;
+					Debug.Assert(info.YieldOffset != 0 && info.ResumeLabel != null);
+					if (info.YieldOffset == 0 || info.ResumeLabel == null)
+						continue;
+					bool b = GetLabelOffset(info.ResumeLabel, out uint resumeOffset);
+					Debug.Assert(b);
+					if (!b)
+						continue;
+					stepInfos[w++] = new AsyncStepInfo(info.YieldOffset, resumeOffset);
+				}
+				if (stepInfos.Length != w)
+					Array.Resize(ref stepInfos, w);
+				if (context.CurrentMethod.MethodSig.RetType.RemovePinnedAndModifiers().GetElementType() != ElementType.Void)
+					catchHandlerOffset = uint.MaxValue;
+				asyncInfo = new AsyncMethodDebugInfo(stepInfos, catchHandlerOffset);
+			}
+			else
+				asyncInfo = null;
+		}
 		protected abstract void Step2(ILBlock method);
 		#endregion
+
+		static bool GetLabelOffset(ILLabel lbl, out uint labelOffset) {
+			if (lbl.Offset != uint.MaxValue) {
+				labelOffset = lbl.Offset;
+				return true;
+			}
+			labelOffset = 0;
+			return false;
+		}
+
+		struct TempAsyncStepInfo {
+			// Right after 'state = next-state-value;'
+			public uint YieldOffset;
+			// Where the state machine continues, a unique label in MoveNext
+			public ILLabel ResumeLabel;
+		}
+		readonly Dictionary<int, TempAsyncStepInfo> asyncStepInfoMap = new Dictionary<int, TempAsyncStepInfo>();
+		uint catchHandlerOffset = uint.MaxValue;
+
+		protected void RemoveAsyncStepInfoState(int stateId) => asyncStepInfoMap.Remove(stateId);
+
+		protected void AddYieldOffset(List<ILNode> body, int index, int count, int stateId) {
+			if (!context.CalculateBinSpans)
+				return;
+			asyncStepInfoMap.TryGetValue(stateId, out var info);
+			Debug.Assert(info.YieldOffset == 0);
+			info.YieldOffset = GetNextOffset(body, index, count);
+			asyncStepInfoMap[stateId] = info;
+		}
+
+		protected void AddResumeLabel(ILLabel resumeLabel, int stateId) {
+			if (!context.CalculateBinSpans)
+				return;
+			asyncStepInfoMap.TryGetValue(stateId, out var info);
+			if (info.ResumeLabel == null || info.ResumeLabel.Offset == 0 || resumeLabel.Offset > info.ResumeLabel.Offset) {
+				info.ResumeLabel = resumeLabel;
+				asyncStepInfoMap[stateId] = info;
+			}
+		}
+
+		static uint GetNextOffset(List<ILNode> body, int index, int count) {
+			uint offs = 0;
+			for (int i = 0; i < count; i++) {
+				foreach (var span in body[index + i].GetSelfAndChildrenRecursiveBinSpans())
+					offs = Math.Max(offs, span.End);
+			}
+			Debug.Assert(offs != 0);
+			return offs;
+		}
+
+		static uint GetOffset(List<ILNode> body, int index, int count) {
+			uint offs = uint.MaxValue;
+			for (int i = 0; i < count; i++) {
+				foreach (var span in body[index + i].GetSelfAndChildrenRecursiveBinSpans())
+					offs = Math.Min(offs, span.Start);
+			}
+			Debug.Assert(offs != uint.MaxValue);
+			return offs == uint.MaxValue ? 0 : offs;
+		}
+
+		protected LabelRangeMapping CreateLabelRangeMapping(StateRangeAnalysis rangeAnalysis, List<ILNode> body, int pos, int bodyLength) {
+			var m = rangeAnalysis.CreateLabelRangeMapping(body, pos, bodyLength);
+			if (context.CalculateBinSpans) {
+				foreach (var kv in m) {
+					var state = kv.Value.TryGetSingleState();
+					if (state == null)
+						continue;
+					AddResumeLabel(kv.Key, state.Value);
+				}
+			}
+			return m;
+		}
 	}
 }

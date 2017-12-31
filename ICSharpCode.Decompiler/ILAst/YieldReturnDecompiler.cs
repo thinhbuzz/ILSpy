@@ -133,7 +133,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 			var optimizer = this.context.Cache.GetILAstOptimizer();
 			try {
-				optimizer.Optimize(context, ilMethod, autoPropertyProvider, out _, ILAstOptimizationStep.YieldReturn);
+				optimizer.Optimize(context, ilMethod, autoPropertyProvider, out _, out _, ILAstOptimizationStep.YieldReturn);
 			}
 			finally {
 				this.context.Cache.Return(optimizer);
@@ -258,8 +258,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 		protected abstract void AnalyzeMoveNext();
 
 		#region TranslateFieldsToLocalAccess
-		void TranslateFieldsToLocalAccess() => TranslateFieldsToLocalAccess(newBody, fieldToParameterMap, cachedThisVar);
-		internal static void TranslateFieldsToLocalAccess(List<ILNode> newBody, Dictionary<FieldDef, ILVariable> fieldToParameterMap, ILVariable cachedThisField = null) {
+		void TranslateFieldsToLocalAccess() => TranslateFieldsToLocalAccess(newBody, fieldToParameterMap, cachedThisVar, context.CalculateBinSpans);
+		internal static void TranslateFieldsToLocalAccess(List<ILNode> newBody, Dictionary<FieldDef, ILVariable> fieldToParameterMap, ILVariable cachedThisField, bool calculateBinSpans) {
 			ILVariable realThisParameter = null;
 			if (cachedThisField != null) {
 				foreach (var kv in fieldToParameterMap) {
@@ -271,7 +271,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				if (realThisParameter == null)
 					throw new SymbolicAnalysisFailedException();
 			}
-			var fieldToLocalMap = new DefaultDictionary<FieldDef, ILVariable>(f => new ILVariable(string.IsNullOrEmpty(f.Name) ? "_f_" + f.Rid.ToString("X") : f.Name.String) { Type = f.FieldType });
+			var fieldToLocalMap = new DefaultDictionary<FieldDef, ILVariable>(f => new ILVariable(string.IsNullOrEmpty(f.Name) ? "_f_" + f.Rid.ToString("X") : f.Name.String) { Type = f.FieldType, HoistedField = f });
 			List<ILExpression> listExpr = null;
 			foreach (ILNode node in newBody) {
 				foreach (ILExpression expr in node.GetSelfAndChildrenRecursive(listExpr ?? (listExpr = new List<ILExpression>()))) {
@@ -284,6 +284,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 								expr.Operand = fieldToParameterMap[field];
 							else
 								expr.Operand = fieldToLocalMap[field];
+							if (calculateBinSpans)
+								expr.BinSpans.AddRange(expr.Arguments[0].GetSelfAndChildrenRecursiveBinSpans());
 							expr.Arguments.Clear();
 						}
 						break;
@@ -294,6 +296,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 								expr.Operand = fieldToParameterMap[field];
 							else
 								expr.Operand = fieldToLocalMap[field];
+							if (calculateBinSpans)
+								expr.BinSpans.AddRange(expr.Arguments[0].GetSelfAndChildrenRecursiveBinSpans());
 							expr.Arguments.RemoveAt(0);
 						}
 						break;
@@ -304,6 +308,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 								expr.Operand = fieldToParameterMap[field];
 							else
 								expr.Operand = fieldToLocalMap[field];
+							if (calculateBinSpans)
+								expr.BinSpans.AddRange(expr.Arguments[0].GetSelfAndChildrenRecursiveBinSpans());
 							expr.Arguments.Clear();
 						}
 						break;
@@ -313,6 +319,10 @@ namespace ICSharpCode.Decompiler.ILAst {
 						break;
 					}
 				}
+			}
+			if (calculateBinSpans) {
+				foreach (var kv in fieldToParameterMap)
+					kv.Value.HoistedField = kv.Key;
 			}
 		}
 		#endregion

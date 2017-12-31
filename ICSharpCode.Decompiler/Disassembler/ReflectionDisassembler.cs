@@ -395,7 +395,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			if (method.HasBody) {
 				instructionOperandConverter.Clear();
 				instructionOperandConverter.Add(method);
-				builder = new MethodDebugInfoBuilder(options.OptionsVersion, method, instructionOperandConverter.GetSourceLocals());
+				builder = new MethodDebugInfoBuilder(options.OptionsVersion, method, instructionOperandConverter.GetSourceLocals(), null, null);
 				builder.StartPosition = methodStartPosition;
 				methodBodyDisassembler.Disassemble(method, builder, instructionOperandConverter);
 			}
