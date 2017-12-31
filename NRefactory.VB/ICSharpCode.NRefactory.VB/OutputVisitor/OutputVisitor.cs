@@ -2379,6 +2379,7 @@ namespace ICSharpCode.NRefactory.VB {
 			int start = DebugStart(forStatement, "For");
 			int blockStart = start;
 			formatter.AddHighlightedKeywordReference(reference, start, formatter.NextPosition);
+			Space();
 			forStatement.Variable.AcceptVisitor(this, data);
 			DebugEnd(forStatement, false);
 			start = DebugStart(forStatement, "To");
