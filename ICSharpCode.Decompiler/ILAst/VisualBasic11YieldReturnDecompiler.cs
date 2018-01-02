@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using dnlib.DotNet;
+using dnSpy.Contracts.Decompiler;
 
 namespace ICSharpCode.Decompiler.ILAst {
 	/// <summary>
@@ -29,6 +30,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 	sealed class VisualBasic11YieldReturnDecompiler : YieldReturnDecompiler {
 		FieldDef disposingField;
 		ILVariable doFinallyBodiesVar;
+
+		public override string CompilerName => PredefinedCompilerNames.MicrosoftVisualBasic;
 
 		VisualBasic11YieldReturnDecompiler(DecompilerContext context, AutoPropertyProvider autoPropertyProvider)
 			: base(context, autoPropertyProvider) {

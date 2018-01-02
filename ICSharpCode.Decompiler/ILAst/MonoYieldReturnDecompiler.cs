@@ -21,10 +21,13 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using dnlib.DotNet;
+using dnSpy.Contracts.Decompiler;
 
 namespace ICSharpCode.Decompiler.ILAst {
 	sealed class MonoYieldReturnDecompiler : YieldReturnDecompiler {
 		FieldDef disposingField;
+
+		public override string CompilerName => PredefinedCompilerNames.MonoCSharp;
 
 		MonoYieldReturnDecompiler(DecompilerContext context, AutoPropertyProvider autoPropertyProvider)
 			: base(context, autoPropertyProvider) {

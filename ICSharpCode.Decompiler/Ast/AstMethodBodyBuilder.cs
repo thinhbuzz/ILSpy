@@ -111,6 +111,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			MethodDef inlinedMethod = null;
 			HashSet<ILVariable> localVariables;
 			AsyncMethodDebugInfo asyncInfo;
+			string compilerName;
 			try {
 				ilMethod.Body = astBuilder.Build(methodDef, true, context);
 
@@ -118,6 +119,7 @@ namespace ICSharpCode.Decompiler.Ast {
 				var optimizer = context.Cache.GetILAstOptimizer();
 				try {
 					optimizer.Optimize(context, ilMethod, autoPropertyProvider, out inlinedMethod, out asyncInfo);
+					compilerName = optimizer.CompilerName;
 				}
 				finally {
 					context.Cache.Return(optimizer);
@@ -157,6 +159,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			}
 
 			builder = new MethodDebugInfoBuilder(context.SettingsVersion, inlinedMethod ?? methodDef, CreateSourceLocals(localVariables), CreateSourceParameters(localVariables), asyncInfo);
+			builder.CompilerName = compilerName;
 			
 			return astBlock;
 		}

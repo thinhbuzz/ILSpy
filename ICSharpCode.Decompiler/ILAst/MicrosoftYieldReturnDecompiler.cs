@@ -24,6 +24,9 @@ using dnSpy.Contracts.Decompiler;
 
 namespace ICSharpCode.Decompiler.ILAst {
 	sealed class MicrosoftYieldReturnDecompiler : YieldReturnDecompiler {
+		public override string CompilerName => compilerName;
+		string compilerName;
+
 		MicrosoftYieldReturnDecompiler(DecompilerContext context, AutoPropertyProvider autoPropertyProvider)
 			: base(context, autoPropertyProvider) {
 		}
@@ -212,6 +215,10 @@ namespace ICSharpCode.Decompiler.ILAst {
 		protected override void AnalyzeMoveNext() {
 			ILBlock ilMethod = CreateILAst(methodMoveNext);
 			iteratorMoveNextMethod = methodMoveNext;
+			if (methodMoveNext.DeclaringType.Name.StartsWith("VB$StateMachine_"))
+				compilerName = PredefinedCompilerNames.MicrosoftVisualBasic;
+			else
+				compilerName = PredefinedCompilerNames.MicrosoftCSharp;
 
 			if (ilMethod.Body.Count == 0)
 				throw new SymbolicAnalysisFailedException();

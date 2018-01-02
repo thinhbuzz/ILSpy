@@ -20,6 +20,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using dnlib.DotNet;
+using dnSpy.Contracts.Decompiler;
 
 namespace ICSharpCode.Decompiler.ILAst {
 	sealed class MonoAsyncDecompiler : AsyncDecompiler {
@@ -29,6 +30,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 		ILLabel setResultAndExitLabel;
 		ILExpression resultExpr;
 		const int initialState = 0;
+
+		public override string CompilerName => PredefinedCompilerNames.MonoCSharp;
 
 		MonoAsyncDecompiler(DecompilerContext context, AutoPropertyProvider autoPropertyProvider)
 			: base(context, autoPropertyProvider) {

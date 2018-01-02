@@ -100,6 +100,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		readonly Dictionary<ILLabel, ILNode> Optimize_Dict_ILLabel_ILNode;
 		readonly List<KeyValuePair<ILExpression, ILExpression>> Optimize_List_ILExpressionx2;
 		bool hasFilters;
+		public string CompilerName;
 
 		public ILAstOptimizer()
 		{
@@ -137,6 +138,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			hasFilters = false;
 			readOnlyPropTempLocalNameCounter = 0;
 			tmpLocalCounter = 0;
+			CompilerName = null;
 		}
 
 		TypeAnalysis GetTypeAnalysis() {
@@ -231,8 +233,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 				inlining1.CopyPropagation(Optimize_List_ILNode);
 
 				if (abortBeforeStep == ILAstOptimizationStep.YieldReturn) return;
-				YieldReturnDecompiler.Run(context, method, autoPropertyProvider, ref inlinedMethod, Optimize_List_ILNode, del_getILInlining, Optimize_List_ILExpression, Optimize_List_ILBlock, Optimize_Dict_ILLabel_Int32);
-				var yrd = AsyncDecompiler.RunStep1(context, method, autoPropertyProvider, ref inlinedMethod, Optimize_List_ILExpression, Optimize_List_ILBlock, Optimize_Dict_ILLabel_Int32);
+				YieldReturnDecompiler.Run(context, method, autoPropertyProvider, ref inlinedMethod, ref CompilerName, Optimize_List_ILNode, del_getILInlining, Optimize_List_ILExpression, Optimize_List_ILBlock, Optimize_Dict_ILLabel_Int32);
+				var yrd = AsyncDecompiler.RunStep1(context, method, autoPropertyProvider, ref inlinedMethod, ref CompilerName, Optimize_List_ILExpression, Optimize_List_ILBlock, Optimize_Dict_ILLabel_Int32);
 
 				if (abortBeforeStep == ILAstOptimizationStep.AsyncAwait) return;
 				yrd?.RunStep2(context, method, out asyncInfo, Optimize_List_ILExpression, Optimize_List_ILBlock, Optimize_Dict_ILLabel_Int32, Optimize_List_ILNode, del_getILInlining);

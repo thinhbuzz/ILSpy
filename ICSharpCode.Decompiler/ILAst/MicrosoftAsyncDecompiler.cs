@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using dnlib.DotNet;
+using dnSpy.Contracts.Decompiler;
 
 namespace ICSharpCode.Decompiler.ILAst {
 	/// <summary>
@@ -36,6 +37,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 		ILLabel setResultAndExitLabel;
 		ILExpression resultExpr;
 		ILVariable resultVariable;
+
+		public override string CompilerName => compilerName;
+		string compilerName;
 
 		MicrosoftAsyncDecompiler(DecompilerContext context, AutoPropertyProvider autoPropertyProvider)
 			: base(context, autoPropertyProvider) {
@@ -149,6 +153,10 @@ namespace ICSharpCode.Decompiler.ILAst {
 		#region Analyze MoveNext
 		protected override void AnalyzeMoveNext(out ILMethodBody bodyInfo, out ILTryCatchBlock tryCatchBlock, out int finalState, out ILLabel exitLabel) {
 			ILBlock ilMethod = CreateILAst(moveNextMethod);
+			if (moveNextMethod.DeclaringType.Name.StartsWith("VB$StateMachine_"))
+				compilerName = PredefinedCompilerNames.MicrosoftVisualBasic;
+			else
+				compilerName = PredefinedCompilerNames.MicrosoftCSharp;
 
 			var body = ilMethod.Body;
 			if (body.Count < 6)

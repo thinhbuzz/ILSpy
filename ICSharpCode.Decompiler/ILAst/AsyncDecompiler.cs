@@ -64,6 +64,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 		// See Microsoft.CodeAnalysis.CSharp.MethodToStateMachineRewriter.cachedThis for info on why and when it's cached
 		protected ILVariable cachedThisVar;
 
+		public abstract string CompilerName { get; }
+
 		protected AsyncDecompiler(DecompilerContext context, AutoPropertyProvider autoPropertyProvider) {
 			this.context = context;
 			this.autoPropertyProvider = autoPropertyProvider;
@@ -83,7 +85,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		protected static readonly UTF8String nameGetResult = new UTF8String("GetResult");
 
 		#region RunStep1() method
-		public static AsyncDecompiler RunStep1(DecompilerContext context, ILBlock method, AutoPropertyProvider autoPropertyProvider, ref MethodDef inlinedMethod, List<ILExpression> listExpr, List<ILBlock> listBlock, Dictionary<ILLabel, int> labelRefCount) {
+		public static AsyncDecompiler RunStep1(DecompilerContext context, ILBlock method, AutoPropertyProvider autoPropertyProvider, ref MethodDef inlinedMethod, ref string compilerName, List<ILExpression> listExpr, List<ILBlock> listBlock, Dictionary<ILLabel, int> labelRefCount) {
 			if (!context.Settings.AsyncAwait)
 				return null;
 			var yrd = TryCreate(context, method, autoPropertyProvider);
@@ -103,6 +105,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			method.EntryGoto = null;
 			method.Body.AddRange(newTopLevelBody);
 			inlinedMethod = yrd.moveNextMethod;
+			compilerName = yrd.CompilerName;
 			ILAstOptimizer.RemoveRedundantCode(context, method, listExpr, listBlock, labelRefCount);
 			return yrd;
 		}
