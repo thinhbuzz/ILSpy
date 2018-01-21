@@ -477,13 +477,13 @@ namespace ICSharpCode.Decompiler.ILAst {
 					Debug.Assert(b);
 					if (!b)
 						continue;
-					stepInfos[w++] = new AsyncStepInfo(info.YieldOffset, resumeOffset);
+					stepInfos[w++] = new AsyncStepInfo(info.YieldOffset, moveNextMethod, resumeOffset);
 				}
 				if (stepInfos.Length != w)
 					Array.Resize(ref stepInfos, w);
 				if (context.CurrentMethod.MethodSig.RetType.RemovePinnedAndModifiers().GetElementType() != ElementType.Void)
 					catchHandlerOffset = uint.MaxValue;
-				asyncInfo = new AsyncMethodDebugInfo(stepInfos, catchHandlerOffset);
+				asyncInfo = new AsyncMethodDebugInfo(stepInfos, builderField, catchHandlerOffset, setResultOffset);
 			}
 			else
 				asyncInfo = null;
@@ -508,6 +508,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		}
 		readonly Dictionary<int, TempAsyncStepInfo> asyncStepInfoMap = new Dictionary<int, TempAsyncStepInfo>();
 		uint catchHandlerOffset = uint.MaxValue;
+		uint setResultOffset = uint.MaxValue;
 
 		protected void RemoveAsyncStepInfoState(int stateId) => asyncStepInfoMap.Remove(stateId);
 
