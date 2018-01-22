@@ -336,6 +336,11 @@ namespace ICSharpCode.Decompiler.ILAst {
 		protected bool MatchCallSetResult(ILNode expr, out ILExpression resultExpr, out ILVariable resultVariable) {
 			resultExpr = null;
 			resultVariable = null;
+			if (context.CalculateBinSpans) {
+				var binspans = BinSpan.OrderAndCompact(expr.GetSelfAndChildrenRecursiveBinSpans());
+				if (binspans.Count > 0)
+					setResultOffset = binspans[0].Start;
+			}
 			IMethod setResultMethod;
 			ILExpression builderExpr;
 			// call(AsyncTaskMethodBuilder`1::SetResult, ldflda(StateMachine::<>t__builder, ldloc(this)), ldloc(<>t__result))
