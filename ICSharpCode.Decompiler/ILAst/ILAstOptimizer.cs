@@ -193,15 +193,16 @@ namespace ICSharpCode.Decompiler.ILAst {
 		}
 		LoopsAndConditions cached_LoopsAndConditions;
 
-		public void Optimize(DecompilerContext context, ILBlock method, out MethodDef inlinedMethod, out AsyncMethodDebugInfo asyncInfo, ILAstOptimizationStep abortBeforeStep = ILAstOptimizationStep.None) =>
-			Optimize(context, method, null, out inlinedMethod, out asyncInfo, abortBeforeStep);
+		public void Optimize(DecompilerContext context, ILBlock method, out StateMachineKind stateMachineKind, out MethodDef inlinedMethod, out AsyncMethodDebugInfo asyncInfo, ILAstOptimizationStep abortBeforeStep = ILAstOptimizationStep.None) =>
+			Optimize(context, method, null, out stateMachineKind, out inlinedMethod, out asyncInfo, abortBeforeStep);
 
 		readonly Func<ILBlock, ILInlining> del_getILInlining;
-		internal void Optimize(DecompilerContext context, ILBlock method, AutoPropertyProvider autoPropertyProvider, out MethodDef inlinedMethod, out AsyncMethodDebugInfo asyncInfo, ILAstOptimizationStep abortBeforeStep = ILAstOptimizationStep.None)
+		internal void Optimize(DecompilerContext context, ILBlock method, AutoPropertyProvider autoPropertyProvider, out StateMachineKind stateMachineKind, out MethodDef inlinedMethod, out AsyncMethodDebugInfo asyncInfo, ILAstOptimizationStep abortBeforeStep = ILAstOptimizationStep.None)
 		{
 			this.context = context;
 			this.corLib = context.CurrentMethod.Module.CorLibTypes;
 			this.method = method;
+			stateMachineKind = StateMachineKind.None;
 			inlinedMethod = null;
 			asyncInfo = null;
 
@@ -233,8 +234,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 				inlining1.CopyPropagation(Optimize_List_ILNode);
 
 				if (abortBeforeStep == ILAstOptimizationStep.YieldReturn) return;
-				YieldReturnDecompiler.Run(context, method, autoPropertyProvider, ref inlinedMethod, ref CompilerName, Optimize_List_ILNode, del_getILInlining, Optimize_List_ILExpression, Optimize_List_ILBlock, Optimize_Dict_ILLabel_Int32);
-				var yrd = AsyncDecompiler.RunStep1(context, method, autoPropertyProvider, ref inlinedMethod, ref CompilerName, Optimize_List_ILExpression, Optimize_List_ILBlock, Optimize_Dict_ILLabel_Int32);
+				YieldReturnDecompiler.Run(context, method, autoPropertyProvider, ref stateMachineKind, ref inlinedMethod, ref CompilerName, Optimize_List_ILNode, del_getILInlining, Optimize_List_ILExpression, Optimize_List_ILBlock, Optimize_Dict_ILLabel_Int32);
+				var yrd = AsyncDecompiler.RunStep1(context, method, autoPropertyProvider, ref stateMachineKind, ref inlinedMethod, ref CompilerName, Optimize_List_ILExpression, Optimize_List_ILBlock, Optimize_Dict_ILLabel_Int32);
 
 				if (abortBeforeStep == ILAstOptimizationStep.AsyncAwait) return;
 				yrd?.RunStep2(context, method, out asyncInfo, Optimize_List_ILExpression, Optimize_List_ILBlock, Optimize_Dict_ILLabel_Int32, Optimize_List_ILNode, del_getILInlining);

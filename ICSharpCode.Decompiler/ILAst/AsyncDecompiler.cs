@@ -85,7 +85,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		protected static readonly UTF8String nameGetResult = new UTF8String("GetResult");
 
 		#region RunStep1() method
-		public static AsyncDecompiler RunStep1(DecompilerContext context, ILBlock method, AutoPropertyProvider autoPropertyProvider, ref MethodDef inlinedMethod, ref string compilerName, List<ILExpression> listExpr, List<ILBlock> listBlock, Dictionary<ILLabel, int> labelRefCount) {
+		public static AsyncDecompiler RunStep1(DecompilerContext context, ILBlock method, AutoPropertyProvider autoPropertyProvider, ref StateMachineKind stateMachineKind, ref MethodDef inlinedMethod, ref string compilerName, List<ILExpression> listExpr, List<ILBlock> listBlock, Dictionary<ILLabel, int> labelRefCount) {
 			if (!context.Settings.AsyncAwait)
 				return null;
 			var yrd = TryCreate(context, method, autoPropertyProvider);
@@ -104,6 +104,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			method.Body.Clear();
 			method.EntryGoto = null;
 			method.Body.AddRange(newTopLevelBody);
+			stateMachineKind = StateMachineKind.AsyncMethod;
 			inlinedMethod = yrd.moveNextMethod;
 			compilerName = yrd.CompilerName;
 			ILAstOptimizer.RemoveRedundantCode(context, method, listExpr, listBlock, labelRefCount);
@@ -324,7 +325,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 			var optimizer = this.context.Cache.GetILAstOptimizer();
 			try {
-				optimizer.Optimize(context, ilMethod, autoPropertyProvider, out _, out _, ILAstOptimizationStep.YieldReturn);
+				optimizer.Optimize(context, ilMethod, autoPropertyProvider, out _, out _, out _, ILAstOptimizationStep.YieldReturn);
 			}
 			finally {
 				context.Cache.Return(optimizer);

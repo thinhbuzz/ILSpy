@@ -108,6 +108,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			context.CancellationToken.ThrowIfCancellationRequested();
 			ILBlock ilMethod = new ILBlock(CodeBracesRangeFlags.MethodBraces);
 			var astBuilder = context.Cache.GetILAstBuilder();
+			StateMachineKind stateMachineKind;
 			MethodDef inlinedMethod = null;
 			HashSet<ILVariable> localVariables;
 			AsyncMethodDebugInfo asyncInfo;
@@ -118,7 +119,7 @@ namespace ICSharpCode.Decompiler.Ast {
 				context.CancellationToken.ThrowIfCancellationRequested();
 				var optimizer = context.Cache.GetILAstOptimizer();
 				try {
-					optimizer.Optimize(context, ilMethod, autoPropertyProvider, out inlinedMethod, out asyncInfo);
+					optimizer.Optimize(context, ilMethod, autoPropertyProvider, out stateMachineKind, out inlinedMethod, out asyncInfo);
 					compilerName = optimizer.CompilerName;
 				}
 				finally {
@@ -158,7 +159,7 @@ namespace ICSharpCode.Decompiler.Ast {
 				astBlock.Statements.InsertBefore(insertionPoint, newVarDecl);
 			}
 
-			builder = new MethodDebugInfoBuilder(context.SettingsVersion, inlinedMethod ?? methodDef, CreateSourceLocals(localVariables), CreateSourceParameters(localVariables), asyncInfo);
+			builder = new MethodDebugInfoBuilder(context.SettingsVersion, stateMachineKind, inlinedMethod ?? methodDef, inlinedMethod != null ? methodDef : null, CreateSourceLocals(localVariables), CreateSourceParameters(localVariables), asyncInfo);
 			builder.CompilerName = compilerName;
 			
 			return astBlock;

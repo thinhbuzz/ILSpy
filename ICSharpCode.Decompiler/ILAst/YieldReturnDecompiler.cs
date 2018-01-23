@@ -62,7 +62,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			VisualBasic11YieldReturnDecompiler.TryCreateCore(context, method, autoPropertyProvider);
 
 		#region Run() method
-		public static void Run(DecompilerContext context, ILBlock method, AutoPropertyProvider autoPropertyProvider, ref MethodDef inlinedMethod, ref string compilerName, List<ILNode> list_ILNode, Func<ILBlock, ILInlining> getILInlining, List<ILExpression> listExpr, List<ILBlock> listBlock, Dictionary<ILLabel, int> labelRefCount) {
+		public static void Run(DecompilerContext context, ILBlock method, AutoPropertyProvider autoPropertyProvider, ref StateMachineKind stateMachineKind, ref MethodDef inlinedMethod, ref string compilerName, List<ILNode> list_ILNode, Func<ILBlock, ILInlining> getILInlining, List<ILExpression> listExpr, List<ILBlock> listBlock, Dictionary<ILLabel, int> labelRefCount) {
 			if (!context.Settings.YieldReturn)
 				return; // abort if enumerator decompilation is disabled
 			var yrd = TryCreate(context, method, autoPropertyProvider);
@@ -79,6 +79,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			method.Body.Clear();
 			method.EntryGoto = null;
 			method.Body.AddRange(yrd.newBody);
+			stateMachineKind = StateMachineKind.IteratorMethod;
 			inlinedMethod = yrd.iteratorMoveNextMethod;
 			compilerName = yrd.CompilerName;
 
@@ -136,7 +137,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 			var optimizer = this.context.Cache.GetILAstOptimizer();
 			try {
-				optimizer.Optimize(context, ilMethod, autoPropertyProvider, out _, out _, ILAstOptimizationStep.YieldReturn);
+				optimizer.Optimize(context, ilMethod, autoPropertyProvider, out _, out _, out _, ILAstOptimizationStep.YieldReturn);
 			}
 			finally {
 				this.context.Cache.Return(optimizer);
