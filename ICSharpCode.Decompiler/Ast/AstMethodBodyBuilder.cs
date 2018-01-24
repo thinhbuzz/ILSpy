@@ -880,7 +880,7 @@ namespace ICSharpCode.Decompiler.Ast {
 							ide.IdentifierToken.AddAnnotation(operand);
 							expr = ide;
 						}
-						return v.IsParameter && v.Type is ByRefSig && !DnlibExtensions.HasReadOnlyAttribute(v.OriginalParameter?.ParamDef) ? MakeRef(expr) : expr;
+						return v.IsParameter && v.Type is ByRefSig ? MakeRef(expr) : expr;
 					}
 					case ILCode.Ldloca: {
 						ILVariable v = (ILVariable)operand;
@@ -1360,8 +1360,12 @@ namespace ICSharpCode.Decompiler.Ast {
 			for (int i = 0; i < methodArgs.Count && i < methodDef.Parameters.Count - skip; i++) {
 				DirectionExpression dir = methodArgs[i] as DirectionExpression;
 				Parameter p = methodDef.Parameters[i + skip];
-				if (dir != null && p.HasParamDef && p.ParamDef.IsOut && !p.ParamDef.IsIn)
-					dir.FieldDirection = FieldDirection.Out;
+				if (dir != null && p.HasParamDef) {
+					if (p.ParamDef.IsOut && !p.ParamDef.IsIn)
+						dir.FieldDirection = FieldDirection.Out;
+					else if (DnlibExtensions.HasReadOnlyAttribute(p.ParamDef))
+						dir.FieldDirection = FieldDirection.In;
+				}
 			}
 		}
 
