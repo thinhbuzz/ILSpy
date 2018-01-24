@@ -1289,7 +1289,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				expr.ExpectedType = null;
 				ILVariable v = expr.Operand as ILVariable;
 				if (v != null && v.GeneratedByDecompiler)
-					v.Type = null;
+					v.Type = v.OriginalParameter?.Type ?? v.OriginalVariable?.Type;
 			}
 		}
 		

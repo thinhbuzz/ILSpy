@@ -2201,6 +2201,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors {
 				case CSharp.ParameterModifier.None:
 				case CSharp.ParameterModifier.This:
 					return Modifiers.None;
+				case CSharp.ParameterModifier.In:
 				case CSharp.ParameterModifier.Ref:
 				case CSharp.ParameterModifier.Out:
 					return Modifiers.ByRef;

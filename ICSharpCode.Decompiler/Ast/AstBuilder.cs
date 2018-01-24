@@ -443,6 +443,8 @@ namespace ICSharpCode.Decompiler.Ast {
 			} else if (DnlibExtensions.IsValueType(typeDef)) {
 				astType.ClassType = ClassType.Struct;
 				astType.Modifiers &= ~(Modifiers.Sealed | Modifiers.Abstract | Modifiers.Static);
+				if (DnlibExtensions.HasReadOnlyAttribute(typeDef))
+					astType.Modifiers |= Modifiers.Readonly;
 			} else if (typeDef.IsInterface) {
 				astType.ClassType = ClassType.Interface;
 				astType.Modifiers &= ~Modifiers.Abstract;
@@ -1635,12 +1637,21 @@ namespace ICSharpCode.Decompiler.Ast {
 
 				ParameterDeclaration astParam = new ParameterDeclaration();
 				astParam.AddAnnotation(paramDef);
-				if (!(isLambda && paramDef.Type.ContainsAnonymousType()))
-					astParam.Type = ConvertType(paramDef.Type, sb, paramDef.ParamDef);
+				var type = paramDef.Type.RemovePinnedAndModifiers();
+				if (!(isLambda && type.ContainsAnonymousType()))
+					astParam.Type = ConvertType(type, sb, paramDef.ParamDef);
 				astParam.NameToken = Identifier.Create(paramDef.Name).WithAnnotation(paramDef);
 				
-				if (paramDef.Type is ByRefSig) {
-					astParam.ParameterModifier = (paramDef.HasParamDef && !paramDef.ParamDef.IsIn && paramDef.ParamDef.IsOut) ? ParameterModifier.Out : ParameterModifier.Ref;
+				if (type is ByRefSig) {
+					var pd = paramDef.ParamDef;
+					if (pd == null)
+						astParam.ParameterModifier = ParameterModifier.Ref;
+					else if (!pd.IsIn && pd.IsOut)
+						astParam.ParameterModifier = ParameterModifier.Out;
+					else if (DnlibExtensions.HasReadOnlyAttribute(pd))
+						astParam.ParameterModifier = ParameterModifier.In;
+					else
+						astParam.ParameterModifier = ParameterModifier.Ref;
 					ComposedType ct = astParam.Type as ComposedType;
 					if (ct != null && ct.PointerRank > 0)
 						ct.PointerRank--;
@@ -1652,7 +1663,7 @@ namespace ICSharpCode.Decompiler.Ast {
 				}
 				if (paramDef.HasParamDef && paramDef.ParamDef.IsOptional) {
 					var c = paramDef.ParamDef.Constant;
-					astParam.DefaultExpression = CreateExpressionForConstant(c == null ? null : c.Value, paramDef.Type, sb);
+					astParam.DefaultExpression = CreateExpressionForConstant(c == null ? null : c.Value, type, sb);
 				}
 				
 				ConvertCustomAttributes(metadataTextColorProvider, astParam, paramDef.ParamDef, settings, sb);
@@ -2025,11 +2036,13 @@ namespace ICSharpCode.Decompiler.Ast {
 		static readonly UTF8String asyncStateMachineAttributeString = new UTF8String("AsyncStateMachineAttribute");
 		static readonly UTF8String debuggerBrowsableAttributeString = new UTF8String("DebuggerBrowsableAttribute");
 		static readonly UTF8String iteratorStateMachineAttributeString = new UTF8String("IteratorStateMachineAttribute");
+		static readonly UTF8String isReadOnlyAttributeString = new UTF8String("IsReadOnlyAttribute");
 		static void ConvertCustomAttributes(MetadataTextColorProvider metadataTextColorProvider, AstNode attributedNode, IHasCustomAttribute customAttributeProvider, DecompilerSettings settings, StringBuilder sb, string attributeTarget = null, ConvertCustomAttributesFlags options = ConvertCustomAttributesFlags.None)
 		{
 			if (customAttributeProvider != null && customAttributeProvider.HasCustomAttributes) {
 				EntityDeclaration entityDecl = attributedNode as EntityDeclaration;
 				var attributes = new List<ICSharpCode.NRefactory.CSharp.Attribute>();
+				bool isType = attributedNode is TypeDeclaration;
 				bool isFieldOrEvent = attributedNode is FieldDeclaration || attributedNode is EventDeclaration || attributedNode is CustomEventDeclaration;
 				bool isParameter = attributedNode is ParameterDeclaration;
 				bool isMethod = attributedNode is MethodDeclaration || attributedNode is Accessor;
@@ -2056,9 +2069,11 @@ namespace ICSharpCode.Decompiler.Ast {
 						continue;
 					if (isFieldOrEvent && attributeType.Compare(systemDiagnosticsString, debuggerBrowsableAttributeString))
 						continue;
-					if (isParameter && attributeType.Compare(systemRuntimeCompilerServicesString, dynamicAttributeString))
+					if (isParameter && (attributeType.Compare(systemRuntimeCompilerServicesString, dynamicAttributeString) || attributeType.Compare(systemRuntimeCompilerServicesString, isReadOnlyAttributeString)))
 						continue;
 					if (isMethod && (attributeType.Compare(systemRuntimeCompilerServicesString, iteratorStateMachineAttributeString) || attributeType.Compare(systemRuntimeCompilerServicesString, asyncStateMachineAttributeString)))
+						continue;
+					if (isType && attributeType.Compare(systemRuntimeCompilerServicesString, isReadOnlyAttributeString))
 						continue;
 					
 					var attribute = new ICSharpCode.NRefactory.CSharp.Attribute();

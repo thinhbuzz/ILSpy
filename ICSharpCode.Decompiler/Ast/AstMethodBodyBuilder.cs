@@ -880,7 +880,7 @@ namespace ICSharpCode.Decompiler.Ast {
 							ide.IdentifierToken.AddAnnotation(operand);
 							expr = ide;
 						}
-						return v.IsParameter && v.Type is ByRefSig ? MakeRef(expr) : expr;
+						return v.IsParameter && v.Type is ByRefSig && !DnlibExtensions.HasReadOnlyAttribute(v.OriginalParameter?.ParamDef) ? MakeRef(expr) : expr;
 					}
 					case ILCode.Ldloca: {
 						ILVariable v = (ILVariable)operand;

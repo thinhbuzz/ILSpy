@@ -597,5 +597,16 @@ namespace ICSharpCode.Decompiler {
 		public static bool IsSystemNullable(this ClassOrValueTypeSig sig) {
 			return sig is ValueTypeSig && sig.TypeDefOrRef.Compare(systemString, nullableString);
 		}
+
+		public static bool HasReadOnlyAttribute(IHasCustomAttribute hca) {
+			if (hca == null)
+				return false;
+			foreach (var ca in hca.CustomAttributes) {
+				if (ca.AttributeType.Compare(systemRuntimeCompilerServicesString, isReadOnlyAttributeString))
+					return true;
+			}
+			return false;
+		}
+		static readonly UTF8String isReadOnlyAttributeString = new UTF8String("IsReadOnlyAttribute");
 	}
 }
