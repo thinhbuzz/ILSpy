@@ -1333,8 +1333,7 @@ namespace ICSharpCode.Decompiler.Ast {
 		
 		EntityDeclaration CreateEvent(EventDef eventDef)
 		{
-			if (eventDef.AddMethod != null && eventDef.AddMethod.IsAbstract) {
-				// An abstract event cannot be custom
+			if ((eventDef.AddMethod != null && eventDef.AddMethod.IsAbstract) || (eventDef.AddMethod?.Body == null && eventDef.RemoveMethod?.Body == null && eventDef.InvokeMethod?.Body == null)) {
 				EventDeclaration astEvent = new EventDeclaration();
 				ConvertCustomAttributes(Context.MetadataTextColorProvider, astEvent, eventDef, context.Settings, stringBuilder);
 				astEvent.AddAnnotation(eventDef);
