@@ -443,9 +443,12 @@ namespace ICSharpCode.Decompiler.Ast {
 			} else if (DnlibExtensions.IsValueType(typeDef)) {
 				astType.ClassType = ClassType.Struct;
 				astType.Modifiers &= ~(Modifiers.Sealed | Modifiers.Abstract | Modifiers.Static);
-				if (DnlibExtensions.HasReadOnlyAttribute(typeDef))
+				if (DnlibExtensions.HasIsReadOnlyAttribute(typeDef))
 					astType.Modifiers |= Modifiers.Readonly;
-			} else if (typeDef.IsInterface) {
+				if (DnlibExtensions.HasIsByRefLikeAttribute(typeDef))
+					astType.Modifiers |= Modifiers.Ref;
+			}
+			else if (typeDef.IsInterface) {
 				astType.ClassType = ClassType.Interface;
 				astType.Modifiers &= ~Modifiers.Abstract;
 			} else {
@@ -1099,6 +1102,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			MethodDeclaration astMethod = new MethodDeclaration();
 			astMethod.AddAnnotation(methodDef);
 			astMethod.ReturnType = ConvertType(methodDef.ReturnType, stringBuilder, methodDef.Parameters.ReturnParameter.ParamDef);
+			bool isRefReturnType = UndoByRefToPointer(astMethod.ReturnType);
 			astMethod.NameToken = Identifier.Create(CleanName(methodDef.Name)).WithAnnotation(methodDef);
 			astMethod.TypeParameters.AddRange(MakeTypeParameters(methodDef.GenericParameters));
 			astMethod.Parameters.AddRange(MakeParameters(Context.MetadataTextColorProvider, methodDef, context.Settings, stringBuilder));
@@ -1151,6 +1155,10 @@ namespace ICSharpCode.Decompiler.Ast {
 					return op;
 				}
 			}
+			if (isRefReturnType)
+				astMethod.Modifiers |= Modifiers.Ref;
+			if (DnlibExtensions.HasIsReadOnlyAttribute(methodDef.Parameters.ReturnParameter.ParamDef))
+				astMethod.Modifiers |= Modifiers.Readonly;
 			AddComment(astMethod, methodDef);
 			return astMethod;
 		}
@@ -1272,7 +1280,8 @@ namespace ICSharpCode.Decompiler.Ast {
 			}
 			astProp.NameToken = Identifier.Create(CleanName(propDef.Name)).WithAnnotation(propDef);
 			astProp.ReturnType = ConvertType(propDef.PropertySig.GetRetType(), stringBuilder, propDef);
-			
+			bool isRefReturnType = UndoByRefToPointer(astProp.ReturnType);
+
 			MethodDebugInfoBuilder builder;
 			if (propDef.GetMethod != null) {
 				astProp.Getter = new Accessor();
@@ -1309,6 +1318,10 @@ namespace ICSharpCode.Decompiler.Ast {
 			if(accessor != null && !accessor.HasOverrides && accessor.DeclaringType != null && !accessor.DeclaringType.IsInterface)
 				if (accessor.IsVirtual == accessor.IsNewSlot)
 					SetNewModifier(member);
+			if (isRefReturnType)
+				astProp.Modifiers |= Modifiers.Ref;
+			if (DnlibExtensions.HasIsReadOnlyAttribute(accessor.Parameters.ReturnParameter.ParamDef))
+				astProp.Modifiers |= Modifiers.Readonly;
 			if (propDef.SetMethod != null)
 				AddComment(astProp, propDef.SetMethod, "set");
 			if (propDef.GetMethod != null)
@@ -1628,6 +1641,15 @@ namespace ICSharpCode.Decompiler.Ast {
 			}
 		}
 		
+		internal static bool UndoByRefToPointer(AstType type) {
+			var ct = type as ComposedType;
+			if (ct != null && ct.PointerRank > 0) {
+				ct.PointerRank--;
+				return true;
+			}
+			return false;
+		}
+
 		static IEnumerable<ParameterDeclaration> MakeParameters(MetadataTextColorProvider metadataTextColorProvider, IEnumerable<Parameter> paramCol, DecompilerSettings settings, StringBuilder sb, bool isLambda = false)
 		{
 			foreach (Parameter paramDef in paramCol) {
@@ -1647,13 +1669,11 @@ namespace ICSharpCode.Decompiler.Ast {
 						astParam.ParameterModifier = ParameterModifier.Ref;
 					else if (!pd.IsIn && pd.IsOut)
 						astParam.ParameterModifier = ParameterModifier.Out;
-					else if (DnlibExtensions.HasReadOnlyAttribute(pd))
+					else if (DnlibExtensions.HasIsReadOnlyAttribute(pd))
 						astParam.ParameterModifier = ParameterModifier.In;
 					else
 						astParam.ParameterModifier = ParameterModifier.Ref;
-					ComposedType ct = astParam.Type as ComposedType;
-					if (ct != null && ct.PointerRank > 0)
-						ct.PointerRank--;
+					UndoByRefToPointer(astParam.Type);
 				}
 				
 				if (paramDef.HasParamDef && paramDef.ParamDef.HasCustomAttributes) {
@@ -2036,6 +2056,8 @@ namespace ICSharpCode.Decompiler.Ast {
 		static readonly UTF8String debuggerBrowsableAttributeString = new UTF8String("DebuggerBrowsableAttribute");
 		static readonly UTF8String iteratorStateMachineAttributeString = new UTF8String("IteratorStateMachineAttribute");
 		static readonly UTF8String isReadOnlyAttributeString = new UTF8String("IsReadOnlyAttribute");
+		static readonly UTF8String isByRefLikeAttributeString = new UTF8String("IsByRefLikeAttribute");
+		static readonly UTF8String obsoleteAttributeString = new UTF8String("ObsoleteAttribute");
 		static void ConvertCustomAttributes(MetadataTextColorProvider metadataTextColorProvider, AstNode attributedNode, IHasCustomAttribute customAttributeProvider, DecompilerSettings settings, StringBuilder sb, string attributeTarget = null, ConvertCustomAttributesFlags options = ConvertCustomAttributesFlags.None)
 		{
 			if (customAttributeProvider != null && customAttributeProvider.HasCustomAttributes) {
@@ -2045,11 +2067,14 @@ namespace ICSharpCode.Decompiler.Ast {
 				bool isFieldOrEvent = attributedNode is FieldDeclaration || attributedNode is EventDeclaration || attributedNode is CustomEventDeclaration;
 				bool isParameter = attributedNode is ParameterDeclaration;
 				bool isMethod = attributedNode is MethodDeclaration || attributedNode is Accessor;
+				bool isProperty = attributedNode is PropertyDeclaration;
 				bool onePerLine = attributeTarget == "module" || attributeTarget == "assembly" ||
 					// Params ignore the option
 					(settings.OneCustomAttributePerLine && entityDecl != null);
 				bool isAsync = (options & ConvertCustomAttributesFlags.IsAsync) != 0;
 				bool isYieldReturn = (options & ConvertCustomAttributesFlags.IsYieldReturn) != 0;
+				bool isReturnTarget = attributeTarget == "return";
+				bool removeObsoleteAttr = false;
 				foreach (var customAttribute in SortCustomAttributes(customAttributeProvider, settings.SortCustomAttributes, sb)) {
 					var attributeType = customAttribute.AttributeType;
 					if (attributeType == null)
@@ -2072,9 +2097,21 @@ namespace ICSharpCode.Decompiler.Ast {
 						continue;
 					if (isMethod && (attributeType.Compare(systemRuntimeCompilerServicesString, iteratorStateMachineAttributeString) || attributeType.Compare(systemRuntimeCompilerServicesString, asyncStateMachineAttributeString)))
 						continue;
-					if (isType && attributeType.Compare(systemRuntimeCompilerServicesString, isReadOnlyAttributeString))
+					if (isType) {
+						if (attributeType.Compare(systemRuntimeCompilerServicesString, isReadOnlyAttributeString))
+							continue;
+						if (attributeType.Compare(systemRuntimeCompilerServicesString, isByRefLikeAttributeString)) {
+							removeObsoleteAttr = true;
+							continue;
+						}
+						if (removeObsoleteAttr && attributeType.Compare(systemString, obsoleteAttributeString))
+							continue;
+					}
+					if (isProperty && attributeType.Compare(systemRuntimeCompilerServicesString, isReadOnlyAttributeString))
 						continue;
-					
+					if (isReturnTarget && attributeType.Compare(systemRuntimeCompilerServicesString, isReadOnlyAttributeString))
+						continue;
+
 					var attribute = new ICSharpCode.NRefactory.CSharp.Attribute();
 					attribute.AddAnnotation(customAttribute);
 					attribute.Type = ConvertType(attributeType, sb);

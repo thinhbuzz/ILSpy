@@ -598,7 +598,7 @@ namespace ICSharpCode.Decompiler {
 			return sig is ValueTypeSig && sig.TypeDefOrRef.Compare(systemString, nullableString);
 		}
 
-		public static bool HasReadOnlyAttribute(IHasCustomAttribute hca) {
+		public static bool HasIsReadOnlyAttribute(IHasCustomAttribute hca) {
 			if (hca == null)
 				return false;
 			foreach (var ca in hca.CustomAttributes) {
@@ -608,5 +608,16 @@ namespace ICSharpCode.Decompiler {
 			return false;
 		}
 		static readonly UTF8String isReadOnlyAttributeString = new UTF8String("IsReadOnlyAttribute");
+
+		public static bool HasIsByRefLikeAttribute(IHasCustomAttribute hca) {
+			if (hca == null)
+				return false;
+			foreach (var ca in hca.CustomAttributes) {
+				if (ca.AttributeType.Compare(systemRuntimeCompilerServicesString, isByRefLikeAttributeString))
+					return true;
+			}
+			return false;
+		}
+		static readonly UTF8String isByRefLikeAttributeString = new UTF8String("IsByRefLikeAttribute");
 	}
 }

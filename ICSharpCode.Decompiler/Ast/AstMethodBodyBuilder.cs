@@ -154,7 +154,10 @@ namespace ICSharpCode.Decompiler.Ast {
 					type = new SimpleType("var").WithAnnotation(BoxedTextColor.Keyword);
 				else
 					type = AstBuilder.ConvertType(v.Type, stringBuilder);
+				bool isRefType = AstBuilder.UndoByRefToPointer(type);
 				var newVarDecl = new VariableDeclarationStatement(GetParameterColor(v), type, v.Name);
+				if (isRefType)
+					newVarDecl.Modifiers |= Modifiers.Ref;
 				newVarDecl.Variables.Single().AddAnnotation(v);
 				astBlock.Statements.InsertBefore(insertionPoint, newVarDecl);
 			}
@@ -880,7 +883,7 @@ namespace ICSharpCode.Decompiler.Ast {
 							ide.IdentifierToken.AddAnnotation(operand);
 							expr = ide;
 						}
-						return v.IsParameter && v.Type is ByRefSig ? MakeRef(expr) : expr;
+						return v.Type.RemovePinnedAndModifiers() is ByRefSig ? MakeRef(expr) : expr;
 					}
 					case ILCode.Ldloca: {
 						ILVariable v = (ILVariable)operand;
@@ -1363,7 +1366,7 @@ namespace ICSharpCode.Decompiler.Ast {
 				if (dir != null && p.HasParamDef) {
 					if (p.ParamDef.IsOut && !p.ParamDef.IsIn)
 						dir.FieldDirection = FieldDirection.Out;
-					else if (DnlibExtensions.HasReadOnlyAttribute(p.ParamDef))
+					else if (DnlibExtensions.HasIsReadOnlyAttribute(p.ParamDef))
 						dir.FieldDirection = FieldDirection.In;
 				}
 			}
