@@ -573,7 +573,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			}
 		}
 
-		static bool Step2Core(List<ILNode> body, ref int currPos) {
+		bool Step2Core(List<ILNode> body, ref int currPos) {
 			// stloc(CS$0$0001, callvirt(class System.Threading.Tasks.Task`1<bool>::GetAwaiter, awaiterExpr)
 			// brtrue(IL_7C, call(valuetype [mscorlib]System.Runtime.CompilerServices.TaskAwaiter`1<bool>::get_IsCompleted, ldloca(CS$0$0001)))
 			// await(ldloca(CS$0$0001))
@@ -605,8 +605,10 @@ namespace ICSharpCode.Decompiler.ILAst {
 			if (!(getAwaiterCall.Match(ILCode.Call, out getAwaiterMethod, out awaitedExpr) || getAwaiterCall.Match(ILCode.Callvirt, out getAwaiterMethod, out awaitedExpr)))
 				return false;
 
+			ILExpression addrOffExpr = null;
 			if (awaitedExpr.Code == ILCode.AddressOf) {
 				// remove 'AddressOf()' when calling GetAwaiter() on a value type
+				addrOffExpr = awaitedExpr;
 				awaitedExpr = awaitedExpr.Arguments[0];
 			}
 
@@ -645,14 +647,44 @@ namespace ICSharpCode.Decompiler.ILAst {
 			ILExpression resultAssignment = body[labelPos + 1] as ILExpression;
 			ILVariable resultVar;
 			ILExpression getResultCall;
-			bool isResultAssignment = resultAssignment.Match(ILCode.Stloc, out resultVar, out getResultCall);
-			if (!isResultAssignment)
-				getResultCall = resultAssignment;
-			var method = getResultCall.Operand as IMethod;
-			if (!(method != null && !method.IsField && method.Name == nameGetResult))
+			ILExpression patchExpr = null;
+			bool isResultAssignment = resultAssignment.Match(ILCode.Stloc, out resultVar, out getResultCall) && IsGetResult(getResultCall.Operand);
+			if (!isResultAssignment) {
+				if (getResultCall == null)
+					getResultCall = resultAssignment;
+				for (;;) {
+					if (IsGetResult(getResultCall.Operand))
+						break;
+					switch (getResultCall.Code) {
+					case ILCode.Call:
+					case ILCode.CallGetter:
+					case ILCode.Calli:
+					case ILCode.CallReadOnlySetter:
+					case ILCode.CallSetter:
+					case ILCode.Callvirt:
+					case ILCode.CallvirtGetter:
+					case ILCode.CallvirtSetter:
+					case ILCode.AddressOf:
+						break;
+					default:
+						return false;
+					}
+					if (getResultCall.Arguments.Count == 0)
+						return false;
+					patchExpr = getResultCall;
+					getResultCall = getResultCall.Arguments[0];
+				}
+			}
+			if (!IsGetResult(getResultCall.Operand))
 				return false;
 
 			pos -= 2; // also delete 'stloc', 'brtrue' and 'await'
+			if (context.CalculateBinSpans) {
+				awaitedExpr.BinSpans.AddRange(body[pos].BinSpans);
+				awaitedExpr.BinSpans.AddRange(getAwaiterCall.BinSpans);
+				if (addrOffExpr != null)
+					awaitedExpr.BinSpans.AddRange(addrOffExpr.BinSpans);
+			}
 			body.RemoveRange(pos, labelPos - pos);
 			Debug.Assert(body[pos] == label);
 
@@ -660,6 +692,11 @@ namespace ICSharpCode.Decompiler.ILAst {
 			if (isResultAssignment) {
 				Debug.Assert(body[pos] == resultAssignment);
 				resultAssignment.Arguments[0] = new ILExpression(ILCode.Await, null, awaitedExpr);
+			}
+			else if (patchExpr != null) {
+				if (context.CalculateBinSpans)
+					awaitedExpr.BinSpans.AddRange(patchExpr.Arguments[0].GetSelfAndChildrenRecursiveBinSpans());
+				patchExpr.Arguments[0] = new ILExpression(ILCode.Await, null, awaitedExpr);
 			}
 			else
 				body[pos] = new ILExpression(ILCode.Await, null, awaitedExpr);
@@ -671,6 +708,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 			currPos = pos;
 			return true;
 		}
+
+		static bool IsGetResult(object operand) => operand is IMethod method && !method.IsField && method.Name == nameGetResult;
 
 		static bool IsVariableReset(ILNode expr, ILVariable variable) {
 			object unused;
