@@ -502,7 +502,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 					ILVariable v;
 					ILExpression copiedExpr;
 					if (block.Body[i].Match(ILCode.Stloc, out v, out copiedExpr)
-					    && !v.IsParameter && numStloc.GetOrDefault(v) == 1 && numLdloca.GetOrDefault(v) == 0
+					    && !v.IsParameter && !(v.OriginalVariable?.Type.RemovePinnedAndModifiers() is ByRefSig)
+						&& numStloc.GetOrDefault(v) == 1 && numLdloca.GetOrDefault(v) == 0
 					    && CanPerformCopyPropagation(copiedExpr, v))
 					{
 						// un-inline the arguments of the ldArg instruction

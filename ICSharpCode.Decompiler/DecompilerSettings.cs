@@ -577,11 +577,13 @@ namespace ICSharpCode.Decompiler {
 		}
 
 		public event PropertyChangedEventHandler PropertyChanged;
+		public event EventHandler SettingsVersionChanged;
 
 		protected virtual void OnPropertyChanged(string propertyName) {
 			Interlocked.Increment(ref settingsVersion);
 			PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 			OnModified();
+			SettingsVersionChanged?.Invoke(this, EventArgs.Empty);
 		}
 
 		public int SettingsVersion => settingsVersion;

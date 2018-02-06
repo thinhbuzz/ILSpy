@@ -51,7 +51,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			var body = method.Body;
 			if (body != null) {
 				foreach (var local in body.Variables) {
-					var sourceLocal = new SourceLocal(local, CreateLocalName(local), local.Type);
+					var sourceLocal = new SourceLocal(local, CreateLocalName(local), local.Type, SourceVariableFlags.None);
 					sourceLocals.Add(sourceLocal);
 					dict.Add(local, sourceLocal);
 				}

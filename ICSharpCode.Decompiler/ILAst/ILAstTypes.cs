@@ -516,14 +516,15 @@ namespace ICSharpCode.Decompiler.ILAst {
 			Debug.Assert(OriginalParameter == null);
 			Debug.Assert(Name != null);
 			if (sourceParamOrLocal == null)
-				Interlocked.CompareExchange(ref sourceParamOrLocal, HoistedField != null ? new SourceLocal(OriginalVariable, Name, HoistedField) : new SourceLocal(OriginalVariable, Name, GetVariableType()), null);
+				Interlocked.CompareExchange(ref sourceParamOrLocal, HoistedField != null ? new SourceLocal(OriginalVariable, Name, HoistedField, GetSourceVariableFlags()) : new SourceLocal(OriginalVariable, Name, GetVariableType(), GetSourceVariableFlags()), null);
 			return (SourceLocal)sourceParamOrLocal;
 		}
+		SourceVariableFlags GetSourceVariableFlags() => SourceVariableFlags.None;
 		public SourceParameter GetSourceParameter() {
 			Debug.Assert(OriginalParameter != null);
 			Debug.Assert(Name != null);
 			if (sourceParamOrLocal == null)
-				Interlocked.CompareExchange(ref sourceParamOrLocal, HoistedField != null ? new SourceParameter(OriginalParameter, Name, HoistedField) : new SourceParameter(OriginalParameter, Name, GetVariableType()), null);
+				Interlocked.CompareExchange(ref sourceParamOrLocal, HoistedField != null ? new SourceParameter(OriginalParameter, Name, HoistedField, GetSourceVariableFlags()) : new SourceParameter(OriginalParameter, Name, GetVariableType(), GetSourceVariableFlags()), null);
 			return (SourceParameter)sourceParamOrLocal;
 		}
 		object sourceParamOrLocal;

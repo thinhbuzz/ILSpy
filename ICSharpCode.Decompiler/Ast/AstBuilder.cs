@@ -1453,7 +1453,7 @@ namespace ICSharpCode.Decompiler.Ast {
 					emptyStmt.AddAnnotation(new List<BinSpan> { new BinSpan(0, (uint)method.Body.GetCodeSize()) });
 				bs.Statements.Add(emptyStmt);
 				bs.InsertChildAfter(null, new Comment(msg, CommentType.MultiLine), Roles.Comment);
-				builder = new MethodDebugInfoBuilder(context.SettingsVersion, StateMachineKind.None, method, null, method.Body.Variables.Select(a => new SourceLocal(a, CreateLocalName(a), a.Type)).ToArray(), null, null);
+				builder = new MethodDebugInfoBuilder(context.SettingsVersion, StateMachineKind.None, method, null, method.Body.Variables.Select(a => new SourceLocal(a, CreateLocalName(a), a.Type, SourceVariableFlags.None)).ToArray(), null, null);
 				return bs;
 
 			case DecompiledBodyKind.Empty:
@@ -1491,8 +1491,14 @@ namespace ICSharpCode.Decompiler.Ast {
 					}
 				}
 				if (method.MethodSig.GetRetType().RemovePinnedAndModifiers().GetElementType() != ElementType.Void) {
-					var ret = new ReturnStatement(new DefaultValueExpression(ConvertType(method.MethodSig.GetRetType().RemovePinnedAndModifiers(), stringBuilder)));
-					bs.Statements.Add(ret);
+					if (method.MethodSig.GetRetType().RemovePinnedAndModifiers().GetElementType() == ElementType.ByRef) {
+						var @throw = new ThrowStatement(new NullReferenceExpression());
+						bs.Statements.Add(@throw);
+					}
+					else {
+						var ret = new ReturnStatement(new DefaultValueExpression(ConvertType(method.MethodSig.GetRetType().RemovePinnedAndModifiers(), stringBuilder)));
+						bs.Statements.Add(ret);
+					}
 				}
 				builder = null;
 				return bs;
@@ -1740,8 +1746,9 @@ namespace ICSharpCode.Decompiler.Ast {
 					charSet = CharSet.Unicode;
 					break;
 			}
-			LayoutKind defaultLayoutKind = (DnlibExtensions.IsValueType(typeDef) && !typeDef.IsEnum) ? LayoutKind.Sequential : LayoutKind.Auto;
-			if (layoutKind != defaultLayoutKind || charSet != CharSet.Ansi || typeDef.HasClassLayout) {
+			bool isValueType = DnlibExtensions.IsValueType(typeDef);
+			LayoutKind defaultLayoutKind = isValueType && !typeDef.IsEnum ? LayoutKind.Sequential : LayoutKind.Auto;
+			if (layoutKind != defaultLayoutKind || charSet != CharSet.Ansi || ShowClassLayout(typeDef, isValueType)) {
 				var attrType = typeof(StructLayoutAttribute);
 				var structLayout = CreateNonCustomAttribute_SystemRuntime(attrType);
 				structLayout.Arguments.Add(CreateEnumIdentifierExpression(typeof(LayoutKind), layoutKind.ToString(), GetSystemRuntimeInteropServicesAssemblyRef(typeDef.Module)));
@@ -1758,6 +1765,21 @@ namespace ICSharpCode.Decompiler.Ast {
 				attributedNode.Attributes.Add(new AttributeSection(structLayout));
 			}
 			#endregion
+		}
+
+		static bool ShowClassLayout(TypeDef td, bool isValueType)
+		{
+			if (!isValueType)
+				return td.HasClassLayout;
+			else {
+				if (td.HasClassLayout) {
+					foreach (var fd in td.Fields) {
+						if (!fd.IsStatic)
+							return true;
+					}
+				}
+				return false;
+			}
 		}
 
 		ModuleDef GetModule()

@@ -77,7 +77,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 		static readonly UTF8String nameCreate = new UTF8String("Create");
 		static readonly UTF8String nameStart = new UTF8String("Start");
-		static readonly UTF8String nameAsyncValueTaskMethodBuilder1 = new UTF8String("AsyncValueTaskMethodBuilder`1");
+		static readonly UTF8String nameSystemRuntimeCompilerServices = new UTF8String("System.Runtime.CompilerServices");
 		static readonly UTF8String nameAsyncTaskMethodBuilder1 = new UTF8String("AsyncTaskMethodBuilder`1");
 		static readonly UTF8String nameAsyncTaskMethodBuilder = new UTF8String("AsyncTaskMethodBuilder");
 		static readonly UTF8String nameAsyncVoidMethodBuilder = new UTF8String("AsyncVoidMethodBuilder");
@@ -167,6 +167,81 @@ namespace ICSharpCode.Decompiler.ILAst {
 		protected bool MatchStartCall(ILNode expr, out ILVariable stateMachineVar, out ILVariable builderVar) =>
 			MatchStartCallCore(expr, out stateMachineVar, out builderVar, useLdflda: false);
 
+		static readonly UTF8String stringSystem_Threading_Tasks = new UTF8String("System.Threading.Tasks");
+		static readonly UTF8String stringTask = new UTF8String("Task");
+		static readonly UTF8String stringTask_1 = new UTF8String("Task`1");
+		static readonly UTF8String stringSystem = new UTF8String("System");
+		static readonly UTF8String stringVoid = new UTF8String("Void");
+		static bool TryGetAsyncMethodType(ITypeDefOrRef tdr, ITypeDefOrRef builderType, out AsyncMethodType asyncMethodType) {
+			var td = tdr.ResolveTypeDef();
+			if (td != null) {
+				int gpCount = td.GenericParameters.Count;
+				if (gpCount > 1) {
+					asyncMethodType = 0;
+					return false;
+				}
+
+				if (td.Namespace == stringSystem_Threading_Tasks) {
+					if (gpCount == 1 && td.Name == stringTask_1) {
+						asyncMethodType = AsyncMethodType.TaskOfT;
+						return true;
+					}
+					else if (gpCount == 0 && td.Name == stringTask) {
+						asyncMethodType = AsyncMethodType.Task;
+						return true;
+					}
+				}
+
+				if (IsCustomTaskType(td)) {
+					if (gpCount == 0) {
+						asyncMethodType = AsyncMethodType.Task;
+						return true;
+					}
+					if (gpCount == 1) {
+						asyncMethodType = AsyncMethodType.TaskOfT;
+						return true;
+					}
+					Debug.Fail("Shouldn't be here");
+				}
+
+				if (td.Name == stringVoid && td.Namespace == stringSystem) {
+					var btd = builderType.ResolveTypeDef();
+					if (btd != null) {
+						if (btd.Namespace == nameSystemRuntimeCompilerServices && btd.Name == nameAsyncVoidMethodBuilder) {
+							asyncMethodType = AsyncMethodType.Void;
+							return true;
+						}
+					}
+				}
+			}
+
+			asyncMethodType = 0;
+			return false;
+		}
+
+		static bool IsCustomTaskType(TypeDef td) {
+			if (td == null)
+				return false;
+
+			// See (Roslyn): IsCustomTaskType
+
+			if (td.GenericParameters.Count > 1)
+				return false;
+
+			foreach (var ca in td.CustomAttributes) {
+				if (ca.TypeFullName != "System.Runtime.CompilerServices.AsyncMethodBuilderAttribute")
+					continue;
+				if (ca.ConstructorArguments.Count != 1)
+					continue;
+				if ((ca.ConstructorArguments[0].Type as ClassSig)?.TypeDefOrRef.FullName != "System.Type")
+					continue;
+
+				return true;
+			}
+
+			return false;
+		}
+
 		bool MatchStartCallCore(ILNode expr, out ILVariable stateMachineVar, out ILVariable builderVar, bool useLdflda) {
 			stateMachineVar = null;
 			builderVar = null;
@@ -178,16 +253,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				return false;
 			if (startMethod.Name != nameStart)
 				return false;
-			var name = startMethod.DeclaringType.Name;
-			if (name == nameAsyncTaskMethodBuilder1 || name == nameAsyncValueTaskMethodBuilder1)
-				methodType = AsyncMethodType.TaskOfT;
-			else if (name == nameAsyncTaskMethodBuilder)
-				methodType = AsyncMethodType.Task;
-			else if (name == nameAsyncVoidMethodBuilder)
-				methodType = AsyncMethodType.Void;
-			else
-				return false;
-			if (startMethod.DeclaringType.Namespace != "System.Runtime.CompilerServices")
+			if (!TryGetAsyncMethodType(context.CurrentMethod.ReturnType.RemovePinnedAndModifiers().ToTypeDefOrRef(), startMethod.DeclaringType, out methodType))
 				return false;
 			if (!loadStartArgument.Match(ILCode.Ldloca, out stateMachineVar))
 				return false;
