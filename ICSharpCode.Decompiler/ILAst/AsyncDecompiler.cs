@@ -542,7 +542,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 				int w = 0;
 				foreach (var kv in asyncStepInfoMap) {
 					var info = kv.Value;
-					Debug.Assert(info.YieldOffset != 0 && info.ResumeLabel != null);
+					// VB state machines have some extra labels that we can ignore
+					Debug.Assert(CompilerName == PredefinedCompilerNames.MicrosoftVisualBasic || (info.YieldOffset != 0 && info.ResumeLabel != null));
 					if (info.YieldOffset == 0 || info.ResumeLabel == null)
 						continue;
 					bool b = GetLabelOffset(info.ResumeLabel, out uint resumeOffset);

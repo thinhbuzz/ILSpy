@@ -25,6 +25,7 @@ using dnSpy.Contracts.Decompiler;
 namespace ICSharpCode.Decompiler.ILAst {
 	sealed class MonoAsyncDecompiler : AsyncDecompiler {
 		readonly List<ILExpression> expressionList = new List<ILExpression>();
+		readonly Dictionary<ILExpression, FieldDef> awaitExprInfos = new Dictionary<ILExpression, FieldDef>();
 		ILVariable cachedStateVar;
 		ILVariable disposeInFinallyVar;
 		ILLabel setResultAndExitLabel;
@@ -211,7 +212,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					var expr = list[list.Count - 1];
 					list.RemoveAt(list.Count - 1);
 					list.AddRange(expr.Arguments);
-					var ldflda = MatchCallGetResult(expr, false);
+					var ldflda = MatchCallGetResult(expr, false, null);
 					if (ldflda != null) {
 						ldflda.Code = ILCode.Ldsflda;
 						ldflda.Arguments.Clear();
@@ -312,7 +313,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 						AddResumeLabel(lbl, val);
 
-						newBody[newBody.Count - 2] = new ILExpression(ILCode.Await, null, origExpr);
+						var awaitExpr = new ILExpression(ILCode.Await, null, origExpr);
+						awaitExprInfos.Add(awaitExpr, awaiterFieldDef);
+						newBody[newBody.Count - 2] = awaitExpr;
 						newBody[newBody.Count - 1] = MakeGoTo(mapping, val);
 						break;
 					}
@@ -416,18 +419,42 @@ namespace ICSharpCode.Decompiler.ILAst {
 					var expr = body[i] as ILExpression;
 					if (expr == null || expr.Code != ILCode.Await)
 						continue;
-					Debug.Assert(i + 1 < body.Count);
-					if (i + 1 < body.Count) {
-						bool b = UpdateExpression(expressionList, expr.Arguments[0], body[i + 1] as ILExpression);
+
+					int replaceExprIndex = GetNextNonAwaitIndex(body, i);
+					Debug.Assert(replaceExprIndex >= 0);
+					if (replaceExprIndex < 0)
+						continue;
+					for (; i < replaceExprIndex; i++) {
+						expr = (ILExpression)body[i];
+						Debug.Assert(expr.Code == ILCode.Await);
+						bool b = awaitExprInfos.TryGetValue(expr, out var awaiterField);
 						Debug.Assert(b);
-						if (b)
+						if (!b)
+							continue;
+
+						b = UpdateExpression(expressionList, expr.Arguments[0], body[replaceExprIndex] as ILExpression, awaiterField);
+						Debug.Assert(b);
+						if (b) {
 							body.RemoveAt(i);
+							i--;
+							replaceExprIndex--;
+						}
 					}
 				}
 			}
 		}
 
-		bool UpdateExpression(List<ILExpression> list, ILExpression newExpr, ILExpression target) {
+		static int GetNextNonAwaitIndex(List<ILNode> body, int i) {
+			while (i < body.Count) {
+				var expr = body[i] as ILExpression;
+				if (expr == null || expr.Code != ILCode.Await)
+					return i;
+				i++;
+			}
+			return -1;
+		}
+
+		bool UpdateExpression(List<ILExpression> list, ILExpression newExpr, ILExpression target, FieldDef awaiterField) {
 			if (target == null)
 				return false;
 			list.Clear();
@@ -437,7 +464,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				list.RemoveAt(list.Count - 1);
 				list.AddRange(expr.Arguments);
 
-				if (MatchCallGetResult(expr, true) == null)
+				if (MatchCallGetResult(expr, true, awaiterField) == null)
 					continue;
 
 				expr.Code = ILCode.Await;
@@ -452,7 +479,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			return false;
 		}
 
-		ILExpression MatchCallGetResult(ILExpression expr, bool isStatic) {
+		ILExpression MatchCallGetResult(ILExpression expr, bool isStatic, FieldDef requiredAwaiterField) {
 			if (expr.Code != ILCode.Call)
 				return null;
 			if (expr.Arguments.Count != 1)
@@ -470,6 +497,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 					return null;
 			}
 			var awaiterFieldDef = field.ResolveFieldWithinSameModule();
+			if (requiredAwaiterField != null && requiredAwaiterField != awaiterFieldDef)
+				return null;
 			if (awaiterFieldDef?.DeclaringType != stateMachineType)
 				return null;
 			var m = expr.Operand as IMethod;

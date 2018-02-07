@@ -20,6 +20,7 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using dnlib.DotNet;
+using dnSpy.Contracts.Decompiler;
 using dnSpy.Contracts.Text;
 using ICSharpCode.NRefactory.CSharp;
 using ICSharpCode.NRefactory.PatternMatching;
@@ -81,6 +82,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			IMethod methodRef = invocationExpression.Annotation<IMethod>();
 			if (methodRef == null)
 				return;
+			var builder = invocationExpression.Annotation<MethodDebugInfoBuilder>();
 			var arguments = invocationExpression.Arguments.ToArray();
 			
 			// Reduce "String.Concat(a, b)" to "a + b"
@@ -93,6 +95,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				}
 				invocationExpression.ReplaceWith(expr);
 				expr.AddAnnotation(invocationExpression.GetAllRecursiveBinSpans());
+				expr.AddAnnotation(builder);
 				return;
 			}
 
@@ -103,7 +106,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 					if (arguments.Length == 1 && methodRef.FullName == "System.Type System.Type::GetTypeFromHandle(System.RuntimeTypeHandle)") {
 						if (typeHandleOnTypeOfPattern.IsMatch(arguments[0])) {
 							invocationExpression.ReplaceWith(((MemberReferenceExpression)arguments[0]).Target
-								.WithAnnotation(invocationExpression.GetAllRecursiveBinSpans()));
+								.WithAnnotation(invocationExpression.GetAllRecursiveBinSpans()).WithAnnotation(builder));
 							return;
 						}
 					}
@@ -113,7 +116,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 						MemberReferenceExpression mre = arguments[0] as MemberReferenceExpression;
 						if (mre != null && mre.MemberName == "FieldHandle" && mre.Target.Annotation<LdTokenAnnotation>() != null) {
 							invocationExpression.ReplaceWith(mre.Target
-								.WithAnnotation(invocationExpression.GetAllRecursiveBinSpans()));
+								.WithAnnotation(invocationExpression.GetAllRecursiveBinSpans()).WithAnnotation(builder));
 							return;
 						}
 					}
@@ -128,7 +131,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 									var binSpans = invocationExpression.GetAllRecursiveBinSpans();
 									AstType declaringType = ((TypeOfExpression)mre2.Target).Type.Detach();
 									oldArg.ReplaceWith(declaringType.Member(field.Name, field).WithAnnotation(field));
-									invocationExpression.ReplaceWith(mre1.Target.WithAnnotation(binSpans));
+									invocationExpression.ReplaceWith(mre1.Target.WithAnnotation(binSpans).WithAnnotation(builder));
 									return;
 								}
 							}
@@ -142,7 +145,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				invocationExpression.Arguments.Clear(); // detach arguments from invocationExpression
 				invocationExpression.ReplaceWith(
 					new BinaryOperatorExpression(arguments[0], bop.Value, arguments[1]).WithAnnotation(methodRef)
-							.WithAnnotation(invocationExpression.GetAllRecursiveBinSpans())
+							.WithAnnotation(invocationExpression.GetAllRecursiveBinSpans()).WithAnnotation(builder)
 				);
 				return;
 			}
@@ -151,7 +154,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				arguments[0].Remove(); // detach argument
 				invocationExpression.ReplaceWith(
 					new UnaryOperatorExpression(uop.Value, arguments[0]).WithAnnotation(methodRef)
-							.WithAnnotation(invocationExpression.GetAllRecursiveBinSpans())
+							.WithAnnotation(invocationExpression.GetAllRecursiveBinSpans()).WithAnnotation(builder)
 				);
 				return;
 			}
@@ -161,15 +164,16 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 					arguments[0].CastTo(AstBuilder.ConvertType(methodRef.MethodSig.GetRetType(), sb))
 					.WithAnnotation(methodRef)
 					.WithAnnotation(invocationExpression.GetAllRecursiveBinSpans())
+					.WithAnnotation(builder)
 				);
 				return;
 			}
 			if (methodRef.Name == "op_Implicit" && arguments.Length == 1) {
-				invocationExpression.ReplaceWith(arguments[0].WithAnnotation(invocationExpression.GetAllRecursiveBinSpans()));
+				invocationExpression.ReplaceWith(arguments[0].WithAnnotation(invocationExpression.GetAllRecursiveBinSpans()).WithAnnotation(builder));
 				return;
 			}
 			if (methodRef.Name == "op_True" && arguments.Length == 1 && invocationExpression.Role == Roles.Condition) {
-				invocationExpression.ReplaceWith(arguments[0].WithAnnotation(invocationExpression.GetAllRecursiveBinSpans()));
+				invocationExpression.ReplaceWith(arguments[0].WithAnnotation(invocationExpression.GetAllRecursiveBinSpans()).WithAnnotation(builder));
 				return;
 			}
 			

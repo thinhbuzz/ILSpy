@@ -257,6 +257,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				returnExpr.Remove();
 				returnExpr.AddAnnotation(builder);
 				lambda.Body = returnExpr;
+				lambda.IsAsync = subContext.CurrentMethodIsAsync;
 				replacement = lambda;
 			} else {
 				ame.AddAnnotation(builder);

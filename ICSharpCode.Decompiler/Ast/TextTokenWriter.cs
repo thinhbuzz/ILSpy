@@ -392,7 +392,8 @@ namespace ICSharpCode.Decompiler.Ast {
 					foreach (var ns in context.UsingNamespaces)
 						currentMethodDebugInfoBuilder.Scope.Imports.Add(ImportInfo.CreateNamespace(ns));
 				}
-				output.AddDebugInfo(currentMethodDebugInfoBuilder.Create());
+				if (parentMethodDebugInfoBuilder.Peek() != currentMethodDebugInfoBuilder)
+					output.AddDebugInfo(currentMethodDebugInfoBuilder.Create());
 				currentMethodDebugInfoBuilder = parentMethodDebugInfoBuilder.Pop();
 			}
 			var mms = node.Annotation<List<Tuple<MethodDebugInfoBuilder, List<BinSpan>>>>();
