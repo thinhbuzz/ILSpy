@@ -13,7 +13,7 @@ namespace ICSharpCode.NRefactory.VB.Ast {
 			set { SetChildByRole(Roles.Expression, value); }
 		}
 
-		public IList<BinSpan> HiddenEnd { get; set; }
+		public IList<ILSpan> HiddenEnd { get; set; }
 		
 		public AstNodeCollection<CaseStatement> Cases {
 			get { return GetChildrenByRole(CaseStatement.CaseStatementRole); }

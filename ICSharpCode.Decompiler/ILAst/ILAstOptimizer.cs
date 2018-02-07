@@ -403,7 +403,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				if (abortBeforeStep == ILAstOptimizationStep.IntroduceConstants) return;
 				IntroduceConstants(method);
 
-				// ReportUnassignedBinSpans(method);
+				// ReportUnassignedILSpans(method);
 			}
 			finally {
 				this.Optimize_List_CatchBlockBase.Clear();
@@ -793,8 +793,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 							code = ILCode.CallReadOnlySetter;
 						}
 
-						if (context.CalculateBinSpans)
-							expr.BinSpans.AddRange(ldflda.BinSpans);
+						if (context.CalculateILSpans)
+							expr.ILSpans.AddRange(ldflda.ILSpans);
 
 						var initobjType = expr.Operand;
 						var initobjVar = new ILVariable("rop_" + (readOnlyPropTempLocalNameCounter++).ToString()) { GeneratedByDecompiler = true };
@@ -882,8 +882,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 					if (md.DeclaringType != fd.DeclaringType || md.IsStatic)
 						continue;
 
-					if (context.CalculateBinSpans)
-						newobj.BinSpans.AddRange(ifNode.GetSelfAndChildrenRecursiveBinSpans().ToArray());
+					if (context.CalculateILSpans)
+						newobj.ILSpans.AddRange(ifNode.GetSelfAndChildrenRecursiveILSpans().ToArray());
 					body[i] = new ILExpression(ILCode.Stloc, delVar, newobj);
 					modified = true;
 				}
@@ -913,8 +913,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 					if (md.DeclaringType != fd.DeclaringType || md.IsStatic)
 						continue;
 
-					if (context.CalculateBinSpans)
-						newobj.BinSpans.AddRange(ifNode.GetSelfAndChildrenRecursiveBinSpans().ToArray());
+					if (context.CalculateILSpans)
+						newobj.ILSpans.AddRange(ifNode.GetSelfAndChildrenRecursiveILSpans().ToArray());
 					// Make sure the local isn't removed
 					body[i] = new ILExpression(ILCode.Wrap, null, new ILExpression(ILCode.Stloc, CreateTempLocal(), newobj));
 					modified = true;
@@ -981,9 +981,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 					else if (args.Count == 1 || args.Count == 2) {
 						if (calledMethod.Name != nameSetProjectError)
 							continue;
-						if (context.CalculateBinSpans) {
+						if (context.CalculateILSpans) {
 							foreach (var arg in args)
-								expr.BinSpans.AddRange(arg.GetSelfAndChildrenRecursiveBinSpans());
+								expr.ILSpans.AddRange(arg.GetSelfAndChildrenRecursiveILSpans());
 						}
 						expr.Code = ILCode.Nop;
 						expr.Operand = null;
@@ -1064,9 +1064,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 						return false;
 
 					var newCode = cgt_args[0];
-					if (context.CalculateBinSpans) {
-						var binSpans = filterBlock.GetSelfAndChildrenRecursiveBinSpans().ToArray();
-						newCode.BinSpans.AddRange(binSpans);
+					if (context.CalculateILSpans) {
+						var ilSpans = filterBlock.GetSelfAndChildrenRecursiveILSpans().ToArray();
+						newCode.ILSpans.AddRange(ilSpans);
 					}
 					body.Clear();
 					body.Add(newCode);
@@ -1139,9 +1139,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 					if (!body[1].Match(ILCode.Endfilter, out ldloc) || !ldloc.Match(ILCode.Ldloc, out v) || v != retVar)
 						return false;
 
-					if (context.CalculateBinSpans) {
-						var binSpans = filterBlock.GetSelfAndChildrenRecursiveBinSpans().ToArray();
-						newCode.BinSpans.AddRange(binSpans);
+					if (context.CalculateILSpans) {
+						var ilSpans = filterBlock.GetSelfAndChildrenRecursiveILSpans().ToArray();
+						newCode.ILSpans.AddRange(ilSpans);
 					}
 					body.Clear();
 					body.Add(newCode);
@@ -1181,13 +1181,13 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 				Debug.Assert(body.Count == 2);
 				var newCode = cgt_args[0];
-				if (context.CalculateBinSpans) {
-					newCode.BinSpans.AddRange(body[0].GetSelfAndChildrenRecursiveBinSpans());// stloc
-					newCode.BinSpans.AddRange(body[pos].BinSpans);// endfilter
-					newCode.BinSpans.AddRange(logicand.BinSpans);
-					newCode.BinSpans.AddRange(logicand_Args[0].GetSelfAndChildrenRecursiveBinSpans());
-					newCode.BinSpans.AddRange(logicand_Args[1].BinSpans);
-					newCode.BinSpans.AddRange(cgt_args[1].GetSelfAndChildrenRecursiveBinSpans());// ldc.i4.0
+				if (context.CalculateILSpans) {
+					newCode.ILSpans.AddRange(body[0].GetSelfAndChildrenRecursiveILSpans());// stloc
+					newCode.ILSpans.AddRange(body[pos].ILSpans);// endfilter
+					newCode.ILSpans.AddRange(logicand.ILSpans);
+					newCode.ILSpans.AddRange(logicand_Args[0].GetSelfAndChildrenRecursiveILSpans());
+					newCode.ILSpans.AddRange(logicand_Args[1].ILSpans);
+					newCode.ILSpans.AddRange(cgt_args[1].GetSelfAndChildrenRecursiveILSpans());// ldc.i4.0
 				}
 				body.Clear();
 				body.Add(newCode);
@@ -1281,9 +1281,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 						return false;
 
 					var newCode = cgt_args[0];
-					if (context.CalculateBinSpans) {
-						var binSpans = filterBlock.GetSelfAndChildrenRecursiveBinSpans().ToArray();
-						newCode.BinSpans.AddRange(binSpans);
+					if (context.CalculateILSpans) {
+						var ilSpans = filterBlock.GetSelfAndChildrenRecursiveILSpans().ToArray();
+						newCode.ILSpans.AddRange(ilSpans);
 					}
 					body.Clear();
 					body.Add(newCode);
@@ -1316,9 +1316,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 					if (!body[2].Match(ILCode.Endfilter, out ldloc) || !ldloc.Match(ILCode.Ldloc, out v) || v != retVar)
 						return false;
 
-					if (context.CalculateBinSpans) {
-						var binSpans = filterBlock.GetSelfAndChildrenRecursiveBinSpans().ToArray();
-						newCode.BinSpans.AddRange(binSpans);
+					if (context.CalculateILSpans) {
+						var ilSpans = filterBlock.GetSelfAndChildrenRecursiveILSpans().ToArray();
+						newCode.ILSpans.AddRange(ilSpans);
 					}
 					body.Clear();
 					body.Add(newCode);
@@ -1378,9 +1378,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 					return false;
 				var newCode = args[1];
 
-				if (context.CalculateBinSpans) {
-					var binSpans = filterBlock.GetSelfAndChildrenRecursiveBinSpans().ToArray();
-					newCode.BinSpans.AddRange(binSpans);
+				if (context.CalculateILSpans) {
+					var ilSpans = filterBlock.GetSelfAndChildrenRecursiveILSpans().ToArray();
+					newCode.ILSpans.AddRange(ilSpans);
 				}
 				body.Clear();
 				body.Add(newCode);
@@ -1406,9 +1406,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 					return false;
 				var newCode = args[1];
 
-				if (context.CalculateBinSpans) {
-					var binSpans = filterBlock.GetSelfAndChildrenRecursiveBinSpans().ToArray();
-					newCode.BinSpans.AddRange(binSpans);
+				if (context.CalculateILSpans) {
+					var ilSpans = filterBlock.GetSelfAndChildrenRecursiveILSpans().ToArray();
+					newCode.ILSpans.AddRange(ilSpans);
 				}
 				body.Clear();
 				body.Add(newCode);
@@ -1446,28 +1446,28 @@ namespace ICSharpCode.Decompiler.ILAst {
 							label = body[i + 1];
 							i++;  // Ignore the label as well
 						}
-						if (context.CalculateBinSpans) {
+						if (context.CalculateILSpans) {
 							ILNode next = i + 1 < body.Count ? body[i + 1] : null;
-							Utils.AddBinSpansTryPreviousFirst(br, prev, next, block);
+							Utils.AddILSpansTryPreviousFirst(br, prev, next, block);
 							if (label != null)
-								Utils.AddBinSpansTryPreviousFirst(label, prev, next, block);
+								Utils.AddILSpansTryPreviousFirst(label, prev, next, block);
 						}
 					} else if (body[i].Match(ILCode.Nop)){
 						// Ignore nop
-						if (context.CalculateBinSpans)
-							Utils.NopMergeBinSpans(block, newBody, i);
+						if (context.CalculateILSpans)
+							Utils.NopMergeILSpans(block, newBody, i);
 					} else if (body[i].Match(ILCode.Pop, out popExpr)) {
 						ILVariable v;
 						if (!popExpr.Match(ILCode.Ldloc, out v))
 							throw new Exception("Pop should have just ldloc at this stage");
-						if (context.CalculateBinSpans) {
-							// Best effort to move the BinSpan to previous statement
+						if (context.CalculateILSpans) {
+							// Best effort to move the ILSpan to previous statement
 							ILVariable prevVar;
 							ILExpression prevExpr;
 							if (i - 1 >= 0 && body[i - 1].Match(ILCode.Stloc, out prevVar, out prevExpr) && prevVar == v)
-								prevExpr.BinSpans.AddRange(((ILExpression)body[i]).BinSpans);
+								prevExpr.ILSpans.AddRange(((ILExpression)body[i]).ILSpans);
 							else
-								Utils.AddBinSpansTryPreviousFirst(newBody, body, i, block);
+								Utils.AddILSpansTryPreviousFirst(newBody, body, i, block);
 						}
 						// Ignore pop
 					} else {
@@ -1475,8 +1475,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 						if (label != null) {
 							if (labelRefCount.GetOrDefault(label) > 0)
 								newBody.Add(label);
-							else if (context.CalculateBinSpans)
-								Utils.LabelMergeBinSpans(block, newBody, i);
+							else if (context.CalculateILSpans)
+								Utils.LabelMergeILSpans(block, newBody, i);
 						} else {
 							newBody.Add(body[i]);
 						}
@@ -1489,9 +1489,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 			foreach (ILExpression expr in method.GetSelfAndChildrenRecursive<ILExpression>(listExpr, e => e.Code == ILCode.Leave)) {
 				if (expr.Arguments.Any(arg => !arg.Match(ILCode.Ldloc)))
 					throw new Exception("Leave should have just ldloc at this stage");
-				if (context.CalculateBinSpans) {
+				if (context.CalculateILSpans) {
 					foreach (var arg in expr.Arguments)
-						arg.AddSelfAndChildrenRecursiveBinSpans(expr.BinSpans);
+						arg.AddSelfAndChildrenRecursiveILSpans(expr.ILSpans);
 				}
 				expr.Arguments.Clear();
 			}
@@ -1501,15 +1501,15 @@ namespace ICSharpCode.Decompiler.ILAst {
 				for (int i = 0; i < expr.Arguments.Count; i++) {
 					ILExpression child;
 					if (expr.Arguments[i].Match(ILCode.Dup, out child)) {
-						if (context.CalculateBinSpans) {
+						if (context.CalculateILSpans) {
 							long index = 0;
 							bool done = false;
 							var argTmp = expr.Arguments[i];
 							for (;;) {
-								var b = argTmp.GetAllBinSpans(ref index, ref done);
+								var b = argTmp.GetAllILSpans(ref index, ref done);
 								if (done)
 									break;
-								child.BinSpans.Add(b);
+								child.ILSpans.Add(b);
 							}
 						}
 						expr.Arguments[i] = child;
@@ -1517,10 +1517,10 @@ namespace ICSharpCode.Decompiler.ILAst {
 				}
 			}
 		}
-		
+
 		/// <summary>
 		/// Reduces the branch codes to just br and brtrue.
-		/// Moves BinSpans to the branch argument
+		/// Moves ILSpans to the branch argument
 		/// </summary>
 		void ReduceBranchInstructionSet(ILBlock block)
 		{
@@ -1531,9 +1531,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 					switch(expr.Code) {
 						case ILCode.Switch:
 						case ILCode.Brtrue:
-							if (context.CalculateBinSpans) {
-								expr.Arguments.Single().BinSpans.AddRange(expr.BinSpans);
-								expr.BinSpans.Clear();
+							if (context.CalculateILSpans) {
+								expr.Arguments.Single().ILSpans.AddRange(expr.ILSpans);
+								expr.ILSpans.Clear();
 							}
 							continue;
 						case ILCode.Brfalse:  op = ILCode.LogicNot; break;
@@ -1552,8 +1552,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 					}
 					var newExpr = new ILExpression(op, null, expr.Arguments);
 					block.Body[i] = new ILExpression(ILCode.Brtrue, expr.Operand, newExpr);
-					if (context.CalculateBinSpans)
-						newExpr.BinSpans.AddRange(expr.BinSpans);
+					if (context.CalculateILSpans)
+						newExpr.ILSpans.AddRange(expr.ILSpans);
 				}
 			}
 		}
@@ -1638,8 +1638,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 					// Remove the 'target' argument from the ldvirtftn instruction.
 					// It's not needed in the translation to C#, and needs to be eliminated so that the target expression
 					// can be inlined.
-					if (context.CalculateBinSpans)
-						expr.Arguments[1].Arguments[0].AddSelfAndChildrenRecursiveBinSpans(expr.Arguments[1].BinSpans);
+					if (context.CalculateILSpans)
+						expr.Arguments[1].Arguments[0].AddSelfAndChildrenRecursiveILSpans(expr.Arguments[1].ILSpans);
 					expr.Arguments[1].Arguments.Clear();
 				}
 			}
@@ -1742,31 +1742,31 @@ namespace ICSharpCode.Decompiler.ILAst {
 							ILVariable locVar;
 							object constValue;
 							if (retArgs.Count == 0)
-								body[i] = new ILExpression(ILCode.Ret, null).WithBinSpansFrom(context.CalculateBinSpans, body[i]);
+								body[i] = new ILExpression(ILCode.Ret, null).WithILSpansFrom(context.CalculateILSpans, body[i]);
 							else if (retArgs[0].Match(ILCode.Ldloc, out locVar)) {
 								ILExpression retExpr;
 								ILVariable v;
 								if (i > 0 && body[i - 1].Match(ILCode.Stloc, out v, out retExpr) && v == locVar) {
 									var newExpr = new ILExpression(ILCode.Ret, null, retExpr);
-									if (context.CalculateBinSpans) {
-										newExpr.BinSpans.AddRange(body[i - 1].BinSpans);
-										body[i].AddSelfAndChildrenRecursiveBinSpans(newExpr.BinSpans);
+									if (context.CalculateILSpans) {
+										newExpr.ILSpans.AddRange(body[i - 1].ILSpans);
+										body[i].AddSelfAndChildrenRecursiveILSpans(newExpr.ILSpans);
 									}
 									body[i - 1] = newExpr;
 									body.RemoveAt(i);
 									i--;
 								}
 								else
-									body[i] = new ILExpression(ILCode.Ret, null, new ILExpression(ILCode.Ldloc, locVar)).WithBinSpansFrom(context.CalculateBinSpans, body[i]);
+									body[i] = new ILExpression(ILCode.Ret, null, new ILExpression(ILCode.Ldloc, locVar)).WithILSpansFrom(context.CalculateILSpans, body[i]);
 							}
 							else if (retArgs[0].Match(ILCode.Ldc_I4, out constValue))
-								body[i] = new ILExpression(ILCode.Ret, null, new ILExpression(ILCode.Ldc_I4, constValue)).WithBinSpansFrom(context.CalculateBinSpans, body[i]);
+								body[i] = new ILExpression(ILCode.Ret, null, new ILExpression(ILCode.Ldc_I4, constValue)).WithILSpansFrom(context.CalculateILSpans, body[i]);
 						}
 					}
 					else {
 						if (method.Body.Count > 0 && method.Body.Last() == targetLabel) {
 							// It exits the main method - so it is same as return;
-							body[i] = new ILExpression(ILCode.Ret, null).WithBinSpansFrom(context.CalculateBinSpans, body[i]);
+							body[i] = new ILExpression(ILCode.Ret, null).WithILSpansFrom(context.CalculateILSpans, body[i]);
 						}
 					}
 				}
@@ -1790,26 +1790,26 @@ namespace ICSharpCode.Decompiler.ILAst {
 							throw new Exception("Basic block has to start with a label. \n" + childAsBB.ToString());
 						if (childAsBB.Body.LastOrDefault() is ILExpression && !childAsBB.Body.LastOrDefault().IsUnconditionalControlFlow())
 							throw new Exception("Basci block has to end with unconditional control flow. \n" + childAsBB.ToString());
-						if (context.CalculateBinSpans) {
+						if (context.CalculateILSpans) {
 							if (flatBody.Count > 0)
-								flatBody[flatBody.Count - 1].EndBinSpans.AddRange(childAsBB.BinSpans);
+								flatBody[flatBody.Count - 1].EndILSpans.AddRange(childAsBB.ILSpans);
 							else
-								block.BinSpans.AddRange(childAsBB.BinSpans);
+								block.ILSpans.AddRange(childAsBB.ILSpans);
 						}
 						foreach (var c in childAsBB.GetChildren())
 							flatBody.Add(c);
 						prevChildAsBB = childAsBB;
 					} else {
 						flatBody.Add(child);
-						if (context.CalculateBinSpans && prevChildAsBB != null)
-							child.BinSpans.AddRange(prevChildAsBB.EndBinSpans);
+						if (context.CalculateILSpans && prevChildAsBB != null)
+							child.ILSpans.AddRange(prevChildAsBB.EndILSpans);
 						prevChildAsBB = null;
 					}
 				}
 				block.EntryGoto = null;
 				block.Body = flatBody;
-				if (context.CalculateBinSpans && prevChildAsBB != null)
-					block.EndBinSpans.AddRange(prevChildAsBB.EndBinSpans);
+				if (context.CalculateILSpans && prevChildAsBB != null)
+					block.EndILSpans.AddRange(prevChildAsBB.EndILSpans);
 			} else if (node is ILExpression) {
 				// Optimization - no need to check expressions
 			} else if (node != null) {
@@ -1834,7 +1834,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				foreach(var block in tryCatch.FinallyBlock.GetSelfAndChildrenRecursive<ILBlock>(Optimize_List_ILBlock)) {
 					for (int i = 0; i < block.Body.Count; i++) {
 						if (block.Body[i].Match(ILCode.Endfinally)) {
-							block.Body[i] = new ILExpression(ILCode.Br, label).WithBinSpansFrom(context.CalculateBinSpans, block.Body[i]);
+							block.Body[i] = new ILExpression(ILCode.Br, label).WithILSpansFrom(context.CalculateILSpans, block.Body[i]);
 						}
 					}
 				}
@@ -2016,8 +2016,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 				case ElementType.I4:
 				case ElementType.U8:
 				case ElementType.I8:
-					if (context.CalculateBinSpans)
-						arg.BinSpans.AddRange(expr.BinSpans);
+					if (context.CalculateILSpans)
+						arg.ILSpans.AddRange(expr.ILSpans);
 					return arg;
 			}
 
@@ -2065,9 +2065,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 				ILExpression mulArg = adjustmentExpr.Arguments[1];
 				if (mulArg.Code == sizeOfExpression.Code && sizeOfExpression.Operand.Equals(mulArg.Operand)) {
 					var arg = adjustmentExpr.Arguments[0];
-					if (context.CalculateBinSpans) {
-						arg.BinSpans.AddRange(adjustmentExpr.BinSpans);
-						mulArg.AddSelfAndChildrenRecursiveBinSpans(arg.BinSpans);
+					if (context.CalculateILSpans) {
+						arg.ILSpans.AddRange(adjustmentExpr.ILSpans);
+						mulArg.AddSelfAndChildrenRecursiveILSpans(arg.ILSpans);
 					}
 					adjustmentExpr = UnwrapIntPtrCast(arg);
 					return;
@@ -2076,7 +2076,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 			if (adjustmentExpr.Code == sizeOfExpression.Code) {
 				if (sizeOfExpression.Operand.Equals(adjustmentExpr.Operand)) {
-					adjustmentExpr = new ILExpression(ILCode.Ldc_I4, 1).WithBinSpansFrom(context.CalculateBinSpans, adjustmentExpr);
+					adjustmentExpr = new ILExpression(ILCode.Ldc_I4, 1).WithILSpansFrom(context.CalculateILSpans, adjustmentExpr);
 					return;
 				}
 
@@ -2262,17 +2262,17 @@ namespace ICSharpCode.Decompiler.ILAst {
 			}
 		}
 
-		public static ILExpression WithBinSpansFrom(this ILExpression expr, bool calculateBinSpans, ILNode node)
+		public static ILExpression WithILSpansFrom(this ILExpression expr, bool calculateILSpans, ILNode node)
 		{
-			if (!calculateBinSpans)
+			if (!calculateILSpans)
 				return expr;
 			long index = 0;
 			bool done = false;
 			for (;;) {
-				var b = node.GetAllBinSpans(ref index, ref done);
+				var b = node.GetAllILSpans(ref index, ref done);
 				if (done)
 					break;
-				expr.BinSpans.Add(b);
+				expr.ILSpans.Add(b);
 			}
 			return expr;
 		}

@@ -212,8 +212,8 @@ namespace ICSharpCode.Decompiler.Ast {
 				return null;
 			var expr = TryTransformBlockExpression(block);
 			if (expr != null) {
-				if (context.CalculateBinSpans && block.StlocBinSpans.Count != 0)
-					expr.AddAnnotation(block.StlocBinSpans);
+				if (context.CalculateILSpans && block.StlocILSpans.Count != 0)
+					expr.AddAnnotation(block.StlocILSpans);
 				return expr;
 			}
 			// Show something...
@@ -231,8 +231,8 @@ namespace ICSharpCode.Decompiler.Ast {
 			if (expr == null)
 				return null;
 
-			if (context.CalculateBinSpans)
-				expr.BinSpans.AddRange(body[0].BinSpans);
+			if (context.CalculateILSpans)
+				expr.ILSpans.AddRange(body[0].ILSpans);
 
 			return TransformExpression(expr) as Ast.Expression;
 		}
@@ -241,8 +241,8 @@ namespace ICSharpCode.Decompiler.Ast {
 		{
 			Ast.BlockStatement astBlock = new BlockStatement();
 			if (block != null) {
-				astBlock.HiddenStart = NRefactoryExtensions.CreateHidden(!context.CalculateBinSpans ? null : BinSpan.OrderAndCompact(block.BinSpans), astBlock.HiddenStart);
-				astBlock.HiddenEnd = NRefactoryExtensions.CreateHidden(!context.CalculateBinSpans ? null : BinSpan.OrderAndCompact(block.EndBinSpans), astBlock.HiddenEnd);
+				astBlock.HiddenStart = NRefactoryExtensions.CreateHidden(!context.CalculateILSpans ? null : ILSpan.OrderAndCompact(block.ILSpans), astBlock.HiddenStart);
+				astBlock.HiddenEnd = NRefactoryExtensions.CreateHidden(!context.CalculateILSpans ? null : ILSpan.OrderAndCompact(block.EndILSpans), astBlock.HiddenEnd);
 				foreach(ILNode node in block.GetChildren()) {
 					var stmt = TransformNode(node);
 					if (stmt != null)
@@ -256,8 +256,8 @@ namespace ICSharpCode.Decompiler.Ast {
 		{
 			if (node is ILLabel) {
 				var lbl = new Ast.LabelStatement { Label = ((ILLabel)node).Name };
-				if (context.CalculateBinSpans)
-					lbl.AddAnnotation(node.BinSpans);
+				if (context.CalculateILSpans)
+					lbl.AddAnnotation(node.ILSpans);
 				return lbl;
 			} else if (node is ILExpression) {
 				AstNode codeExpr = TransformExpression((ILExpression)node);
@@ -278,8 +278,8 @@ namespace ICSharpCode.Decompiler.Ast {
 					Condition = expr = ilLoop.Condition != null ? (Expression)TransformExpression(ilLoop.Condition) : new PrimitiveExpression(true),
 					EmbeddedStatement = TransformBlock(ilLoop.BodyBlock)
 				};
-				if (context.CalculateBinSpans)
-					expr.AddAnnotation(ilLoop.BinSpans);
+				if (context.CalculateILSpans)
+					expr.AddAnnotation(ilLoop.ILSpans);
 				return whileStmt;
 			} else if (node is ILCondition) {
 				ILCondition conditionalNode = (ILCondition)node;
@@ -290,10 +290,10 @@ namespace ICSharpCode.Decompiler.Ast {
 					TrueStatement = trueStmt = TransformBlock(conditionalNode.TrueBlock),
 					FalseStatement = hasFalseBlock ? TransformBlock(conditionalNode.FalseBlock) : null
 				};
-				if (context.CalculateBinSpans)
-					ifElseStmt.Condition.AddAnnotation(conditionalNode.BinSpans);
+				if (context.CalculateILSpans)
+					ifElseStmt.Condition.AddAnnotation(conditionalNode.ILSpans);
 				if (ifElseStmt.FalseStatement == null)
-					trueStmt.HiddenEnd = NRefactoryExtensions.CreateHidden(!context.CalculateBinSpans ? null : conditionalNode.FalseBlock.GetSelfAndChildrenRecursiveBinSpans_OrderAndJoin(), trueStmt.HiddenEnd);
+					trueStmt.HiddenEnd = NRefactoryExtensions.CreateHidden(!context.CalculateILSpans ? null : conditionalNode.FalseBlock.GetSelfAndChildrenRecursiveILSpans_OrderAndJoin(), trueStmt.HiddenEnd);
 				return ifElseStmt;
 			} else if (node is ILSwitch) {
 				ILSwitch ilSwitch = (ILSwitch)node;
@@ -308,9 +308,9 @@ namespace ICSharpCode.Decompiler.Ast {
 					ilSwitch.Condition.ExpectedType = corLib.Int32;
 				}
 				SwitchStatement switchStmt = new SwitchStatement() { Expression = (Expression)TransformExpression(ilSwitch.Condition) };
-				if (context.CalculateBinSpans)
-					switchStmt.Expression.AddAnnotation(ilSwitch.BinSpans);
-				switchStmt.HiddenEnd = NRefactoryExtensions.CreateHidden(!context.CalculateBinSpans ? null : BinSpan.OrderAndCompact(ilSwitch.EndBinSpans), switchStmt.HiddenEnd);
+				if (context.CalculateILSpans)
+					switchStmt.Expression.AddAnnotation(ilSwitch.ILSpans);
+				switchStmt.HiddenEnd = NRefactoryExtensions.CreateHidden(!context.CalculateILSpans ? null : ILSpan.OrderAndCompact(ilSwitch.EndILSpans), switchStmt.HiddenEnd);
 				foreach (var caseBlock in ilSwitch.CaseBlocks) {
 					SwitchSection section = new SwitchSection();
 					if (caseBlock.Values != null) {
@@ -326,7 +326,7 @@ namespace ICSharpCode.Decompiler.Ast {
 				ILTryCatchBlock tryCatchNode = ((ILTryCatchBlock)node);
 				var tryCatchStmt = new Ast.TryCatchStatement();
 				tryCatchStmt.TryBlock = TransformBlock(tryCatchNode.TryBlock);
-				tryCatchStmt.TryBlock.HiddenStart = NRefactoryExtensions.CreateHidden(!context.CalculateBinSpans ? null : BinSpan.OrderAndCompact(tryCatchNode.BinSpans), tryCatchStmt.TryBlock.HiddenStart);
+				tryCatchStmt.TryBlock.HiddenStart = NRefactoryExtensions.CreateHidden(!context.CalculateILSpans ? null : ILSpan.OrderAndCompact(tryCatchNode.ILSpans), tryCatchStmt.TryBlock.HiddenStart);
 				foreach (var catchClause in tryCatchNode.CatchBlocks) {
 					if (catchClause.ExceptionVariable == null
 					    && (catchClause.ExceptionType == null || catchClause.ExceptionType.GetElementType() == ElementType.Object))
@@ -334,7 +334,7 @@ namespace ICSharpCode.Decompiler.Ast {
 						tryCatchStmt.CatchClauses.Add(new Ast.CatchClause {
 							Body = TransformBlock(catchClause),
 							Condition = TransformBlockExpression(catchClause.FilterBlock),
-						}.WithAnnotation(!context.CalculateBinSpans ? null : catchClause.StlocBinSpans));
+						}.WithAnnotation(!context.CalculateILSpans ? null : catchClause.StlocILSpans));
 					} else {
 						tryCatchStmt.CatchClauses.Add(
 							new Ast.CatchClause {
@@ -342,7 +342,7 @@ namespace ICSharpCode.Decompiler.Ast {
 								VariableNameToken = catchClause.ExceptionVariable == null ? null : Identifier.Create(catchClause.ExceptionVariable.Name).WithAnnotation(GetParameterColor(catchClause.ExceptionVariable)),
 								Body = TransformBlock(catchClause),
 								Condition = TransformBlockExpression(catchClause.FilterBlock),
-							}.WithAnnotation(catchClause.ExceptionVariable).WithAnnotation(!context.CalculateBinSpans ? null : catchClause.StlocBinSpans));
+							}.WithAnnotation(catchClause.ExceptionVariable).WithAnnotation(!context.CalculateILSpans ? null : catchClause.StlocILSpans));
 					}
 				}
 				if (tryCatchNode.FinallyBlock != null)
@@ -368,10 +368,10 @@ namespace ICSharpCode.Decompiler.Ast {
 							NameToken = Identifier.Create(v.Name).WithAnnotation(GetParameterColor(v)),
 							Initializer = (Expression)TransformExpression(initializer.Arguments[0])
 						}.WithAnnotation(v));
-					if (context.CalculateBinSpans) {
-						vi.AddAnnotation(initializer.GetSelfAndChildrenRecursiveBinSpans_OrderAndJoin());
+					if (context.CalculateILSpans) {
+						vi.AddAnnotation(initializer.GetSelfAndChildrenRecursiveILSpans_OrderAndJoin());
 						if (i == 0)
-							vi.AddAnnotation(BinSpan.OrderAndCompact(fixedNode.BinSpans));
+							vi.AddAnnotation(ILSpan.OrderAndCompact(fixedNode.ILSpans));
 					}
 				}
 				fixedStatement.Type = AstBuilder.ConvertType(((ILVariable)fixedNode.Initializers[0].Operand).Type, stringBuilder);
@@ -386,7 +386,7 @@ namespace ICSharpCode.Decompiler.Ast {
 		
 		AstNode TransformExpression(ILExpression expr)
 		{
-			List<BinSpan> binSpans = !context.CalculateBinSpans ? null : expr.GetSelfAndChildrenRecursiveBinSpans_OrderAndJoin();
+			List<ILSpan> ilSpans = !context.CalculateILSpans ? null : expr.GetSelfAndChildrenRecursiveILSpans_OrderAndJoin();
 
 			AstNode node = TransformByteCode(expr);
 			Expression astExpr = node as Expression;
@@ -401,8 +401,8 @@ namespace ICSharpCode.Decompiler.Ast {
 			if (result != null)
 				result = result.WithAnnotation(new TypeInformation(expr.InferredType, expr.ExpectedType));
 			
-			if (context.CalculateBinSpans && result != null)
-				return result.WithAnnotation(binSpans);
+			if (context.CalculateILSpans && result != null)
+				return result.WithAnnotation(ilSpans);
 			
 			return result;
 		}
@@ -1345,8 +1345,8 @@ namespace ICSharpCode.Decompiler.Ast {
 		{
 			if (target is DirectionExpression) {
 				var expr = ((DirectionExpression)target).Expression.Detach();
-				if (context.CalculateBinSpans)
-					target.AddAllRecursiveBinSpansTo(expr);
+				if (context.CalculateILSpans)
+					target.AddAllRecursiveILSpansTo(expr);
 				return expr;
 			} else {
 				return target;

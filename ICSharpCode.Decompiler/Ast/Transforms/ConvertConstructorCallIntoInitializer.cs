@@ -63,14 +63,14 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 					return null;
 				// Move arguments from invocation to initializer:
 				invocation.Arguments.MoveTo(ci.Arguments);
-				var binSpans = stmt.GetAllRecursiveBinSpans();
+				var ilSpans = stmt.GetAllRecursiveILSpans();
 				// Add the initializer: (unless it is the default 'base()')
 				if (!(ci.ConstructorInitializerType == ConstructorInitializerType.Base && ci.Arguments.Count == 0)) {
 					constructorDeclaration.Initializer = ci.WithAnnotation(invocation.Annotation<IMethod>());
-					ci.AddAnnotation(binSpans);
+					ci.AddAnnotation(ilSpans);
 				}
 				else
-					constructorDeclaration.Body.HiddenStart = NRefactoryExtensions.CreateHidden(!context.CalculateBinSpans ? null : BinSpan.OrderAndCompactList(binSpans), constructorDeclaration.Body.HiddenStart);
+					constructorDeclaration.Body.HiddenStart = NRefactoryExtensions.CreateHidden(!context.CalculateILSpans ? null : ILSpan.OrderAndCompactList(ilSpans), constructorDeclaration.Body.HiddenStart);
 				// Remove the statement:
 				stmt.Remove();
 			}
@@ -162,7 +162,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 						}
 					}
 					if (allSame) {
-						var ctorBinSpans = new List<Tuple<MethodDebugInfoBuilder, List<BinSpan>>>(instanceCtorsNotChainingWithThis.Length);
+						var ctorILSpans = new List<Tuple<MethodDebugInfoBuilder, List<ILSpan>>>(instanceCtorsNotChainingWithThis.Length);
 						for (int i = 0; i < instanceCtorsNotChainingWithThis.Length; i++) {
 							var ctor = instanceCtorsNotChainingWithThis[i];
 							var stmt = ctor.Body.First();
@@ -170,7 +170,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 							var mm = ctor.Annotation<MethodDebugInfoBuilder>() ?? ctor.Body.Annotation<MethodDebugInfoBuilder>();
 							Debug.Assert(mm != null);
 							if (mm != null)
-								ctorBinSpans.Add(Tuple.Create(mm, stmt.GetAllRecursiveBinSpans()));
+								ctorILSpans.Add(Tuple.Create(mm, stmt.GetAllRecursiveILSpans()));
 						}
 						if (fieldOrEventDecl is PropertyDeclaration) {
 							var pd = (PropertyDeclaration)fieldOrEventDecl;
@@ -178,9 +178,9 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 						}
 						var varInit = fieldOrEventDecl.GetChildrenByRole(Roles.Variable).Single();
 						initializer.Remove();
-						initializer.RemoveAllBinSpansRecursive();
+						initializer.RemoveAllILSpansRecursive();
 						varInit.Initializer = initializer;
-						fieldOrEventDecl.AddAnnotation(ctorBinSpans);
+						fieldOrEventDecl.AddAnnotation(ctorILSpans);
 					}
 				} while (allSame);
 			}
@@ -263,13 +263,13 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 							else
 								break;
 						}
-						var binSpans = assignment.GetAllRecursiveBinSpans();
-						assignment.RemoveAllBinSpansRecursive();
+						var ilSpans = assignment.GetAllRecursiveILSpans();
+						assignment.RemoveAllILSpansRecursive();
 						varInit.Initializer = assignment.Right.Detach();
-						var ctorBinSpans = new List<Tuple<MethodDebugInfoBuilder, List<BinSpan>>>(1);
+						var ctorILSpans = new List<Tuple<MethodDebugInfoBuilder, List<ILSpan>>>(1);
 						if (mm != null)
-							ctorBinSpans.Add(Tuple.Create(mm, binSpans));
-						decl.AddAnnotation(ctorBinSpans);
+							ctorILSpans.Add(Tuple.Create(mm, ilSpans));
+						decl.AddAnnotation(ctorILSpans);
 						es.Remove();
 					}
 					if (!context.Settings.ForceShowAllMembers && context.Settings.RemoveEmptyDefaultConstructors && staticCtor.Body.Statements.Count == 0)

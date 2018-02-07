@@ -35,7 +35,7 @@ namespace ICSharpCode.Decompiler {
 		public bool CurrentMethodIsAsync;
 		public bool CurrentMethodIsYieldReturn;
 		public readonly DecompilerCache Cache;
-		public bool CalculateBinSpans;
+		public bool CalculateILSpans;
 		public readonly List<string> UsingNamespaces = new List<string>();
 
 		public static DecompilerContext CreateTestContext(ModuleDef currentModule)
@@ -49,11 +49,11 @@ namespace ICSharpCode.Decompiler {
 			: this(settingsVersion, currentModule, metadataTextColorProvider, false) {
 		}
 
-		public DecompilerContext(int settingsVersion, ModuleDef currentModule, MetadataTextColorProvider metadataTextColorProvider, bool calculateBinSpans)
+		public DecompilerContext(int settingsVersion, ModuleDef currentModule, MetadataTextColorProvider metadataTextColorProvider, bool calculateILSpans)
 		{
 			this.SettingsVersion = settingsVersion;
 			this.CurrentModule = currentModule;
-			this.CalculateBinSpans = calculateBinSpans;
+			this.CalculateILSpans = calculateILSpans;
 			this.Cache = new DecompilerCache(this);
 			this.MetadataTextColorProvider = metadataTextColorProvider ?? CSharpMetadataTextColorProvider.Instance;
 		}

@@ -21,7 +21,7 @@ using System.Linq;
 using ICSharpCode.NRefactory.CSharp;
 using ICSharpCode.NRefactory.PatternMatching;
 
-//TODO: Verify that no BinSpans have been removed from this file
+//TODO: Verify that no ILSpans have been removed from this file
 
 namespace ICSharpCode.Decompiler.Ast.Transforms
 {

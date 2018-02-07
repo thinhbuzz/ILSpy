@@ -363,7 +363,7 @@ namespace ICSharpCode.Decompiler.Ast {
 		
 		MethodDebugInfoBuilder currentMethodDebugInfoBuilder;
 		Stack<MethodDebugInfoBuilder> parentMethodDebugInfoBuilder = new Stack<MethodDebugInfoBuilder>();
-		List<Tuple<MethodDebugInfoBuilder, List<BinSpan>>> multiMappings;
+		List<Tuple<MethodDebugInfoBuilder, List<ILSpan>>> multiMappings;
 		
 		public override void StartNode(AstNode node)
 		{
@@ -375,7 +375,7 @@ namespace ICSharpCode.Decompiler.Ast {
 				currentMethodDebugInfoBuilder = mapping;
 			}
 			// For ctor/cctor field initializers
-			var mms = node.Annotation<List<Tuple<MethodDebugInfoBuilder, List<BinSpan>>>>();
+			var mms = node.Annotation<List<Tuple<MethodDebugInfoBuilder, List<ILSpan>>>>();
 			if (mms != null) {
 				Debug.Assert(multiMappings == null);
 				multiMappings = mms;
@@ -388,7 +388,7 @@ namespace ICSharpCode.Decompiler.Ast {
 				throw new InvalidOperationException();
 			
 			if (node.Annotation<MethodDebugInfoBuilder>() != null) {
-				if (context.CalculateBinSpans) {
+				if (context.CalculateILSpans) {
 					foreach (var ns in context.UsingNamespaces)
 						currentMethodDebugInfoBuilder.Scope.Imports.Add(ImportInfo.CreateNamespace(ns));
 				}
@@ -396,7 +396,7 @@ namespace ICSharpCode.Decompiler.Ast {
 					output.AddDebugInfo(currentMethodDebugInfoBuilder.Create());
 				currentMethodDebugInfoBuilder = parentMethodDebugInfoBuilder.Pop();
 			}
-			var mms = node.Annotation<List<Tuple<MethodDebugInfoBuilder, List<BinSpan>>>>();
+			var mms = node.Annotation<List<Tuple<MethodDebugInfoBuilder, List<ILSpan>>>>();
 			if (mms != null) {
 				Debug.Assert(mms == multiMappings);
 				if (mms == multiMappings) {
@@ -444,26 +444,26 @@ namespace ICSharpCode.Decompiler.Ast {
 		{
 			var state = debugStack.Pop();
 			if (currentMethodDebugInfoBuilder != null) {
-				foreach (var binSpan in BinSpan.OrderAndCompact(GetBinSpans(state)))
-					currentMethodDebugInfoBuilder.Add(new SourceStatement(binSpan, new TextSpan(state.StartSpan, (end ?? output.NextPosition) - state.StartSpan)));
+				foreach (var ilSpan in ILSpan.OrderAndCompact(GetILSpans(state)))
+					currentMethodDebugInfoBuilder.Add(new SourceStatement(ilSpan, new TextSpan(state.StartSpan, (end ?? output.NextPosition) - state.StartSpan)));
 			}
 			else if (multiMappings != null) {
 				foreach (var mm in multiMappings) {
-					foreach (var binSpan in BinSpan.OrderAndCompact(mm.Item2))
-						mm.Item1.Add(new SourceStatement(binSpan, new TextSpan(state.StartSpan, (end ?? output.NextPosition) - state.StartSpan)));
+					foreach (var ilSpan in ILSpan.OrderAndCompact(mm.Item2))
+						mm.Item1.Add(new SourceStatement(ilSpan, new TextSpan(state.StartSpan, (end ?? output.NextPosition) - state.StartSpan)));
 				}
 			}
 		}
 
-		static IEnumerable<BinSpan> GetBinSpans(DebugState state)
+		static IEnumerable<ILSpan> GetILSpans(DebugState state)
 		{
 			foreach (var node in state.Nodes) {
 				foreach (var ann in node.Annotations) {
-					var list = ann as IList<BinSpan>;
+					var list = ann as IList<ILSpan>;
 					if (list == null)
 						continue;
-					foreach (var binSpan in list)
-						yield return binSpan;
+					foreach (var ilSpan in list)
+						yield return ilSpan;
 				}
 			}
 		}

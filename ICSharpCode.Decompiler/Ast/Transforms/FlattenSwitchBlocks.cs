@@ -20,7 +20,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 					continue;
 				if (blockStatement.HiddenStart != null || blockStatement.HiddenEnd != null)
 					continue;
-				if (blockStatement.GetAllBinSpans().Count > 0)
+				if (blockStatement.GetAllILSpans().Count > 0)
 					continue;
 
 				blockStatement.Remove();

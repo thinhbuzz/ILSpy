@@ -679,11 +679,11 @@ namespace ICSharpCode.Decompiler.ILAst {
 				return false;
 
 			pos -= 2; // also delete 'stloc', 'brtrue' and 'await'
-			if (context.CalculateBinSpans) {
-				awaitedExpr.BinSpans.AddRange(body[pos].BinSpans);
-				awaitedExpr.BinSpans.AddRange(getAwaiterCall.BinSpans);
+			if (context.CalculateILSpans) {
+				awaitedExpr.ILSpans.AddRange(body[pos].ILSpans);
+				awaitedExpr.ILSpans.AddRange(getAwaiterCall.ILSpans);
 				if (addrOffExpr != null)
-					awaitedExpr.BinSpans.AddRange(addrOffExpr.BinSpans);
+					awaitedExpr.ILSpans.AddRange(addrOffExpr.ILSpans);
 			}
 			body.RemoveRange(pos, labelPos - pos);
 			Debug.Assert(body[pos] == label);
@@ -694,8 +694,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 				resultAssignment.Arguments[0] = new ILExpression(ILCode.Await, null, awaitedExpr);
 			}
 			else if (patchExpr != null) {
-				if (context.CalculateBinSpans)
-					awaitedExpr.BinSpans.AddRange(patchExpr.Arguments[0].GetSelfAndChildrenRecursiveBinSpans());
+				if (context.CalculateILSpans)
+					awaitedExpr.ILSpans.AddRange(patchExpr.Arguments[0].GetSelfAndChildrenRecursiveILSpans());
 				patchExpr.Arguments[0] = new ILExpression(ILCode.Await, null, awaitedExpr);
 			}
 			else

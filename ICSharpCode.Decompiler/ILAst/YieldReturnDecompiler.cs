@@ -262,8 +262,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 		protected abstract void AnalyzeMoveNext();
 
 		#region TranslateFieldsToLocalAccess
-		void TranslateFieldsToLocalAccess() => TranslateFieldsToLocalAccess(newBody, fieldToParameterMap, cachedThisVar, context.CalculateBinSpans);
-		internal static void TranslateFieldsToLocalAccess(List<ILNode> newBody, Dictionary<FieldDef, ILVariable> fieldToParameterMap, ILVariable cachedThisField, bool calculateBinSpans) {
+		void TranslateFieldsToLocalAccess() => TranslateFieldsToLocalAccess(newBody, fieldToParameterMap, cachedThisVar, context.CalculateILSpans);
+		internal static void TranslateFieldsToLocalAccess(List<ILNode> newBody, Dictionary<FieldDef, ILVariable> fieldToParameterMap, ILVariable cachedThisField, bool calculateILSpans) {
 			ILVariable realThisParameter = null;
 			if (cachedThisField != null) {
 				foreach (var kv in fieldToParameterMap) {
@@ -288,8 +288,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 								expr.Operand = fieldToParameterMap[field];
 							else
 								expr.Operand = fieldToLocalMap[field];
-							if (calculateBinSpans)
-								expr.BinSpans.AddRange(expr.Arguments[0].GetSelfAndChildrenRecursiveBinSpans());
+							if (calculateILSpans)
+								expr.ILSpans.AddRange(expr.Arguments[0].GetSelfAndChildrenRecursiveILSpans());
 							expr.Arguments.Clear();
 						}
 						break;
@@ -300,8 +300,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 								expr.Operand = fieldToParameterMap[field];
 							else
 								expr.Operand = fieldToLocalMap[field];
-							if (calculateBinSpans)
-								expr.BinSpans.AddRange(expr.Arguments[0].GetSelfAndChildrenRecursiveBinSpans());
+							if (calculateILSpans)
+								expr.ILSpans.AddRange(expr.Arguments[0].GetSelfAndChildrenRecursiveILSpans());
 							expr.Arguments.RemoveAt(0);
 						}
 						break;
@@ -312,8 +312,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 								expr.Operand = fieldToParameterMap[field];
 							else
 								expr.Operand = fieldToLocalMap[field];
-							if (calculateBinSpans)
-								expr.BinSpans.AddRange(expr.Arguments[0].GetSelfAndChildrenRecursiveBinSpans());
+							if (calculateILSpans)
+								expr.ILSpans.AddRange(expr.Arguments[0].GetSelfAndChildrenRecursiveILSpans());
 							expr.Arguments.Clear();
 						}
 						break;
@@ -324,7 +324,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					}
 				}
 			}
-			if (calculateBinSpans) {
+			if (calculateILSpans) {
 				foreach (var kv in fieldToParameterMap)
 					kv.Value.HoistedField = kv.Key;
 			}

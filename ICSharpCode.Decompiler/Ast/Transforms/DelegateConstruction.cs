@@ -88,7 +88,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 					if (method != null) {
 						if (HandleAnonymousMethod(objectCreateExpression, obj, method))
 							return null;
-						var binSpans = context.CalculateBinSpans ? objectCreateExpression.GetAllRecursiveBinSpans() : null;
+						var ilSpans = context.CalculateILSpans ? objectCreateExpression.GetAllRecursiveILSpans() : null;
 						// Perform the transformation to "new Action(obj.func)".
 						obj.Remove();
 						methodIdent.Remove();
@@ -135,7 +135,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 								msig = new MethodSig((msig.CallingConvention | CallingConvention.HasThis) & ~CallingConvention.Generic, 0, msig.RetType, msig.Params);
 								if (new SigComparer().Equals(invokeSig, msig)) {
 									objectCreateExpression.ReplaceWith(mre);
-									mre.AddAnnotation(binSpans);
+									mre.AddAnnotation(ilSpans);
 									return null;
 								}
 							}
@@ -143,7 +143,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 
 						objectCreateExpression.Arguments.Clear();
 						objectCreateExpression.Arguments.Add(mre);
-						objectCreateExpression.AddAnnotation(binSpans);
+						objectCreateExpression.AddAnnotation(ilSpans);
 						return null;
 					}
 				}
@@ -187,11 +187,11 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			if (!IsAnonymousMethod(context, method))
 				return false;
 
-			var binSpans = objectCreateExpression.GetAllRecursiveBinSpans();
+			var ilSpans = objectCreateExpression.GetAllRecursiveILSpans();
 			
 			// Create AnonymousMethodExpression and prepare parameters
 			AnonymousMethodExpression ame = new AnonymousMethodExpression();
-			ame.CopyAnnotationsFrom(objectCreateExpression); // copy BinSpans etc.
+			ame.CopyAnnotationsFrom(objectCreateExpression); // copy ILSpans etc.
 			ame.RemoveAnnotations<IMethod>(); // remove reference to delegate ctor
 			ame.AddAnnotation(method); // add reference to anonymous method
 			ame.Parameters.AddRange(AstBuilder.MakeParameters(context.MetadataTextColorProvider, method, context.Settings, stringBuilder, isLambda: true));
@@ -209,7 +209,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			subContext.CurrentMethodIsAsync = false;
 			subContext.CurrentMethodIsYieldReturn = false;
 			subContext.ReservedVariableNames.AddRange(currentlyUsedVariableNames);
-			subContext.CalculateBinSpans = true;
+			subContext.CalculateILSpans = true;
 			MethodDebugInfoBuilder builder;
 			BlockStatement body = AstMethodBodyBuilder.CreateMethodBody(method, subContext, autoPropertyProvider, ame.Parameters, false, stringBuilder, out builder);
 			TransformationPipeline.RunTransformationsUntil(body, v => v is DelegateConstruction, subContext);
@@ -230,7 +230,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 					where v != null && v.IsParameter && method.Parameters.Contains(v.OriginalParameter)
 					select ident;
 				if (!parameterReferencingIdentifiers.Any()) {
-					ame.AddAnnotation(ame.Parameters.GetAllRecursiveBinSpans());
+					ame.AddAnnotation(ame.Parameters.GetAllRecursiveILSpans());
 					ame.Parameters.Clear();
 					ame.HasParameterList = false;
 				}
@@ -240,8 +240,8 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			foreach (AstNode node in body.Descendants) {
 				if (node is ThisReferenceExpression) {
 					var newTarget = target.Clone();
-					newTarget.RemoveAllBinSpansRecursive();
-					newTarget.AddAnnotation(node.GetAllRecursiveBinSpans());
+					newTarget.RemoveAllILSpansRecursive();
+					newTarget.AddAnnotation(node.GetAllRecursiveILSpans());
 					node.ReplaceWith(newTarget);
 				}
 			}
@@ -250,10 +250,10 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				LambdaExpression lambda = new LambdaExpression();
 				lambda.CopyAnnotationsFrom(ame);
 				ame.Parameters.MoveTo(lambda.Parameters);
-				var stmtBinSpans = body.Statements.Single().GetAllBinSpans();
+				var stmtILSpans = body.Statements.Single().GetAllILSpans();
 				Expression returnExpr = ((ReturnStatement)body.Statements.Single()).Expression;
-				if (stmtBinSpans.Count > 0)
-					returnExpr.AddAnnotation(stmtBinSpans);
+				if (stmtILSpans.Count > 0)
+					returnExpr.AddAnnotation(stmtILSpans);
 				returnExpr.Remove();
 				returnExpr.AddAnnotation(builder);
 				lambda.Body = returnExpr;
@@ -272,7 +272,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				replacement = simplifiedDelegateCreation;
 			}
 			objectCreateExpression.ReplaceWith(replacement);
-			replacement.AddAnnotation(binSpans);
+			replacement.AddAnnotation(ilSpans);
 			return true;
 		}
 		
@@ -294,7 +294,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			if (context.Settings.ExpressionTrees && ExpressionTreeConverter.CouldBeExpressionTree(invocationExpression)) {
 				Expression converted = ExpressionTreeConverter.TryConvert(context, invocationExpression, this.stringBuilder);
 				if (converted != null) {
-					//TODO: Do we need to preserve BinSpans or is it taken care of by TryConvert?
+					//TODO: Do we need to preserve ILSpans or is it taken care of by TryConvert?
 					invocationExpression.ReplaceWith(converted);
 					return converted.AcceptVisitor(this, data);
 				}
@@ -418,8 +418,6 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 
 				// Delete the assignment statement:
 				AstNode cur = stmt.NextSibling;
-				if (context.CalculateBinSpans)
-					SaveBinSpans(stmt);
 				stmt.Remove();
 				
 				// Delete any following statements as long as they assign parameters to the display class
@@ -479,10 +477,6 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 						if (isParameter || isDisplayClassParentPointerAssignment) {
 							if (fieldDef != null)
 								dict[fieldDef] = right;
-							if (context.CalculateBinSpans) {
-								SaveBinSpans(cur);
-								cur.RemoveAllBinSpansRecursive();
-							}
 							cur.Remove();
 						} else {
 							break;
@@ -521,7 +515,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 						var fieldDef = mre.Annotation<IField>().ResolveFieldWithinSameModule();
 						if (fieldDef != null && dict.TryGetValue(fieldDef, out replacement)) {
 							var newReplacement = replacement.Clone();
-							newReplacement.AddAnnotation(mre.GetAllRecursiveBinSpans());
+							newReplacement.AddAnnotation(mre.GetAllRecursiveILSpans());
 							mre.ReplaceWith(newReplacement);
 						}
 					}
@@ -537,189 +531,6 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			}
 			currentlyUsedVariableNames.RemoveRange(numberOfVariablesOutsideBlock, currentlyUsedVariableNames.Count - numberOfVariablesOutsideBlock);
 			return null;
-		}
-
-		// Moves bin spans to next node or previous node
-		void SaveBinSpans(AstNode removed) {
-			var next = removed.NextSibling as Statement;
-			if (next != null) {
-				var chst = next as CheckedStatement;
-				if (chst != null) {
-					AddToHiddenStart(chst.Body, removed);
-					return;
-				}
-
-				var dowh = next as DoWhileStatement;
-				if (dowh != null) {
-					AddToHiddenStart((BlockStatement)dowh.EmbeddedStatement, removed);
-					return;
-				}
-
-				var fxst = next as FixedStatement;
-				if (fxst != null) {
-					AddToHiddenStart((BlockStatement)fxst.EmbeddedStatement, removed);
-					return;
-				}
-
-				var fest = next as ForeachStatement;
-				if (fest != null) {
-					AddToHiddenStart((BlockStatement)fest.EmbeddedStatement, removed);
-					return;
-				}
-
-				var fost = next as ForStatement;
-				if (fost != null) {
-					AddToHiddenStart((BlockStatement)fost.EmbeddedStatement, removed);
-					return;
-				}
-
-				var ifelse = next as IfElseStatement;
-				if (ifelse != null) {
-					AddToHiddenStart((BlockStatement)ifelse.TrueStatement, removed);
-					return;
-				}
-
-				var lost = next as LockStatement;
-				if (lost != null) {
-					AddToHiddenStart((BlockStatement)lost.EmbeddedStatement, removed);
-					return;
-				}
-
-				var swst = next as SwitchStatement;
-				if (swst != null) {
-					swst.Expression.AddAnnotation(removed);
-					return;
-				}
-
-				var trst = next as TryCatchStatement;
-				if (trst != null) {
-					AddToHiddenStart(trst.TryBlock, removed);
-					return;
-				}
-
-				var unst = next as UncheckedStatement;
-				if (unst != null) {
-					AddToHiddenStart(unst.Body, removed);
-					return;
-				}
-
-				var unsst = next as UnsafeStatement;
-				if (unsst != null) {
-					AddToHiddenStart(unsst.Body, removed);
-					return;
-				}
-
-				var usst = next as UsingStatement;
-				if (usst != null) {
-					AddToHiddenStart((BlockStatement)usst.EmbeddedStatement, removed);
-					return;
-				}
-
-				var whst = next as WhileStatement;
-				if (whst != null) {
-					AddToHiddenStart((BlockStatement)whst.EmbeddedStatement, removed);
-					return;
-				}
-
-				removed.AddAllRecursiveBinSpansTo(next);
-				return;
-			}
-
-			var prev = removed.PrevSibling as Statement;
-			if (prev != null) {
-				var chst = prev as CheckedStatement;
-				if (chst != null) {
-					AddToHiddenEnd(chst.Body, removed);
-					return;
-				}
-
-				var dowh = prev as DoWhileStatement;
-				if (dowh != null) {
-					AddToHiddenEnd((BlockStatement)dowh.EmbeddedStatement, removed);
-					return;
-				}
-
-				var fxst = prev as FixedStatement;
-				if (fxst != null) {
-					AddToHiddenEnd((BlockStatement)fxst.EmbeddedStatement, removed);
-					return;
-				}
-
-				var fest = prev as ForeachStatement;
-				if (fest != null) {
-					AddToHiddenEnd((BlockStatement)fest.EmbeddedStatement, removed);
-					return;
-				}
-
-				var fost = prev as ForStatement;
-				if (fost != null) {
-					AddToHiddenEnd((BlockStatement)fost.EmbeddedStatement, removed);
-					return;
-				}
-
-				var ifelse = prev as IfElseStatement;
-				if (ifelse != null) {
-					AddToHiddenEnd((BlockStatement)ifelse.TrueStatement, removed);
-					return;
-				}
-
-				var lost = prev as LockStatement;
-				if (lost != null) {
-					AddToHiddenEnd((BlockStatement)lost.EmbeddedStatement, removed);
-					return;
-				}
-
-				var swst = prev as SwitchStatement;
-				if (swst != null) {
-					swst.HiddenEnd = NRefactoryExtensions.CreateHidden(removed, swst.HiddenEnd);
-					return;
-				}
-
-				var trst = prev as TryCatchStatement;
-				if (trst != null) {
-					AddToHiddenEnd(trst.TryBlock, removed);
-					return;
-				}
-
-				var unst = prev as UncheckedStatement;
-				if (unst != null) {
-					AddToHiddenEnd(unst.Body, removed);
-					return;
-				}
-
-				var unsst = prev as UnsafeStatement;
-				if (unsst != null) {
-					AddToHiddenEnd(unsst.Body, removed);
-					return;
-				}
-
-				var usst = prev as UsingStatement;
-				if (usst != null) {
-					AddToHiddenEnd((BlockStatement)usst.EmbeddedStatement, removed);
-					return;
-				}
-
-				var whst = prev as WhileStatement;
-				if (whst != null) {
-					AddToHiddenEnd((BlockStatement)whst.EmbeddedStatement, removed);
-					return;
-				}
-
-				removed.AddAllRecursiveBinSpansTo(prev);
-				return;
-			}
-		}
-
-		static void AddToHiddenStart(BlockStatement blk, AstNode removed) {
-			if (blk == null)
-				return;
-			blk.HiddenStart = NRefactoryExtensions.CreateHidden(BinSpan.OrderAndCompact(removed.GetAllRecursiveBinSpans()), blk.HiddenStart);
-		}
-
-		static void AddToHiddenEnd(BlockStatement blk, AstNode removed) {
-			if (blk == null)
-				return;
-			blk.HiddenEnd = NRefactoryExtensions.CreateHidden(BinSpan.OrderAndCompact(removed.GetAllRecursiveBinSpans()), blk.HiddenEnd);
 		}
 
 		void EnsureVariableNameIsAvailable(AstNode currentNode, string name)

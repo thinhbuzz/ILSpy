@@ -52,7 +52,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				graph = BuildGraph(block.Body, (ILLabel)block.EntryGoto.Operand);
 				graph.ComputeDominance(context.CancellationToken);
 				graph.ComputeDominanceFrontier();
-				//TODO: Keep BinSpans when writing to Body
+				//TODO: Keep ILSpans when writing to Body
 				block.Body = FindLoops(new HashSet<ControlFlowNode>(graph.Nodes.Skip(3)), graph.EntryPoint, false);
 			}
 		}
@@ -64,7 +64,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				graph = BuildGraph(block.Body, (ILLabel)block.EntryGoto.Operand);
 				graph.ComputeDominance(context.CancellationToken);
 				graph.ComputeDominanceFrontier();
-				//TODO: Keep BinSpans when writing to Body
+				//TODO: Keep ILSpans when writing to Body
 				block.Body = FindConditions(new HashSet<ControlFlowNode>(graph.Nodes.Skip(3)), graph.EntryPoint);
 			}
 		}
@@ -193,9 +193,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 									Body = FindLoops(loopContents, node, false)
 								}
 							});
-							if (context.CalculateBinSpans) {
-								whileLoop.BinSpans.AddRange(tail[0].BinSpans);  // no recursive add
-								tail[1].AddSelfAndChildrenRecursiveBinSpans(whileLoop.BinSpans);
+							if (context.CalculateILSpans) {
+								whileLoop.ILSpans.AddRange(tail[0].ILSpans);  // no recursive add
+								tail[1].AddSelfAndChildrenRecursiveILSpans(whileLoop.ILSpans);
 							}
 							basicBlock.Body.Add(new ILExpression(ILCode.Br, falseLabel));
 							result.Add(basicBlock);
@@ -264,9 +264,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 							// Replace the switch code with ILSwitch
 							ILSwitch ilSwitch = new ILSwitch() { Condition = switchArg };
 							var tail = block.Body.RemoveTail(ILCode.Switch, ILCode.Br);
-							if (context.CalculateBinSpans) {
-								ilSwitch.BinSpans.AddRange(tail[0].BinSpans);   // no recursive add
-								tail[1].AddSelfAndChildrenRecursiveBinSpans(ilSwitch.BinSpans);
+							if (context.CalculateILSpans) {
+								ilSwitch.ILSpans.AddRange(tail[0].ILSpans);   // no recursive add
+								tail[1].AddSelfAndChildrenRecursiveILSpans(ilSwitch.ILSpans);
 							}
 							block.Body.Add(ilSwitch);
 							block.Body.Add(new ILExpression(ILCode.Br, fallLabel));
@@ -281,10 +281,10 @@ namespace ICSharpCode.Decompiler.ILAst {
 							if (ilSwitch.Condition.Match(ILCode.Sub, out subArgs) && subArgs[1].Match(ILCode.Ldc_I4, out addValue)) {
 								var old = ilSwitch.Condition;
 								ilSwitch.Condition = subArgs[0];
-								if (context.CalculateBinSpans) {
-									ilSwitch.Condition.BinSpans.AddRange(old.BinSpans); // no recursive add
+								if (context.CalculateILSpans) {
+									ilSwitch.Condition.ILSpans.AddRange(old.ILSpans); // no recursive add
 									for (int i = 1; i < subArgs.Count; i++)
-										subArgs[i].AddSelfAndChildrenRecursiveBinSpans(ilSwitch.Condition.BinSpans);
+										subArgs[i].AddSelfAndChildrenRecursiveILSpans(ilSwitch.Condition.ILSpans);
 								}
 							}
 							
@@ -346,8 +346,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 									var caseBlock = new ILSwitch.CaseBlock() { EntryGoto = new ILExpression(ILCode.Br, fallLabel) };
 									ilSwitch.CaseBlocks.Add(caseBlock);
 									tail = block.Body.RemoveTail(ILCode.Br);
-									if (context.CalculateBinSpans)
-										tail[0].AddSelfAndChildrenRecursiveBinSpans(caseBlock.BinSpans);
+									if (context.CalculateILSpans)
+										tail[0].AddSelfAndChildrenRecursiveILSpans(caseBlock.ILSpans);
 									
 									scope.ExceptWith(content);
 									caseBlock.Body.AddRange(FindConditions(content, fallTarget));
@@ -381,9 +381,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 								FalseBlock = new ILBlock(CodeBracesRangeFlags.ConditionalBraces) { EntryGoto = new ILExpression(ILCode.Br, falseLabel) }
 							};
 							var tail = block.Body.RemoveTail(ILCode.Brtrue, ILCode.Br);
-							if (context.CalculateBinSpans) {
-								condExpr.BinSpans.AddRange(tail[0].BinSpans);   // no recursive add
-								tail[1].AddSelfAndChildrenRecursiveBinSpans(ilCond.FalseBlock.BinSpans);
+							if (context.CalculateILSpans) {
+								condExpr.ILSpans.AddRange(tail[0].ILSpans);   // no recursive add
+								tail[1].AddSelfAndChildrenRecursiveILSpans(ilCond.FalseBlock.ILSpans);
 							}
 							block.Body.Add(ilCond);
 							result.Add(block);

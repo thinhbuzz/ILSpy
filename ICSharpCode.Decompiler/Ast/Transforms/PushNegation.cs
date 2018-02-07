@@ -46,7 +46,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			    (unary.Expression as UnaryOperatorExpression).Operator == UnaryOperatorType.Not)
 			{
 				AstNode newNode = (unary.Expression as UnaryOperatorExpression).Expression;
-				unary.ReplaceWith(newNode.WithAnnotation(unary.GetAllBinSpans()));
+				unary.ReplaceWith(newNode.WithAnnotation(unary.GetAllILSpans()));
 				return newNode.AcceptVisitor(this, data);
 			}
 			
@@ -79,7 +79,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 						break;
 				}
 				if (successful) {
-					unary.ReplaceWith(binaryOp.WithAnnotation(unary.GetAllBinSpans()));
+					unary.ReplaceWith(binaryOp.WithAnnotation(unary.GetAllILSpans()));
 					return binaryOp.AcceptVisitor(this, data);
 				}
 				
@@ -98,7 +98,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				if (successful) {
 					binaryOp.Left.ReplaceWith(e => new UnaryOperatorExpression(UnaryOperatorType.Not, e));
 					binaryOp.Right.ReplaceWith(e => new UnaryOperatorExpression(UnaryOperatorType.Not, e));
-					unary.ReplaceWith(binaryOp.WithAnnotation(unary.GetAllBinSpans()));
+					unary.ReplaceWith(binaryOp.WithAnnotation(unary.GetAllILSpans()));
 					return binaryOp.AcceptVisitor(this, data);
 				}
 			}
@@ -129,18 +129,18 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				rightOperand = ((PrimitiveExpression)binaryOperatorExpression.Right).Value as bool?;
 			if (op == BinaryOperatorType.Equality && rightOperand == true || op == BinaryOperatorType.InEquality && rightOperand == false) {
 				// 'b == true' or 'b != false' is useless
-				var binSpans = binaryOperatorExpression.GetAllRecursiveBinSpans();
+				var ilSpans = binaryOperatorExpression.GetAllRecursiveILSpans();
 				binaryOperatorExpression.Left.AcceptVisitor(this, data);
-				binaryOperatorExpression.ReplaceWith(binaryOperatorExpression.Left.WithAnnotation(binSpans));
+				binaryOperatorExpression.ReplaceWith(binaryOperatorExpression.Left.WithAnnotation(ilSpans));
 				return null;
 			} else if (op == BinaryOperatorType.Equality && rightOperand == false || op == BinaryOperatorType.InEquality && rightOperand == true) {
 				// 'b == false' or 'b != true' is a negation:
 				Expression left = binaryOperatorExpression.Left;
 				left.Remove();
-				var binSpans = binaryOperatorExpression.GetAllRecursiveBinSpans();
+				var ilSpans = binaryOperatorExpression.GetAllRecursiveILSpans();
 				UnaryOperatorExpression uoe = new UnaryOperatorExpression(UnaryOperatorType.Not, left);
 				binaryOperatorExpression.ReplaceWith(uoe);
-				uoe.AddAnnotation(binSpans);
+				uoe.AddAnnotation(ilSpans);
 				return uoe.AcceptVisitor(this, data);
 			} else {
 				bool negate = false;
@@ -154,7 +154,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 					if (negate)
 						expr = new UnaryOperatorExpression(UnaryOperatorType.Not, expr);
 					binaryOperatorExpression.ReplaceWith(expr);
-					expr.AddAnnotation(binaryOperatorExpression.GetAllRecursiveBinSpans());
+					expr.AddAnnotation(binaryOperatorExpression.GetAllRecursiveILSpans());
 					return expr.AcceptVisitor(this, data);
 				} else {
 					return base.VisitBinaryOperatorExpression(binaryOperatorExpression, data);

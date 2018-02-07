@@ -101,85 +101,85 @@ namespace ICSharpCode.Decompiler.Ast {
 			return (Statement)next;
 		}
 
-		public static void AddAllRecursiveBinSpansTo(this AstNode node, AstNode target)
+		public static void AddAllRecursiveILSpansTo(this AstNode node, AstNode target)
 		{
 			if (node == null)
 				return;
-			var binSpans = node.GetAllRecursiveBinSpans();
-			if (binSpans.Count > 0)
-				target.AddAnnotation(binSpans);
+			var ilSpans = node.GetAllRecursiveILSpans();
+			if (ilSpans.Count > 0)
+				target.AddAnnotation(ilSpans);
 		}
 
-		public static void AddAllRecursiveBinSpansTo(this IEnumerable<AstNode> nodes, AstNode target)
+		public static void AddAllRecursiveILSpansTo(this IEnumerable<AstNode> nodes, AstNode target)
 		{
 			if (nodes == null)
 				return;
-			var binSpans = nodes.GetAllRecursiveBinSpans();
-			if (binSpans.Count > 0)
-				target.AddAnnotation(binSpans);
+			var ilSpans = nodes.GetAllRecursiveILSpans();
+			if (ilSpans.Count > 0)
+				target.AddAnnotation(ilSpans);
 		}
 
-		public static List<BinSpan> GetAllRecursiveBinSpans(this AstNode node)
+		public static List<ILSpan> GetAllRecursiveILSpans(this AstNode node)
 		{
 			if (node == null)
-				return new List<BinSpan>();
+				return new List<ILSpan>();
 
-			var binSpans = new List<BinSpan>();
+			var ilSpans = new List<ILSpan>();
 			foreach (var d in node.DescendantsAndSelf)
-				d.GetAllBinSpans(binSpans);
-			return binSpans;
+				d.GetAllILSpans(ilSpans);
+			return ilSpans;
 		}
 
-		public static List<BinSpan> GetAllRecursiveBinSpans(this IEnumerable<AstNode> nodes)
+		public static List<ILSpan> GetAllRecursiveILSpans(this IEnumerable<AstNode> nodes)
 		{
 			if (nodes == null)
-				return new List<BinSpan>();
+				return new List<ILSpan>();
 
-			var binSpans = new List<BinSpan>();
+			var ilSpans = new List<ILSpan>();
 			foreach (var node in nodes) {
 				foreach (var d in node.DescendantsAndSelf)
-					d.GetAllBinSpans(binSpans);
+					d.GetAllILSpans(ilSpans);
 			}
-			return binSpans;
+			return ilSpans;
 		}
 
-		public static List<BinSpan> GetAllBinSpans(this AstNode node)
+		public static List<ILSpan> GetAllILSpans(this AstNode node)
 		{
 			if (node == null)
-				return new List<BinSpan>();
+				return new List<ILSpan>();
 
-			var binSpans = new List<BinSpan>();
-			node.GetAllBinSpans(binSpans);
-			return binSpans;
+			var ilSpans = new List<ILSpan>();
+			node.GetAllILSpans(ilSpans);
+			return ilSpans;
 		}
 
-		static void GetAllBinSpans(this AstNode node, List<BinSpan> binSpans)
+		static void GetAllILSpans(this AstNode node, List<ILSpan> ilSpans)
 		{
 			if (node == null)
 				return;
 			var block = node as BlockStatement;
 			if (block != null) {
-				binSpans.AddRange(block.HiddenStart.GetAllRecursiveBinSpans());
-				binSpans.AddRange(block.HiddenEnd.GetAllRecursiveBinSpans());
+				ilSpans.AddRange(block.HiddenStart.GetAllRecursiveILSpans());
+				ilSpans.AddRange(block.HiddenEnd.GetAllRecursiveILSpans());
 			}
 			var fe = node as ForeachStatement;
 			if (fe != null) {
-				binSpans.AddRange(fe.HiddenInitializer.GetAllRecursiveBinSpans());
-				binSpans.AddRange(fe.HiddenGetCurrentNode.GetAllRecursiveBinSpans());
-				binSpans.AddRange(fe.HiddenMoveNextNode.GetAllRecursiveBinSpans());
-				binSpans.AddRange(fe.HiddenGetEnumeratorNode.GetAllRecursiveBinSpans());
+				ilSpans.AddRange(fe.HiddenInitializer.GetAllRecursiveILSpans());
+				ilSpans.AddRange(fe.HiddenGetCurrentNode.GetAllRecursiveILSpans());
+				ilSpans.AddRange(fe.HiddenMoveNextNode.GetAllRecursiveILSpans());
+				ilSpans.AddRange(fe.HiddenGetEnumeratorNode.GetAllRecursiveILSpans());
 			}
 			var sw = node as SwitchStatement;
 			if (sw != null)
-				binSpans.AddRange(sw.HiddenEnd.GetAllRecursiveBinSpans());
+				ilSpans.AddRange(sw.HiddenEnd.GetAllRecursiveILSpans());
 			foreach (var ann in node.Annotations) {
-				var list = ann as IList<BinSpan>;
+				var list = ann as IList<ILSpan>;
 				if (list != null)
-					binSpans.AddRange(list);
+					ilSpans.AddRange(list);
 			}
 		}
 
-		public static AstNode CreateHidden(List<BinSpan> list, AstNode stmt)
+		public static AstNode CreateHidden(List<ILSpan> list, AstNode stmt)
 		{
 			if (list == null || list.Count == 0)
 				return stmt;
@@ -191,11 +191,11 @@ namespace ICSharpCode.Decompiler.Ast {
 
 		public static AstNode CreateHidden(AstNode stmt, params AstNode[] otherNodes)
 		{
-			var list = new List<BinSpan>();
+			var list = new List<ILSpan>();
 			foreach (var node in otherNodes) {
 				if (node == null)
 					continue;
-				list.AddRange(node.GetAllRecursiveBinSpans());
+				list.AddRange(node.GetAllRecursiveILSpans());
 			}
 			if (list.Count > 0) {
 				if (stmt == null)
@@ -205,10 +205,10 @@ namespace ICSharpCode.Decompiler.Ast {
 			return stmt;
 		}
 
-		public static void RemoveAllBinSpansRecursive(this AstNode node)
+		public static void RemoveAllILSpansRecursive(this AstNode node)
 		{
 			foreach (var d in node.DescendantsAndSelf)
-				d.RemoveAnnotations(typeof(IList<BinSpan>));
+				d.RemoveAnnotations(typeof(IList<ILSpan>));
 		}
 	}
 }

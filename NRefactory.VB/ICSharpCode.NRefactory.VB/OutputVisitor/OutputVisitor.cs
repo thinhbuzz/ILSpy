@@ -967,9 +967,9 @@ namespace ICSharpCode.NRefactory.VB {
 			formatter.DebugStart(node);
 		}
 
-		void DebugHidden(object hiddenBinSpans)
+		void DebugHidden(object hiddenILSpans)
 		{
-			formatter.DebugHidden(hiddenBinSpans);
+			formatter.DebugHidden(hiddenILSpans);
 		}
 
 		int DebugStart(AstNode node, string keyword)
@@ -2422,19 +2422,19 @@ namespace ICSharpCode.NRefactory.VB {
 			Space();
 			DebugStart(forEachStatement);
 			forEachStatement.Variable.AcceptVisitor(this, data);
-			DebugHidden(forEachStatement.HiddenGetCurrentBinSpans);
+			DebugHidden(forEachStatement.HiddenGetCurrentILSpans);
 			DebugEnd(forEachStatement, false);
 			Space();
 			DebugStart(forEachStatement);
 			start = formatter.NextPosition;
 			WriteKeyword("In");
 			formatter.AddHighlightedKeywordReference(reference, start, formatter.NextPosition);
-			DebugHidden(forEachStatement.HiddenMoveNextBinSpans);
+			DebugHidden(forEachStatement.HiddenMoveNextILSpans);
 			DebugEnd(forEachStatement, false);
 			Space();
 			DebugStart(forEachStatement);
 			forEachStatement.InExpression.AcceptVisitor(this, data);
-			DebugHidden(forEachStatement.HiddenGetEnumeratorBinSpans);
+			DebugHidden(forEachStatement.HiddenGetEnumeratorILSpans);
 			DebugEnd(forEachStatement, false);
 			forEachStatement.Body.AcceptVisitor(this, data);
 			DebugStart(forEachStatement);

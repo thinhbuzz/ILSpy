@@ -276,7 +276,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			tryCatch.TryBlock.HiddenEnd = tryCatch.FinallyBlock.Detach();
 			usingStatement.EmbeddedStatement = tryCatch.TryBlock.Detach();
 			tryCatch.ReplaceWith(usingStatement);
-			tryCatch.AddAllRecursiveBinSpansTo(usingStatement);
+			tryCatch.AddAllRecursiveILSpansTo(usingStatement);
 			
 			// If possible, we'll eliminate the variable completely:
 			if (usingStatement.EmbeddedStatement.Descendants.OfType<IdentifierExpression>().Any(ident => ident.Identifier == variableName)) {
@@ -290,11 +290,11 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 						}.CopyAnnotationsFrom(node.Expression)
 							.WithAnnotation(m1.Get<AstNode>("variable").Single().Annotation<ILVariable>())
 					}
-				}.CopyAnnotationsFrom(node).WithAnnotation(node.Expression.GetAllRecursiveBinSpans());
+				}.CopyAnnotationsFrom(node).WithAnnotation(node.Expression.GetAllRecursiveILSpans());
 			} else {
 				// the variable is never used; eliminate it:
 				usingStatement.ResourceAcquisition = m1.Get<Expression>("initializer").Single().Detach();
-				usingStatement.ResourceAcquisition.AddAnnotation(node.Expression.GetAllRecursiveBinSpans());
+				usingStatement.ResourceAcquisition.AddAnnotation(node.Expression.GetAllRecursiveILSpans());
 			}
 			return usingStatement;
 		}
@@ -606,8 +606,8 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 
 			var tc = tryCatch as TryCatchStatement;
 			if (tc != null) {
-				foreachStatement.HiddenGetEnumeratorNode = !context.CalculateBinSpans ? tc.TryBlock.HiddenStart : NRefactoryExtensions.CreateHidden(tc.TryBlock.HiddenStart, m1.Get<AssignmentExpression>("getEnumeratorAssignment").Single());
-				foreachStatement.HiddenGetEnumeratorNode = NRefactoryExtensions.CreateHidden(!context.CalculateBinSpans ? null : BinSpan.OrderAndCompactList(tc.TryBlock.GetAllBinSpans()), foreachStatement.HiddenGetEnumeratorNode);
+				foreachStatement.HiddenGetEnumeratorNode = !context.CalculateILSpans ? tc.TryBlock.HiddenStart : NRefactoryExtensions.CreateHidden(tc.TryBlock.HiddenStart, m1.Get<AssignmentExpression>("getEnumeratorAssignment").Single());
+				foreachStatement.HiddenGetEnumeratorNode = NRefactoryExtensions.CreateHidden(!context.CalculateILSpans ? null : ILSpan.OrderAndCompactList(tc.TryBlock.GetAllILSpans()), foreachStatement.HiddenGetEnumeratorNode);
 			}
 			foreachStatement.HiddenMoveNextNode = loop.Condition;
 			foreachStatement.HiddenGetCurrentNode = m2.Get<AstNode>("getCurrent").Single();
@@ -616,13 +616,13 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				body.HiddenStart = oldBody.HiddenStart;
 				body.HiddenEnd = oldBody.HiddenEnd;
 			}
-			if (context.CalculateBinSpans && tc != null)
+			if (context.CalculateILSpans && tc != null)
 				body.HiddenEnd = NRefactoryExtensions.CreateHidden(body.HiddenEnd, tc.TryBlock.HiddenEnd, tc.FinallyBlock);
 			
 			// Now create the correct body for the foreach statement:
 			foreachStatement.InExpression = m1.Get<Expression>("collection").Single().Detach();
 			if (foreachStatement.InExpression is BaseReferenceExpression) {
-				foreachStatement.InExpression = new ThisReferenceExpression().CopyAnnotationsFrom(foreachStatement.InExpression).WithAnnotation(foreachStatement.InExpression.GetAllRecursiveBinSpans());
+				foreachStatement.InExpression = new ThisReferenceExpression().CopyAnnotationsFrom(foreachStatement.InExpression).WithAnnotation(foreachStatement.InExpression.GetAllRecursiveILSpans());
 			}
 			body.Statements.Clear();
 			body.Statements.AddRange(m2.Get<Statement>("stmt").Select(stmt => stmt.Detach()));
@@ -793,9 +793,9 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			};
 			foreachStatement.WithAnnotation(((AssignmentExpression)loadFromArrayStmt.Expression).Left.Annotation<ILVariable>());
 
-			if (context.CalculateBinSpans) {
+			if (context.CalculateILSpans) {
 				var incStmt = whileMatch.Get<ExpressionStatement>("increment").Single();
-				inExpr.RemoveAllBinSpansRecursive();
+				inExpr.RemoveAllILSpansRecursive();
 				body.HiddenStart = whileBlock.HiddenStart;
 				body.HiddenEnd = whileBlock.HiddenEnd;
 				// Temp local (if source is a field or a cast, otherwise the statement doesn't exist)
@@ -808,7 +808,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				// i < array.Length
 				// i = i + 1;
 				foreachStatement.HiddenMoveNextNode = incStmt;              // foreach (var c |in| args)
-				whileStmt.Condition.AddAllRecursiveBinSpansTo(incStmt);
+				whileStmt.Condition.AddAllRecursiveILSpansTo(incStmt);
 				// Store value in local
 				// c = array[i];
 				foreachStatement.HiddenGetCurrentNode = loadFromArrayStmt;  // foreach (|var c| in args)
@@ -885,14 +885,14 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 
 			var forStatement = new ForStatement();
 			forStatement.EmbeddedStatement = whileLoop.EmbeddedStatement.Detach();
-			if (context.CalculateBinSpans) {
+			if (context.CalculateILSpans) {
 				var blockStmt = (BlockStatement)forStatement.EmbeddedStatement;
 				if (blockStmt.HiddenStart == null)
 					blockStmt.HiddenStart = whileLoop.Condition;
 				else {
 					var node = new EmptyStatement();
-					blockStmt.HiddenStart.AddAllRecursiveBinSpansTo(node);
-					whileLoop.Condition.AddAllRecursiveBinSpansTo(node);
+					blockStmt.HiddenStart.AddAllRecursiveILSpansTo(node);
+					whileLoop.Condition.AddAllRecursiveILSpansTo(node);
 					blockStmt.HiddenStart = node;
 				}
 			}
@@ -923,10 +923,10 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				BlockStatement block = (BlockStatement)whileLoop.EmbeddedStatement;
 				var ifStmt = block.Statements.Last();
 				ifStmt.Remove();
-				ifStmt.AddAllRecursiveBinSpansTo(doLoop.Condition);
+				ifStmt.AddAllRecursiveILSpansTo(doLoop.Condition);
 				doLoop.EmbeddedStatement = block.Detach();
 				whileLoop.ReplaceWith(doLoop);
-				block.HiddenStart = NRefactoryExtensions.CreateHidden(!context.CalculateBinSpans ? null : BinSpan.OrderAndCompactList(whileLoop.Condition.GetAllRecursiveBinSpans()), block.HiddenStart);
+				block.HiddenStart = NRefactoryExtensions.CreateHidden(!context.CalculateILSpans ? null : ILSpan.OrderAndCompactList(whileLoop.Condition.GetAllRecursiveILSpans()), block.HiddenStart);
 				
 				// we may have to extract variable definitions out of the loop if they were used in the condition:
 				foreach (var varDecl in block.Statements.OfType<VariableDeclarationStatement>()) {
@@ -944,7 +944,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 						assign.CopyAnnotationsFrom(v);
 						v.RemoveAnnotations<object>();
 						// remove varDecl with assignment; and move annotations from varDecl to the ExpressionStatement:
-						varDecl.ReplaceWith(new ExpressionStatement(assign).CopyAnnotationsFrom(varDecl).WithAnnotation(varDecl.GetAllRecursiveBinSpans()));
+						varDecl.ReplaceWith(new ExpressionStatement(assign).CopyAnnotationsFrom(varDecl).WithAnnotation(varDecl.GetAllRecursiveILSpans()));
 						varDecl.RemoveAnnotations<object>();
 						
 						// insert the varDecl above the do-while loop:
@@ -1048,18 +1048,18 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				l.EmbeddedStatement = tryCatch.TryBlock.Detach();
 				var block = (BlockStatement)l.EmbeddedStatement;
 				if (block.HiddenStart != null) {
-					block.HiddenStart.AddAllRecursiveBinSpansTo(l.Expression);
+					block.HiddenStart.AddAllRecursiveILSpansTo(l.Expression);
 					block.HiddenStart = null;
 				}
 				if (!isV2) { // Remove 'Enter()' call
 					var enterCall = block.Statements.First();
 					enterCall.Remove();
-					enterCall.AddAllRecursiveBinSpansTo(l.Expression);
+					enterCall.AddAllRecursiveILSpansTo(l.Expression);
 				}
 				tryCatch.ReplaceWith(l);
-				if (context.CalculateBinSpans)
+				if (context.CalculateILSpans)
 					block.HiddenEnd = NRefactoryExtensions.CreateHidden(block.HiddenEnd, tryCatch.FinallyBlock);
-				node.AddAllRecursiveBinSpansTo(l.Expression);
+				node.AddAllRecursiveILSpansTo(l.Expression);
 				node.Remove(); // remove flag variable
 				return l;
 			}
@@ -1125,7 +1125,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			SwitchStatement sw = m.Get<SwitchStatement>("switch").Single();
 			var oldExpr = sw.Expression;
 			sw.Expression = m.Get<Expression>("switchExpr").Single().Detach();
-			oldExpr.AddAllRecursiveBinSpansTo(sw.Expression);
+			oldExpr.AddAllRecursiveILSpansTo(sw.Expression);
 			foreach (SwitchSection section in sw.SwitchSections) {
 				List<CaseLabel> labels = section.CaseLabels.ToList();
 				section.CaseLabels.Clear();
@@ -1164,7 +1164,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				sw.SwitchSections.Add(section);
 			}
 			node.ReplaceWith(sw);
-			node.AddAllRecursiveBinSpansTo(sw.Expression);
+			node.AddAllRecursiveILSpansTo(sw.Expression);
 			return sw;
 		}
 		
@@ -1305,9 +1305,9 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 					property.Getter.Body = null;
 					property.Setter.Body = null;
 					if (prop.GetMethod.Body != null)
-						property.Getter.AddAnnotation(new List<BinSpan> { new BinSpan(0, (uint)prop.GetMethod.Body.GetCodeSize()) });
+						property.Getter.AddAnnotation(new List<ILSpan> { new ILSpan(0, (uint)prop.GetMethod.Body.GetCodeSize()) });
 					if (prop.SetMethod?.Body != null)
-						property.Setter.AddAnnotation(new List<BinSpan> { new BinSpan(0, (uint)prop.SetMethod.Body.GetCodeSize()) });
+						property.Setter.AddAnnotation(new List<ILSpan> { new ILSpan(0, (uint)prop.SetMethod.Body.GetCodeSize()) });
 				}
 			}
 			// Since the event instance is not changed, we can continue in the visitor as usual, so return null
@@ -1528,7 +1528,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 
 			RemoveEventAttributes(ed.Attributes);
 			ev.ReplaceWith(ed);
-			ev.AddAllRecursiveBinSpansTo(ev);
+			ev.AddAllRecursiveILSpansTo(ev);
 			return ed;
 		}
 		#endregion
@@ -1560,7 +1560,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				dd.Body = m.Get<BlockStatement>("body").Single().Detach();
 				dd.AddAnnotation(methodDef.Annotation<MethodDebugInfoBuilder>());
 				var tc = (TryCatchStatement)methodDef.Body.FirstChild;
-				if (context.CalculateBinSpans) {
+				if (context.CalculateILSpans) {
 					dd.Body.HiddenStart = NRefactoryExtensions.CreateHidden(dd.Body.HiddenStart, methodDef.Body.HiddenStart);
 					dd.Body.HiddenEnd = NRefactoryExtensions.CreateHidden(dd.Body.HiddenEnd, methodDef.Body.HiddenEnd, tc.FinallyBlock);
 				}
@@ -1598,7 +1598,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 		{
 			if (tryCatchFinallyPattern.IsMatch(tryFinally)) {
 				TryCatchStatement tryCatch = (TryCatchStatement)tryFinally.TryBlock.Statements.Single();
-				if (context.CalculateBinSpans) {
+				if (context.CalculateILSpans) {
 					tryCatch.TryBlock.HiddenStart = NRefactoryExtensions.CreateHidden(tryCatch.TryBlock.HiddenStart, tryFinally.TryBlock.HiddenStart);
 					tryCatch.TryBlock.HiddenEnd = NRefactoryExtensions.CreateHidden(tryCatch.TryBlock.HiddenEnd, tryFinally.TryBlock.HiddenEnd);
 				}
@@ -1636,16 +1636,16 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				IfElseStatement elseIf = m.Get<IfElseStatement>("nestedIfStatement").Single();
 				var block = (BlockStatement)node.FalseStatement;
 				node.FalseStatement = elseIf.Detach();
-				block.HiddenStart.AddAllRecursiveBinSpansTo(node.Condition);
+				block.HiddenStart.AddAllRecursiveILSpansTo(node.Condition);
 				if (block.HiddenEnd != null) {
 					var stmt = elseIf.FalseStatement.IsNull ? elseIf.TrueStatement : elseIf.FalseStatement;
 					var block2 = stmt as BlockStatement;
 					if (block2 != null) {
-						if (context.CalculateBinSpans)
+						if (context.CalculateILSpans)
 							block2.HiddenEnd = NRefactoryExtensions.CreateHidden(block2.HiddenEnd, block.HiddenEnd);
 					}
 					else
-						block.HiddenEnd.AddAllRecursiveBinSpansTo(stmt);
+						block.HiddenEnd.AddAllRecursiveILSpansTo(stmt);
 				}
 			}
 			

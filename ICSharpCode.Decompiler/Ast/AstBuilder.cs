@@ -1450,7 +1450,7 @@ namespace ICSharpCode.Decompiler.Ast {
 				bs = new BlockStatement();
 				var emptyStmt = new EmptyStatement();
 				if (method.Body != null)
-					emptyStmt.AddAnnotation(new List<BinSpan> { new BinSpan(0, (uint)method.Body.GetCodeSize()) });
+					emptyStmt.AddAnnotation(new List<ILSpan> { new ILSpan(0, (uint)method.Body.GetCodeSize()) });
 				bs.Statements.Add(emptyStmt);
 				bs.InsertChildAfter(null, new Comment(msg, CommentType.MultiLine), Roles.Comment);
 				builder = new MethodDebugInfoBuilder(context.SettingsVersion, StateMachineKind.None, method, null, method.Body.Variables.Select(a => new SourceLocal(a, CreateLocalName(a), a.Type, SourceVariableFlags.None)).ToArray(), null, null);

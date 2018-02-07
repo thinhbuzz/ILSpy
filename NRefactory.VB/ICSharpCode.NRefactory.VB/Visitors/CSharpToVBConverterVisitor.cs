@@ -997,8 +997,8 @@ namespace ICSharpCode.NRefactory.VB.Visitors {
 		{
 			var block = new BlockStatement();
 			blocks.Push(block);
-			block.HiddenStart = ICSharpCode.Decompiler.Ast.NRefactoryExtensions.GetAllRecursiveBinSpans(blockStatement.HiddenStart);
-			block.HiddenEnd = ICSharpCode.Decompiler.Ast.NRefactoryExtensions.GetAllRecursiveBinSpans(blockStatement.HiddenEnd);
+			block.HiddenStart = ICSharpCode.Decompiler.Ast.NRefactoryExtensions.GetAllRecursiveILSpans(blockStatement.HiddenStart);
+			block.HiddenEnd = ICSharpCode.Decompiler.Ast.NRefactoryExtensions.GetAllRecursiveILSpans(blockStatement.HiddenEnd);
 			ConvertNodes(blockStatement, block.Statements);
 			blocks.Pop();
 			return EndNode(blockStatement, block);
@@ -1153,10 +1153,10 @@ namespace ICSharpCode.NRefactory.VB.Visitors {
 					Type = (AstType)foreachStatement.VariableType.AcceptVisitor(this, data)
 				}
 			};
-			stmt.HiddenInitializer = ICSharpCode.Decompiler.Ast.NRefactoryExtensions.GetAllRecursiveBinSpans(foreachStatement.HiddenInitializer);
-			stmt.HiddenGetEnumeratorBinSpans = ICSharpCode.Decompiler.Ast.NRefactoryExtensions.GetAllRecursiveBinSpans(foreachStatement.HiddenGetEnumeratorNode);
-			stmt.HiddenMoveNextBinSpans = ICSharpCode.Decompiler.Ast.NRefactoryExtensions.GetAllRecursiveBinSpans(foreachStatement.HiddenMoveNextNode);
-			stmt.HiddenGetCurrentBinSpans = ICSharpCode.Decompiler.Ast.NRefactoryExtensions.GetAllRecursiveBinSpans(foreachStatement.HiddenGetCurrentNode);
+			stmt.HiddenInitializer = ICSharpCode.Decompiler.Ast.NRefactoryExtensions.GetAllRecursiveILSpans(foreachStatement.HiddenInitializer);
+			stmt.HiddenGetEnumeratorILSpans = ICSharpCode.Decompiler.Ast.NRefactoryExtensions.GetAllRecursiveILSpans(foreachStatement.HiddenGetEnumeratorNode);
+			stmt.HiddenMoveNextILSpans = ICSharpCode.Decompiler.Ast.NRefactoryExtensions.GetAllRecursiveILSpans(foreachStatement.HiddenMoveNextNode);
+			stmt.HiddenGetCurrentILSpans = ICSharpCode.Decompiler.Ast.NRefactoryExtensions.GetAllRecursiveILSpans(foreachStatement.HiddenGetCurrentNode);
 			
 			return EndNode(foreachStatement, stmt);
 		}
@@ -1375,7 +1375,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors {
 		{
 			var stmt = new SelectStatement() { Expression = (Expression)switchStatement.Expression.AcceptVisitor(this, data) };
 			ConvertNodes(switchStatement.SwitchSections, stmt.Cases);
-			stmt.HiddenEnd = ICSharpCode.Decompiler.Ast.NRefactoryExtensions.GetAllRecursiveBinSpans(switchStatement.HiddenEnd);
+			stmt.HiddenEnd = ICSharpCode.Decompiler.Ast.NRefactoryExtensions.GetAllRecursiveILSpans(switchStatement.HiddenEnd);
 			
 			return EndNode(switchStatement, stmt);
 		}

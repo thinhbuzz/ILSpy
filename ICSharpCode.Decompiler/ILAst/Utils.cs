@@ -5,7 +5,7 @@ using dnSpy.Contracts.Decompiler;
 namespace ICSharpCode.Decompiler.ILAst {
 	static class Utils
 	{
-		public static void NopMergeBinSpans(ILBlockBase block, List<ILNode> newBody, int instrIndexToRemove)
+		public static void NopMergeILSpans(ILBlockBase block, List<ILNode> newBody, int instrIndexToRemove)
 		{
 			var body = block.Body;
 			ILNode prevNode = null, nextNode = null;
@@ -38,12 +38,12 @@ namespace ICSharpCode.Decompiler.ILAst {
 			}
 
 			if (node != null && node == prevNode)
-				AddBinSpansTryPreviousFirst(body[instrIndexToRemove], prevNode, nextNode, block);
+				AddILSpansTryPreviousFirst(body[instrIndexToRemove], prevNode, nextNode, block);
 			else
-				AddBinSpansTryNextFirst(body[instrIndexToRemove], prevNode, nextNode, block);
+				AddILSpansTryNextFirst(body[instrIndexToRemove], prevNode, nextNode, block);
 		}
 
-		public static void LabelMergeBinSpans(ILBlockBase block, List<ILNode> newBody, int instrIndexToRemove)
+		public static void LabelMergeILSpans(ILBlockBase block, List<ILNode> newBody, int instrIndexToRemove)
 		{
 			var body = block.Body;
 			ILNode prevNode = null, nextNode = null;
@@ -52,96 +52,96 @@ namespace ICSharpCode.Decompiler.ILAst {
 			if (instrIndexToRemove + 1 < body.Count)
 				nextNode = body[instrIndexToRemove + 1];
 
-			AddBinSpansTryNextFirst(body[instrIndexToRemove], prevNode, nextNode, block);
+			AddILSpansTryNextFirst(body[instrIndexToRemove], prevNode, nextNode, block);
 		}
 
-		public static void AddBinSpansTryPreviousFirst(ILNode removed, ILNode prev, ILNode next, ILBlockBase block)
+		public static void AddILSpansTryPreviousFirst(ILNode removed, ILNode prev, ILNode next, ILBlockBase block)
 		{
 			if (removed == null)
 				return;
-			AddBinSpansTryPreviousFirst(prev, next, block, removed);
+			AddILSpansTryPreviousFirst(prev, next, block, removed);
 		}
 
-		public static void AddBinSpansTryNextFirst(ILNode removed, ILNode prev, ILNode next, ILBlockBase block)
+		public static void AddILSpansTryNextFirst(ILNode removed, ILNode prev, ILNode next, ILBlockBase block)
 		{
 			if (removed == null)
 				return;
-			AddBinSpansTryNextFirst(prev, next, block, removed);
+			AddILSpansTryNextFirst(prev, next, block, removed);
 		}
 
-		public static void AddBinSpansTryPreviousFirst(ILNode prev, ILNode next, ILBlockBase block, ILNode removed)
+		public static void AddILSpansTryPreviousFirst(ILNode prev, ILNode next, ILBlockBase block, ILNode removed)
 		{
-			if (prev != null && prev.SafeToAddToEndBinSpans)
-				removed.AddSelfAndChildrenRecursiveBinSpans(prev.EndBinSpans);
+			if (prev != null && prev.SafeToAddToEndILSpans)
+				removed.AddSelfAndChildrenRecursiveILSpans(prev.EndILSpans);
 			else if (next != null)
-				removed.AddSelfAndChildrenRecursiveBinSpans(next.BinSpans);
+				removed.AddSelfAndChildrenRecursiveILSpans(next.ILSpans);
 			else if (prev != null)
-				removed.AddSelfAndChildrenRecursiveBinSpans(block.EndBinSpans);
+				removed.AddSelfAndChildrenRecursiveILSpans(block.EndILSpans);
 			else
-				removed.AddSelfAndChildrenRecursiveBinSpans(block.BinSpans);
+				removed.AddSelfAndChildrenRecursiveILSpans(block.ILSpans);
 		}
 
-		public static void AddBinSpansTryNextFirst(ILNode prev, ILNode next, ILBlockBase block, ILNode removed)
+		public static void AddILSpansTryNextFirst(ILNode prev, ILNode next, ILBlockBase block, ILNode removed)
 		{
 			if (next != null)
-				removed.AddSelfAndChildrenRecursiveBinSpans(next.BinSpans);
+				removed.AddSelfAndChildrenRecursiveILSpans(next.ILSpans);
 			else if (prev != null) {
-				if (prev.SafeToAddToEndBinSpans)
-					removed.AddSelfAndChildrenRecursiveBinSpans(prev.EndBinSpans);
+				if (prev.SafeToAddToEndILSpans)
+					removed.AddSelfAndChildrenRecursiveILSpans(prev.EndILSpans);
 				else
-					removed.AddSelfAndChildrenRecursiveBinSpans(block.EndBinSpans);
+					removed.AddSelfAndChildrenRecursiveILSpans(block.EndILSpans);
 			}
 			else
-				removed.AddSelfAndChildrenRecursiveBinSpans(block.BinSpans);
+				removed.AddSelfAndChildrenRecursiveILSpans(block.ILSpans);
 		}
 
-		public static void AddBinSpansTryNextFirst(ILNode prev, ILNode next, ILBlockBase block, IEnumerable<BinSpan> binSpans)
+		public static void AddILSpansTryNextFirst(ILNode prev, ILNode next, ILBlockBase block, IEnumerable<ILSpan> ilSpans)
 		{
 			if (next != null)
-				next.BinSpans.AddRange(binSpans);
+				next.ILSpans.AddRange(ilSpans);
 			else if (prev != null) {
-				if (prev.SafeToAddToEndBinSpans)
-					prev.EndBinSpans.AddRange(binSpans);
+				if (prev.SafeToAddToEndILSpans)
+					prev.EndILSpans.AddRange(ilSpans);
 				else
-					block.EndBinSpans.AddRange(binSpans);
+					block.EndILSpans.AddRange(ilSpans);
 			}
 			else
-				block.BinSpans.AddRange(binSpans);
+				block.ILSpans.AddRange(ilSpans);
 		}
 
-		public static void AddBinSpansTryPreviousFirst(List<ILNode> newBody, List<ILNode> body, int removedIndex, ILBlockBase block)
+		public static void AddILSpansTryPreviousFirst(List<ILNode> newBody, List<ILNode> body, int removedIndex, ILBlockBase block)
 		{
 			ILNode prev = newBody.Count > 0 ? newBody[newBody.Count - 1] : null;
 			ILNode next = removedIndex + 1 < body.Count ? body[removedIndex + 1] : null;
-			AddBinSpansTryPreviousFirst(body[removedIndex], prev, next, block);
+			AddILSpansTryPreviousFirst(body[removedIndex], prev, next, block);
 		}
 
-		public static void AddBinSpansTryNextFirst(List<ILNode> newBody, List<ILNode> body, int removedIndex, ILBlockBase block)
+		public static void AddILSpansTryNextFirst(List<ILNode> newBody, List<ILNode> body, int removedIndex, ILBlockBase block)
 		{
 			ILNode prev = newBody.Count > 0 ? newBody[newBody.Count - 1] : null;
 			ILNode next = removedIndex + 1 < body.Count ? body[removedIndex + 1] : null;
-			AddBinSpansTryNextFirst(body[removedIndex], prev, next, block);
+			AddILSpansTryNextFirst(body[removedIndex], prev, next, block);
 		}
 
 		/// <summary>
-		/// Adds the removed instruction's BinSpans to the next or previous instruction
+		/// Adds the removed instruction's ILSpans to the next or previous instruction
 		/// </summary>
 		/// <param name="block">The owner block</param>
 		/// <param name="body">Body</param>
 		/// <param name="removedIndex">Index of removed instruction</param>
-		public static void AddBinSpans(ILBlockBase block, List<ILNode> body, int removedIndex)
+		public static void AddILSpans(ILBlockBase block, List<ILNode> body, int removedIndex)
 		{
-			AddBinSpans(block, body, removedIndex, 1);
+			AddILSpans(block, body, removedIndex, 1);
 		}
 
 		/// <summary>
-		/// Adds the removed instruction's BinSpans to the next or previous instruction
+		/// Adds the removed instruction's ILSpans to the next or previous instruction
 		/// </summary>
 		/// <param name="block">The owner block</param>
 		/// <param name="body">Body</param>
 		/// <param name="removedIndex">Index of removed instruction</param>
 		/// <param name="numRemoved">Number of removed instructions</param>
-		public static void AddBinSpans(ILBlockBase block, List<ILNode> body, int removedIndex, int numRemoved)
+		public static void AddILSpans(ILBlockBase block, List<ILNode> body, int removedIndex, int numRemoved)
 		{
 			var prev = removedIndex - 1 >= 0 ? body[removedIndex - 1] : null;
 			var next = removedIndex + numRemoved < body.Count ? body[removedIndex + numRemoved] : null;
@@ -159,10 +159,10 @@ namespace ICSharpCode.Decompiler.ILAst {
 				node = next ?? prev;	// Using next before prev should work better
 
 			for (int i = 0; i < numRemoved; i++)
-				AddBinSpansToInstruction(node, prev, next, block, body[removedIndex + i]);
+				AddILSpansToInstruction(node, prev, next, block, body[removedIndex + i]);
 		}
 
-		public static void AddBinSpans(ILBlockBase block, List<ILNode> body, int removedIndex, IEnumerable<BinSpan> binSpans)
+		public static void AddILSpans(ILBlockBase block, List<ILNode> body, int removedIndex, IEnumerable<ILSpan> ilSpans)
 		{
 			var prev = removedIndex - 1 >= 0 ? body[removedIndex - 1] : null;
 			var next = removedIndex + 1 < body.Count ? body[removedIndex + 1] : null;
@@ -179,39 +179,39 @@ namespace ICSharpCode.Decompiler.ILAst {
 			if (node == null)
 				node = next ?? prev;	// Using next before prev should work better
 
-			AddBinSpansToInstruction(node, prev, next, block, binSpans);
+			AddILSpansToInstruction(node, prev, next, block, ilSpans);
 		}
 
-		public static void AddBinSpansToInstruction(ILNode nodeToAddTo, ILNode prev, ILNode next, ILBlockBase block, ILNode removed)
+		public static void AddILSpansToInstruction(ILNode nodeToAddTo, ILNode prev, ILNode next, ILBlockBase block, ILNode removed)
 		{
 			Debug.Assert(nodeToAddTo == prev || nodeToAddTo == next || nodeToAddTo == block);
 			if (nodeToAddTo != null) {
-				if (nodeToAddTo == prev && prev.SafeToAddToEndBinSpans) {
-					removed.AddSelfAndChildrenRecursiveBinSpans(prev.EndBinSpans);
+				if (nodeToAddTo == prev && prev.SafeToAddToEndILSpans) {
+					removed.AddSelfAndChildrenRecursiveILSpans(prev.EndILSpans);
 					return;
 				}
 				else if (nodeToAddTo != null && nodeToAddTo == next) {
-					removed.AddSelfAndChildrenRecursiveBinSpans(next.BinSpans);
+					removed.AddSelfAndChildrenRecursiveILSpans(next.ILSpans);
 					return;
 				}
 			}
-			AddBinSpansTryNextFirst(prev, next, block, removed);
+			AddILSpansTryNextFirst(prev, next, block, removed);
 		}
 
-		public static void AddBinSpansToInstruction(ILNode nodeToAddTo, ILNode prev, ILNode next, ILBlockBase block, IEnumerable<BinSpan> binSpans)
+		public static void AddILSpansToInstruction(ILNode nodeToAddTo, ILNode prev, ILNode next, ILBlockBase block, IEnumerable<ILSpan> ilSpans)
 		{
 			Debug.Assert(nodeToAddTo == prev || nodeToAddTo == next || nodeToAddTo == block);
 			if (nodeToAddTo != null) {
-				if (nodeToAddTo == prev && prev.SafeToAddToEndBinSpans) {
-					prev.EndBinSpans.AddRange(binSpans);
+				if (nodeToAddTo == prev && prev.SafeToAddToEndILSpans) {
+					prev.EndILSpans.AddRange(ilSpans);
 					return;
 				}
 				else if (nodeToAddTo != null && nodeToAddTo == next) {
-					next.BinSpans.AddRange(binSpans);
+					next.ILSpans.AddRange(ilSpans);
 					return;
 				}
 			}
-			AddBinSpansTryNextFirst(prev, next, block, binSpans);
+			AddILSpansTryNextFirst(prev, next, block, ilSpans);
 		}
 	}
 }

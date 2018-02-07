@@ -265,10 +265,10 @@ namespace ICSharpCode.Decompiler.ILAst {
 						if (callGetAwaiter.Arguments.Count != 1)
 							throw new SymbolicAnalysisFailedException();
 						var origExpr = callGetAwaiter.Arguments[0];
-						if (context.CalculateBinSpans) {
-							origExpr.BinSpans.AddRange(ldloc.BinSpans);
-							origExpr.BinSpans.AddRange(newBody[newBodyCount - 2].BinSpans);
-							origExpr.BinSpans.AddRange(callGetAwaiter.BinSpans);
+						if (context.CalculateILSpans) {
+							origExpr.ILSpans.AddRange(ldloc.ILSpans);
+							origExpr.ILSpans.AddRange(newBody[newBodyCount - 2].ILSpans);
+							origExpr.ILSpans.AddRange(callGetAwaiter.ILSpans);
 						}
 						var methodGetAwaiter = (IMethod)callGetAwaiter.Operand;
 						if (methodGetAwaiter.Name != nameGetAwaiter)

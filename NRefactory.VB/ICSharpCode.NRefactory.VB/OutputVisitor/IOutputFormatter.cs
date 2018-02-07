@@ -39,7 +39,7 @@ namespace ICSharpCode.NRefactory.VB {
 		void WriteComment(bool isDocumentation, string content);
 
 		void DebugStart(AstNode node);
-		void DebugHidden(object hiddenBinSpans);
+		void DebugHidden(object hiddenILSpans);
 		void DebugExpression(AstNode node);
 		void DebugEnd(AstNode node);
 		int NextPosition { get; }

@@ -55,18 +55,18 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 							if (firstArgument is NullReferenceExpression)
 								firstArgument = firstArgument.ReplaceWith(expr => expr.CastTo(AstBuilder.ConvertType(d.Parameters.SkipNonNormal().First().Type, stringBuilder)));
 							else {
-								var binSpans = mre.Target.GetAllRecursiveBinSpans();
+								var ilSpans = mre.Target.GetAllRecursiveILSpans();
 								mre.Target = firstArgument.Detach();
-								if (binSpans.Count > 0)
-									mre.Target.AddAnnotation(binSpans);
+								if (ilSpans.Count > 0)
+									mre.Target.AddAnnotation(ilSpans);
 							}
 							if (invocation.Arguments.Any()) {
 								// HACK: removing type arguments should be done indepently from whether a method is an extension method,
 								// just by testing whether the arguments can be inferred
-								var binSpans = mre.TypeArguments.GetAllRecursiveBinSpans();
+								var ilSpans = mre.TypeArguments.GetAllRecursiveILSpans();
 								mre.TypeArguments.Clear();
-								if (binSpans.Count > 0)
-									mre.AddAnnotation(binSpans);
+								if (ilSpans.Count > 0)
+									mre.AddAnnotation(ilSpans);
 							}
 						}
 					}

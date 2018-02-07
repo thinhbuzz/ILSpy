@@ -140,12 +140,12 @@ namespace ICSharpCode.Decompiler.ILAst {
 				ValidateCatchBlock(tryCatchBlock.CatchBlocks[0], finalState, exitLabel);
 				var cb = tryCatchBlock.CatchBlocks[0];
 				catchHandlerOffset = GetOffset(cb.Body, 0, cb.Body.Count);
-				foreach (var span in cb.StlocBinSpans)
+				foreach (var span in cb.StlocILSpans)
 					catchHandlerOffset = Math.Min(span.Start, catchHandlerOffset);
 			}
 			var newTopLevelBody = AnalyzeStateMachine(body);
 			MarkGeneratedVariables(newTopLevelBody);
-			YieldReturnDecompiler.TranslateFieldsToLocalAccess(newTopLevelBody, fieldToParameterMap, cachedThisVar, context.CalculateBinSpans);
+			YieldReturnDecompiler.TranslateFieldsToLocalAccess(newTopLevelBody, fieldToParameterMap, cachedThisVar, context.CalculateILSpans);
 			return newTopLevelBody;
 		}
 		#endregion
@@ -403,10 +403,10 @@ namespace ICSharpCode.Decompiler.ILAst {
 		protected bool MatchCallSetResult(ILNode expr, out ILExpression resultExpr, out ILVariable resultVariable) {
 			resultExpr = null;
 			resultVariable = null;
-			if (context.CalculateBinSpans) {
-				var binspans = BinSpan.OrderAndCompact(expr.GetSelfAndChildrenRecursiveBinSpans());
-				if (binspans.Count > 0)
-					setResultOffset = binspans[0].Start;
+			if (context.CalculateILSpans) {
+				var ilSpans = ILSpan.OrderAndCompact(expr.GetSelfAndChildrenRecursiveILSpans());
+				if (ilSpans.Count > 0)
+					setResultOffset = ilSpans[0].Start;
 			}
 			IMethod setResultMethod;
 			ILExpression builderExpr;
@@ -537,7 +537,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			inlining.InlineAllVariables();
 			inlining.CopyPropagation(list_ILNode);
 
-			if (context.CalculateBinSpans) {
+			if (context.CalculateILSpans) {
 				var stepInfos = new AsyncStepInfo[asyncStepInfoMap.Count];
 				int w = 0;
 				foreach (var kv in asyncStepInfoMap) {
@@ -586,7 +586,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		protected void RemoveAsyncStepInfoState(int stateId) => asyncStepInfoMap.Remove(stateId);
 
 		protected void AddYieldOffset(List<ILNode> body, int index, int count, int stateId) {
-			if (!context.CalculateBinSpans)
+			if (!context.CalculateILSpans)
 				return;
 			asyncStepInfoMap.TryGetValue(stateId, out var info);
 			Debug.Assert(info.YieldOffset == 0);
@@ -595,7 +595,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		}
 
 		protected void AddResumeLabel(ILLabel resumeLabel, int stateId) {
-			if (!context.CalculateBinSpans)
+			if (!context.CalculateILSpans)
 				return;
 			asyncStepInfoMap.TryGetValue(stateId, out var info);
 			if (info.ResumeLabel == null || info.ResumeLabel.Offset == 0 || resumeLabel.Offset > info.ResumeLabel.Offset) {
@@ -607,7 +607,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		static uint GetNextOffset(List<ILNode> body, int index, int count) {
 			uint offs = 0;
 			for (int i = 0; i < count; i++) {
-				foreach (var span in body[index + i].GetSelfAndChildrenRecursiveBinSpans())
+				foreach (var span in body[index + i].GetSelfAndChildrenRecursiveILSpans())
 					offs = Math.Max(offs, span.End);
 			}
 			Debug.Assert(offs != 0);
@@ -617,7 +617,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		static uint GetOffset(List<ILNode> body, int index, int count) {
 			uint offs = uint.MaxValue;
 			for (int i = 0; i < count; i++) {
-				foreach (var span in body[index + i].GetSelfAndChildrenRecursiveBinSpans())
+				foreach (var span in body[index + i].GetSelfAndChildrenRecursiveILSpans())
 					offs = Math.Min(offs, span.Start);
 			}
 			Debug.Assert(offs != uint.MaxValue);
@@ -626,7 +626,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 		protected LabelRangeMapping CreateLabelRangeMapping(StateRangeAnalysis rangeAnalysis, List<ILNode> body, int pos, int bodyLength) {
 			var m = rangeAnalysis.CreateLabelRangeMapping(body, pos, bodyLength);
-			if (context.CalculateBinSpans) {
+			if (context.CalculateILSpans) {
 				foreach (var kv in m) {
 					var state = kv.Value.TryGetSingleState();
 					if (state == null)

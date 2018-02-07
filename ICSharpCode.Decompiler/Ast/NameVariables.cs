@@ -24,6 +24,7 @@ using ICSharpCode.Decompiler.ILAst;
 using dnlib.DotNet;
 using System.Text;
 using System.Globalization;
+using System.Diagnostics;
 
 namespace ICSharpCode.Decompiler.Ast {
 	public class NameVariables
@@ -210,11 +211,43 @@ namespace ICSharpCode.Decompiler.Ast {
 				return nameWithoutDigits;
 			}
 		}
-		
+
+		string TryGetDisplayClassVariableName(ILVariable variable)
+		{
+			var td = variable.Type.RemovePinnedAndModifiers().ToTypeDefOrRef().ResolveTypeDef();
+			if (td == null)
+				return null;
+			if (!td.IsNested)
+				return null;
+			if (!td.CustomAttributes.IsDefined("System.Runtime.CompilerServices.CompilerGeneratedAttribute"))
+				return null;
+			var typeName = td.Name.String;
+
+			//TODO: Should be true if we're decompiling VB code
+			bool isVisualBasic = false;
+
+			const string DisplayClassPrefix = "_Closure$__";
+			const string ClosureVariablePrefix = "$VB$Closure_";
+			const string CSharpDisplayClassPrefix = "<>c__DisplayClass";// See Roslyn: MakeLambdaDisplayClassName
+			const string LambdaDisplayLocalName = "CS$<>8__locals";// See Roslyn: MakeLambdaDisplayLocalName
+			if (typeName.StartsWith(CSharpDisplayClassPrefix) || typeName.StartsWith(DisplayClassPrefix)) {
+				if (isVisualBasic)
+					return ClosureVariablePrefix;
+				return LambdaDisplayLocalName;
+			}
+
+			return null;
+		}
+
 		string GenerateNameForVariable(ILVariable variable, ILBlock methodBody)
 		{
 			string proposedName = null;
-			if (new SigComparer().Equals(variable.GetVariableType(), context.CurrentType.Module.CorLibTypes.Int32)) {
+			bool useCounter = false;
+			if (string.IsNullOrEmpty(proposedName)) {
+				proposedName = TryGetDisplayClassVariableName(variable);
+				useCounter = proposedName != null;
+			}
+			if (string.IsNullOrEmpty(proposedName) && new SigComparer().Equals(variable.GetVariableType(), context.CurrentType.Module.CorLibTypes.Int32)) {
 				// test whether the variable might be a loop counter
 				bool isLoopCounter = false;
 				foreach (ILWhileLoop loop in methodBody.GetSelfAndChildrenRecursive<ILWhileLoop>()) {
@@ -283,7 +316,7 @@ namespace ICSharpCode.Decompiler.Ast {
 				typeNames.Add(proposedName, 0);
 			}
 			int count = ++typeNames[proposedName];
-			if (count > 1) {
+			if (count > 1 || useCounter) {
 				return proposedName + count.ToString();
 			} else {
 				return proposedName;

@@ -264,9 +264,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 		ILExpression CreateYieldReturn(ILExpression stExpr) {
 			var arg = stExpr.Arguments[1];
-			if (context.CalculateBinSpans) {
-				arg.BinSpans.AddRange(stExpr.BinSpans);
-				arg.BinSpans.AddRange(stExpr.Arguments[0].GetSelfAndChildrenRecursiveBinSpans());
+			if (context.CalculateILSpans) {
+				arg.ILSpans.AddRange(stExpr.ILSpans);
+				arg.ILSpans.AddRange(stExpr.Arguments[0].GetSelfAndChildrenRecursiveILSpans());
 			}
 			return new ILExpression(ILCode.YieldReturn, null, arg);
 		}

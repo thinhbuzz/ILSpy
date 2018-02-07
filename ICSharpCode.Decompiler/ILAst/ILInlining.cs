@@ -129,8 +129,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 						ILVariable v2;
 						ILExpression ldException;
 						if (body[0].Match(ILCode.Stloc, out v2, out ldException) && ldException.MatchLdloc(v)) {
-							if (context.CalculateBinSpans)
-								body[0].AddSelfAndChildrenRecursiveBinSpans(((ILTryCatchBlock.CatchBlockBase)block).StlocBinSpans);
+							if (context.CalculateILSpans)
+								body[0].AddSelfAndChildrenRecursiveILSpans(((ILTryCatchBlock.CatchBlockBase)block).StlocILSpans);
 							body.RemoveAt(0);
 							((ILTryCatchBlock.CatchBlockBase)block).ExceptionVariable = v2;
 							modified = true;
@@ -218,8 +218,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 			if (body[pos].Match(ILCode.Stloc, out v, out inlinedExpression) && !v.IsPinned) {
 				if (InlineIfPossible(v, inlinedExpression, body.ElementAtOrDefault(pos+1), aggressive)) {
 					// Assign the ranges of the stloc instruction:
-					if (context.CalculateBinSpans)
-						inlinedExpression.BinSpans.AddRange(body[pos].BinSpans);
+					if (context.CalculateILSpans)
+						inlinedExpression.ILSpans.AddRange(body[pos].ILSpans);
 					// Remove the stloc instruction:
 					body.RemoveAt(pos);
 					return true;
@@ -228,14 +228,14 @@ namespace ICSharpCode.Decompiler.ILAst {
 					if (inlinedExpression.HasNoSideEffects()) {
 						// Remove completely
 						AnalyzeNode(body[pos], -1);
-						if (context.CalculateBinSpans)
-							Utils.AddBinSpans(block, body, pos);
+						if (context.CalculateILSpans)
+							Utils.AddILSpans(block, body, pos);
 						body.RemoveAt(pos);
 						return true;
 					} else if (inlinedExpression.CanBeExpressionStatement() && v.GeneratedByDecompiler) {
 						// Assign the ranges of the stloc instruction:
-						if (context.CalculateBinSpans)
-							inlinedExpression.BinSpans.AddRange(body[pos].BinSpans);
+						if (context.CalculateILSpans)
+							inlinedExpression.ILSpans.AddRange(body[pos].ILSpans);
 						// Remove the stloc, but keep the inner expression
 						body[pos] = inlinedExpression;
 						return true;
@@ -274,8 +274,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 				}
 
 				// Assign the ranges of the ldloc instruction:
-				if (context.CalculateBinSpans)
-					parent.Arguments[pos].AddSelfAndChildrenRecursiveBinSpans(inlinedExpression.BinSpans);
+				if (context.CalculateILSpans)
+					parent.Arguments[pos].AddSelfAndChildrenRecursiveILSpans(inlinedExpression.ILSpans);
 				
 				if (ldloc == 0) {
 					// it was an ldloca instruction, so we need to use the pseudo-opcode 'addressof' so that the types
@@ -528,9 +528,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 							}
 						}
 
-						if (context.CalculateBinSpans) {
-							Utils.AddBinSpans(block, block.Body, i, block.Body[i].BinSpans);
-							Utils.AddBinSpans(block, block.Body, i, copiedExpr.BinSpans);
+						if (context.CalculateILSpans) {
+							Utils.AddILSpans(block, block.Body, i, block.Body[i].ILSpans);
+							Utils.AddILSpans(block, block.Body, i, copiedExpr.ILSpans);
 						}
 						block.Body.RemoveAt(i);
 						if (uninlinedArgs.Length > 0) {

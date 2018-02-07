@@ -64,9 +64,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 						expr.Code = ILCode.Ldc_Decimal;
 						expr.Operand = paramType == ElementType.I4 ? new decimal(val) : new decimal((uint)val);
 						expr.InferredType = r.DeclaringType.ToTypeSig();
-						if (context.CalculateBinSpans) {
+						if (context.CalculateILSpans) {
 							foreach (var arg in expr.Arguments)
-								arg.AddSelfAndChildrenRecursiveBinSpans(expr.BinSpans);
+								arg.AddSelfAndChildrenRecursiveILSpans(expr.ILSpans);
 						}
 						expr.Arguments.Clear();
 						return true;
@@ -79,9 +79,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 						expr.Code = ILCode.Ldc_Decimal;
 						expr.Operand = paramType == ElementType.I8 ? new decimal(val64) : new decimal((ulong)val64);
 						expr.InferredType = r.DeclaringType.ToTypeSig();
-						if (context.CalculateBinSpans) {
+						if (context.CalculateILSpans) {
 							foreach (var arg in expr.Arguments)
-								arg.AddSelfAndChildrenRecursiveBinSpans(expr.BinSpans);
+								arg.AddSelfAndChildrenRecursiveILSpans(expr.ILSpans);
 						}
 						expr.Arguments.Clear();
 						return true;
@@ -97,9 +97,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 						expr.Code = ILCode.Ldc_Decimal;
 						expr.Operand = new decimal(lo, mid, hi, isNegative != 0, (byte)Math.Min(28, (uint)scale));
 						expr.InferredType = r.DeclaringType.ToTypeSig();
-						if (context.CalculateBinSpans) {
+						if (context.CalculateILSpans) {
 							foreach (var arg in expr.Arguments)
-								arg.AddSelfAndChildrenRecursiveBinSpans(expr.BinSpans);
+								arg.AddSelfAndChildrenRecursiveILSpans(expr.ILSpans);
 						}
 						expr.Arguments.Clear();
 						return true;
@@ -129,9 +129,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 							return false;
 						var ldcExpr = new ILExpression(ILCode.Ldc_Decimal, paramType == ElementType.I4 ? new decimal(val) : new decimal((uint)val));
 						ldcExpr.InferredType = r.DeclaringType.ToTypeSig();
-						if (context.CalculateBinSpans) {
+						if (context.CalculateILSpans) {
 							foreach (var arg in expr.Arguments)
-								arg.AddSelfAndChildrenRecursiveBinSpans(expr.BinSpans);
+								arg.AddSelfAndChildrenRecursiveILSpans(expr.ILSpans);
 						}
 						expr.Code = ILCode.Stloc;
 						expr.Operand = v;
@@ -148,9 +148,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 							return false;
 						var ldcExpr = new ILExpression(ILCode.Ldc_Decimal, paramType == ElementType.I8 ? new decimal(val64) : new decimal((ulong)val64));
 						ldcExpr.InferredType = r.DeclaringType.ToTypeSig();
-						if (context.CalculateBinSpans) {
+						if (context.CalculateILSpans) {
 							foreach (var arg in expr.Arguments)
-								arg.AddSelfAndChildrenRecursiveBinSpans(expr.BinSpans);
+								arg.AddSelfAndChildrenRecursiveILSpans(expr.ILSpans);
 						}
 						expr.Code = ILCode.Stloc;
 						expr.Operand = v;
@@ -170,9 +170,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 					{
 						var ldcExpr = new ILExpression(ILCode.Ldc_Decimal, new decimal(lo, mid, hi, isNegative != 0, (byte)Math.Min(28, (uint)scale)));
 						ldcExpr.InferredType = r.DeclaringType.ToTypeSig();
-						if (context.CalculateBinSpans) {
+						if (context.CalculateILSpans) {
 							foreach (var arg in expr.Arguments)
-								arg.AddSelfAndChildrenRecursiveBinSpans(expr.BinSpans);
+								arg.AddSelfAndChildrenRecursiveILSpans(expr.ILSpans);
 						}
 						expr.Code = ILCode.Stloc;
 						expr.Operand = v;
@@ -227,9 +227,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 			if (expr.Match(ILCode.Conv_I8, out ldc) && ldc.Match(ILCode.Ldc_I4, out val)) {
 				expr.Code = ILCode.Ldc_I8;
 				expr.Operand = (long)val;
-				if (context.CalculateBinSpans) {
+				if (context.CalculateILSpans) {
 					foreach (var arg in expr.Arguments)
-						arg.AddSelfAndChildrenRecursiveBinSpans(expr.BinSpans);
+						arg.AddSelfAndChildrenRecursiveILSpans(expr.ILSpans);
 				}
 				expr.Arguments.Clear();
 				return true;
@@ -247,8 +247,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 				    || length.Match(ILCode.Conv_Ovf_I_Un, out input) || length.Match(ILCode.Conv_U, out input))
 				{
 					expr.Arguments[0] = input;
-					if (context.CalculateBinSpans)
-						input.BinSpans.AddRange(length.BinSpans);	// no recursive add
+					if (context.CalculateILSpans)
+						input.ILSpans.AddRange(length.ILSpans);	// no recursive add
 					return true;
 				}
 			}
@@ -306,8 +306,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 					arg.ExpectedType = expr.ExpectedType;
 					arg.Arguments.Add(arg2);
 				}
-				if (context.CalculateBinSpans)
-					arg.BinSpans.AddRange(expr.BinSpans);
+				if (context.CalculateILSpans)
+					arg.ILSpans.AddRange(expr.ILSpans);
 				modified = true;
 				return arg;
 			} else {
@@ -361,33 +361,33 @@ namespace ICSharpCode.Decompiler.ILAst {
 				foreach (ILExpression parent in Optimize_List_ILExpression) {
 					for (int j = 0; j < parent.Arguments.Count; j++) {
 						if (parent.Arguments[j].Code == ILCode.Ldsfld && ((IField)parent.Arguments[j].Operand).ResolveFieldWithinSameModule() == field) {
-							if (context.CalculateBinSpans) {
+							if (context.CalculateILSpans) {
 								long index = 0;
 								bool done = false;
 								for (;;) {
-									var b = c.GetAllBinSpans(ref index, ref done);
+									var b = c.GetAllILSpans(ref index, ref done);
 									if (done)
 										break;
-									newObj.BinSpans.Add(b);
+									newObj.ILSpans.Add(b);
 								}
-								c.Condition.AddSelfAndChildrenRecursiveBinSpans(newObj.BinSpans);
-								c.FalseBlock.AddSelfAndChildrenRecursiveBinSpans(newObj.BinSpans);
+								c.Condition.AddSelfAndChildrenRecursiveILSpans(newObj.ILSpans);
+								c.FalseBlock.AddSelfAndChildrenRecursiveILSpans(newObj.ILSpans);
 
 								index = 0;
 								done = false;
 								for (;;) {
-									var b = c.TrueBlock.GetAllBinSpans(ref index, ref done);
+									var b = c.TrueBlock.GetAllILSpans(ref index, ref done);
 									if (done)
 										break;
-									newObj.BinSpans.Add(b);
+									newObj.ILSpans.Add(b);
 								}
 								foreach (var instr in c.TrueBlock.Body.Skip(1))
-									instr.AddSelfAndChildrenRecursiveBinSpans(newObj.BinSpans);
-								newObj.BinSpans.AddRange(stsfld.BinSpans);
+									instr.AddSelfAndChildrenRecursiveILSpans(newObj.ILSpans);
+								newObj.ILSpans.AddRange(stsfld.ILSpans);
 								foreach (var arg in stsfld.Arguments.Skip(1))
-									arg.AddSelfAndChildrenRecursiveBinSpans(newObj.BinSpans);
+									arg.AddSelfAndChildrenRecursiveILSpans(newObj.ILSpans);
 
-								newObj.BinSpans.AddRange(parent.Arguments[j].BinSpans);
+								newObj.ILSpans.AddRange(parent.Arguments[j].ILSpans);
 							}
 							parent.Arguments[j] = newObj;
 							block.Body.RemoveAt(i);
@@ -447,8 +447,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 						ILExpression storedExpr;
 						if (storeBlock.Body[j].Match(ILCode.Stloc, out storedVar, out storedExpr) && storedVar == v && storedExpr.Match(ILCode.Ldnull)) {
 							// Remove the instruction
-							if (context.CalculateBinSpans)
-								Utils.AddBinSpans(storeBlock, storeBlock.Body, j);
+							if (context.CalculateILSpans)
+								Utils.AddILSpans(storeBlock, storeBlock.Body, j);
 							storeBlock.Body.RemoveAt(j);
 							if (storeBlock == block && j < i)
 								i--;
@@ -457,30 +457,30 @@ namespace ICSharpCode.Decompiler.ILAst {
 					}
 				}
 
-				if (context.CalculateBinSpans) {
+				if (context.CalculateILSpans) {
 					long index = 0;
 					bool done = false;
 					for (;;) {
-						var b = c.GetAllBinSpans(ref index, ref done);
+						var b = c.GetAllILSpans(ref index, ref done);
 						if (done)
 							break;
-						stloc.BinSpans.Add(b);
+						stloc.ILSpans.Add(b);
 					}
 
-					c.Condition.AddSelfAndChildrenRecursiveBinSpans(stloc.BinSpans);
-					c.FalseBlock.AddSelfAndChildrenRecursiveBinSpans(stloc.BinSpans);
+					c.Condition.AddSelfAndChildrenRecursiveILSpans(stloc.ILSpans);
+					c.FalseBlock.AddSelfAndChildrenRecursiveILSpans(stloc.ILSpans);
 
 					index = 0;
 					done = false;
 					for (;;) {
-						var b = c.TrueBlock.GetAllBinSpans(ref index, ref done);
+						var b = c.TrueBlock.GetAllILSpans(ref index, ref done);
 						if (done)
 							break;
-						stloc.BinSpans.Add(b);
+						stloc.ILSpans.Add(b);
 					}
 
 					foreach (var instr in c.TrueBlock.Body.Skip(1))
-						instr.AddSelfAndChildrenRecursiveBinSpans(stloc.BinSpans);
+						instr.AddSelfAndChildrenRecursiveILSpans(stloc.ILSpans);
 				}
 
 				block.Body[i] = stloc; // remove the 'if (v==null)'
@@ -518,12 +518,12 @@ namespace ICSharpCode.Decompiler.ILAst {
 					if (inlining.numLdloc.GetOrDefault(exprVar) == 2 && inlining.numStloc.GetOrDefault(exprVar) == 1) {
 						body.RemoveAt(pos + 2); // remove store2
 						body.RemoveAt(pos); // remove expr = ...
-						if (context.CalculateBinSpans)
-							nextExpr.Arguments[0].AddSelfAndChildrenRecursiveBinSpans(nextExpr.BinSpans);
+						if (context.CalculateILSpans)
+							nextExpr.Arguments[0].AddSelfAndChildrenRecursiveILSpans(nextExpr.ILSpans);
 						nextExpr.Arguments[0] = store2;
-						if (context.CalculateBinSpans) {
-							expr.AddSelfAndChildrenRecursiveBinSpans(store2.BinSpans);
-							store2.Arguments[store2.Arguments.Count - 1].AddSelfAndChildrenRecursiveBinSpans(store2.BinSpans);
+						if (context.CalculateILSpans) {
+							expr.AddSelfAndChildrenRecursiveILSpans(store2.ILSpans);
+							store2.Arguments[store2.Arguments.Count - 1].AddSelfAndChildrenRecursiveILSpans(store2.ILSpans);
 						}
 						store2.Arguments[store2.Arguments.Count - 1] = initializer;
 						
@@ -534,11 +534,11 @@ namespace ICSharpCode.Decompiler.ILAst {
 				}
 				
 				body.RemoveAt(pos + 1); // remove stloc
-				if (context.CalculateBinSpans)
-					nextExpr.Arguments[0].AddSelfAndChildrenRecursiveBinSpans(nextExpr.BinSpans);
+				if (context.CalculateILSpans)
+					nextExpr.Arguments[0].AddSelfAndChildrenRecursiveILSpans(nextExpr.ILSpans);
 				nextExpr.Arguments[0] = initializer;
-				if (context.CalculateBinSpans)
-					expr.Arguments[0].AddSelfAndChildrenRecursiveBinSpans(nextExpr.BinSpans);
+				if (context.CalculateILSpans)
+					expr.Arguments[0].AddSelfAndChildrenRecursiveILSpans(nextExpr.ILSpans);
 				expr.Arguments[0] = nextExpr;
 				return true;
 			} else if ((nextExpr.Code == ILCode.Stsfld || nextExpr.Code == ILCode.CallSetter || nextExpr.Code == ILCode.CallvirtSetter) && nextExpr.Arguments.Count == 1) {
@@ -548,11 +548,11 @@ namespace ICSharpCode.Decompiler.ILAst {
 				// exprVar = stsfld(fld, ...))
 				if (nextExpr.Arguments[0].MatchLdloc(exprVar)) {
 					body.RemoveAt(pos + 1); // remove stsfld
-					if (context.CalculateBinSpans)
-						nextExpr.Arguments[0].AddSelfAndChildrenRecursiveBinSpans(nextExpr.BinSpans);
+					if (context.CalculateILSpans)
+						nextExpr.Arguments[0].AddSelfAndChildrenRecursiveILSpans(nextExpr.ILSpans);
 					nextExpr.Arguments[0] = initializer;
-					if (context.CalculateBinSpans)
-						expr.Arguments[0].AddSelfAndChildrenRecursiveBinSpans(expr.BinSpans);
+					if (context.CalculateILSpans)
+						expr.Arguments[0].AddSelfAndChildrenRecursiveILSpans(expr.ILSpans);
 					expr.Arguments[0] = nextExpr;
 					return true;
 				}
@@ -664,9 +664,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 			}
 			expr.Code = ILCode.CompoundAssignment;
 			expr.Operand = null;
-			if (context.CalculateBinSpans) {
+			if (context.CalculateILSpans) {
 				for (int i = 0; i < ldelem.Arguments.Count; i++)
-					expr.Arguments[i].AddSelfAndChildrenRecursiveBinSpans(expr.BinSpans);
+					expr.Arguments[i].AddSelfAndChildrenRecursiveILSpans(expr.ILSpans);
 			}
 			expr.Arguments.RemoveRange(0, ldelem.Arguments.Count);
 			// result is "CompoundAssignment(<OP>(ldelem.any(...), <RIGHT>))"
@@ -816,8 +816,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 					break;
 			}
 			expr.Arguments[0] = new ILExpression(incrementCode, incrementAmount, exprInit);
-			if (context.CalculateBinSpans)
-				nextExpr.AddSelfAndChildrenRecursiveBinSpans(expr.BinSpans);
+			if (context.CalculateILSpans)
+				nextExpr.AddSelfAndChildrenRecursiveILSpans(expr.ILSpans);
 			body.RemoveAt(pos + 1);
 			return true;
 		}
@@ -907,14 +907,14 @@ namespace ICSharpCode.Decompiler.ILAst {
 			}
 			
 			ILExpression stloc = addExpr.Arguments[0];
-			if (context.CalculateBinSpans) {
-				stloc.Arguments[0].AddSelfAndChildrenRecursiveBinSpans(stloc.BinSpans);
-				stloc.BinSpans.AddRange(expr.BinSpans);     // no recursive add
-				stloc.BinSpans.AddRange(addExpr.BinSpans);  // no recursive add
+			if (context.CalculateILSpans) {
+				stloc.Arguments[0].AddSelfAndChildrenRecursiveILSpans(stloc.ILSpans);
+				stloc.ILSpans.AddRange(expr.ILSpans);     // no recursive add
+				stloc.ILSpans.AddRange(addExpr.ILSpans);  // no recursive add
 				for (int i = 0; i < expr.Arguments.Count - 1; i++)
-					expr.Arguments[i].AddSelfAndChildrenRecursiveBinSpans(stloc.BinSpans);
+					expr.Arguments[i].AddSelfAndChildrenRecursiveILSpans(stloc.ILSpans);
 				for (int i = 1; i < addExpr.Arguments.Count; i++)
-					addExpr.Arguments[i].AddSelfAndChildrenRecursiveBinSpans(stloc.BinSpans);
+					addExpr.Arguments[i].AddSelfAndChildrenRecursiveILSpans(stloc.ILSpans);
 			}
 			if (expr.Code == ILCode.Stobj) {
 				stloc.Arguments[0] = new ILExpression(ILCode.PostIncrement, incrementAmount, initialValue.Arguments[0]);
@@ -986,13 +986,13 @@ namespace ICSharpCode.Decompiler.ILAst {
 				if (expr != null && expr.Code == ILCode.Stloc && expr.Operand == pinnedVar && IsNullOrZero(expr.Arguments[0])) {
 					// we found a second initializer for the existing fixed statement
 					fixedStmt.Initializers.Insert(0, initValue);
-					if (context.CalculateBinSpans) {
+					if (context.CalculateILSpans) {
 						for (int k = i; k < initEndPos; k++)
-							initValue.BinSpans.AddRange(body[k].GetSelfAndChildrenRecursiveBinSpans().ToArray());
+							initValue.ILSpans.AddRange(body[k].GetSelfAndChildrenRecursiveILSpans().ToArray());
 					}
 					body.RemoveRange(i, initEndPos - i);
-					if (context.CalculateBinSpans)
-						Utils.AddBinSpans(fixedStmt.BodyBlock, fixedStmt.BodyBlock.Body, fixedStmt.BodyBlock.Body.Count - 1);
+					if (context.CalculateILSpans)
+						Utils.AddILSpans(fixedStmt.BodyBlock, fixedStmt.BodyBlock.Body, fixedStmt.BodyBlock.Body.Count - 1);
 					fixedStmt.BodyBlock.Body.RemoveAt(fixedStmt.BodyBlock.Body.Count - 1);
 					if (pinnedVar.Type is ByRefSig)
 						pinnedVar.Type = new PtrSig(((ByRefSig)pinnedVar.Type).Next);
@@ -1016,9 +1016,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 			fixedStmt = new ILFixedStatement();
 			fixedStmt.Initializers.Add(initValue);
 			fixedStmt.BodyBlock = new ILBlock(body.GetRange(initEndPos, j - initEndPos), CodeBracesRangeFlags.FixedBraces); // from initEndPos to j-1 (inclusive)
-			if (context.CalculateBinSpans) {
+			if (context.CalculateILSpans) {
 				for (int k = i; k < initEndPos; k++)
-					initValue.BinSpans.AddRange(body[k].GetSelfAndChildrenRecursiveBinSpans().ToArray());
+					initValue.ILSpans.AddRange(body[k].GetSelfAndChildrenRecursiveILSpans().ToArray());
 			}
 			body.RemoveRange(i + 1, Math.Min(j, body.Count - 1) - i); // from i+1 to j (inclusive)
 			body[i] = fixedStmt;
@@ -1183,8 +1183,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 			// "ceq(a, ldc.i4.0)" becomes "logicnot(a)" if the inferred type for expression "a" is boolean
 			if (expr.Code == ILCode.Ceq && expr.Arguments[0].InferredType.GetElementType() == ElementType.Boolean && (a = expr.Arguments[1]).Code == ILCode.Ldc_I4 && (int)a.Operand == 0) {
 				expr.Code = ILCode.LogicNot;
-				if (context.CalculateBinSpans)
-					a.AddSelfAndChildrenRecursiveBinSpans(expr.BinSpans);
+				if (context.CalculateILSpans)
+					a.AddSelfAndChildrenRecursiveILSpans(expr.ILSpans);
 				expr.Arguments.RemoveAt(1);
 				modified = true;
 			}
@@ -1195,9 +1195,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 				// remove double negation
 				if (a.Code == ILCode.LogicNot) {
 					res = a.Arguments[0];
-					if (context.CalculateBinSpans) {
-						res.BinSpans.AddRange(expr.BinSpans);
-						res.BinSpans.AddRange(a.BinSpans);
+					if (context.CalculateILSpans) {
+						res.ILSpans.AddRange(expr.ILSpans);
+						res.ILSpans.AddRange(a.ILSpans);
 					}
 					expr = res;
 				} else {
@@ -1240,8 +1240,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 					default: return false;
 			}
 			a.Code = c;
-			if (context.CalculateBinSpans)
-				a.BinSpans.AddRange(expr.BinSpans);
+			if (context.CalculateILSpans)
+				a.ILSpans.AddRange(expr.ILSpans);
 			return true;
 		}
 		#endregion
@@ -1274,9 +1274,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 			}
 			if ((int)a.Arguments[1].Operand != mask) return;
 			var res = a.Arguments[0];
-			if (context.CalculateBinSpans) {
-				res.BinSpans.AddRange(a.BinSpans);
-				res.BinSpans.AddRange(a.Arguments[1].BinSpans);
+			if (context.CalculateILSpans) {
+				res.ILSpans.AddRange(a.ILSpans);
+				res.ILSpans.AddRange(a.Arguments[1].ILSpans);
 			}
 			expr.Arguments[1] = res;
 			modified = true;

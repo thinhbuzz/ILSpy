@@ -92,7 +92,7 @@ namespace ICSharpCode.NRefactory.VB {
 			textWriter.WriteLine(content);
 		}
 
-		public void DebugHidden(object hiddenBinSpans)
+		public void DebugHidden(object hiddenILSpans)
 		{
 		}
 

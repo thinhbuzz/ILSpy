@@ -90,12 +90,12 @@ namespace ICSharpCode.Decompiler.ILAst {
 				for (int i = 0; i < block.Body.Count; i++) {
 					var node = block.Body[i];
 					if (node.Match(ILCode.Nop)) {
-						if (context.CalculateBinSpans)
-							Utils.NopMergeBinSpans(block, newBody, i);
+						if (context.CalculateILSpans)
+							Utils.NopMergeILSpans(block, newBody, i);
 					}
 					else if (node is ILLabel && !liveLabels.Contains((ILLabel)node)) {
-						if (context.CalculateBinSpans)
-							Utils.LabelMergeBinSpans(block, newBody, i);
+						if (context.CalculateILSpans)
+							Utils.LabelMergeILSpans(block, newBody, i);
 					}
 					else
 						newBody.Add(node);
@@ -107,8 +107,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 			foreach(ILWhileLoop loop in method.GetSelfAndChildrenRecursive<ILWhileLoop>()) {
 				var body = loop.BodyBlock.Body;
 				if (body.Count > 0 && body.Last().Match(ILCode.LoopContinue)) {
-					if (context.CalculateBinSpans)
-						body[body.Count - 1].AddSelfAndChildrenRecursiveBinSpans(loop.EndBinSpans);
+					if (context.CalculateILSpans)
+						body[body.Count - 1].AddSelfAndChildrenRecursiveILSpans(loop.EndILSpans);
 					body.RemoveAt(body.Count - 1);
 				}
 			}
@@ -125,8 +125,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 						    ilCase.Body[count - 1].Match(ILCode.LoopOrSwitchBreak)) 
 						{
 							var prev = ilCase.Body[count - 2];
-							if (context.CalculateBinSpans)
-								ilCase.Body[count - 1].AddSelfAndChildrenRecursiveBinSpans(prev.EndBinSpans);
+							if (context.CalculateILSpans)
+								ilCase.Body[count - 1].AddSelfAndChildrenRecursiveILSpans(prev.EndILSpans);
 							ilCase.Body.RemoveAt(count - 1);
 						}
 					}
@@ -139,8 +139,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 						var caseBlock = ilSwitch.CaseBlocks[i];
 						if (caseBlock.Body.Count != 1 || !caseBlock.Body.Single().Match(ILCode.LoopOrSwitchBreak))
 							continue;
-						if (context.CalculateBinSpans)
-							caseBlock.Body[0].AddSelfAndChildrenRecursiveBinSpans(ilSwitch.EndBinSpans);
+						if (context.CalculateILSpans)
+							caseBlock.Body[0].AddSelfAndChildrenRecursiveILSpans(ilSwitch.EndILSpans);
 						ilSwitch.CaseBlocks.RemoveAt(i);
 					}
 				}
@@ -148,8 +148,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 			
 			// Remove redundant return at the end of method
 			if (method.Body.Count > 0 && method.Body.Last().Match(ILCode.Ret) && ((ILExpression)method.Body.Last()).Arguments.Count == 0) {
-				if (context.CalculateBinSpans)
-					method.Body[method.Body.Count - 1].AddSelfAndChildrenRecursiveBinSpans(method.EndBinSpans);
+				if (context.CalculateILSpans)
+					method.Body[method.Body.Count - 1].AddSelfAndChildrenRecursiveILSpans(method.EndILSpans);
 				method.Body.RemoveAt(method.Body.Count - 1);
 			}
 			
@@ -159,8 +159,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 				for (int i = 0; i < block.Body.Count - 1;) {
 					if (block.Body[i].IsUnconditionalControlFlow() && block.Body[i+1].Match(ILCode.Ret)) {
 						modified = true;
-						if (context.CalculateBinSpans)
-							block.Body[i + 1].AddSelfAndChildrenRecursiveBinSpans(block.EndBinSpans);
+						if (context.CalculateILSpans)
+							block.Body[i + 1].AddSelfAndChildrenRecursiveILSpans(block.EndILSpans);
 						block.Body.RemoveAt(i+1);
 					} else {
 						i++;

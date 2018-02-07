@@ -70,8 +70,8 @@ namespace ICSharpCode.NRefactory.VB.Ast {
 			get { return GetChildrenByRole (StatementRole); }
 		}
 
-		public IList<BinSpan> HiddenStart { get; set; }
-		public IList<BinSpan> HiddenEnd { get; set; }
+		public IList<ILSpan> HiddenStart { get; set; }
+		public IList<ILSpan> HiddenEnd { get; set; }
 		
 		public override S AcceptVisitor<T, S> (IAstVisitor<T, S> visitor, T data)
 		{

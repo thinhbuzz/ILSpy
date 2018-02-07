@@ -48,9 +48,9 @@ namespace ICSharpCode.Decompiler.ILAst
 					arrayLength = newArr.Length;
 					arrayType.Sizes[0] = (uint)(arrayLength + 1);
 					var newStloc = new ILExpression(ILCode.Stloc, v, new ILExpression(ILCode.InitArray, arrayType.ToTypeDefOrRef(), newArr));
-					if (context.CalculateBinSpans) {
-						body[pos].AddSelfAndChildrenRecursiveBinSpans(newStloc.BinSpans);
-						body[initArrayPos].AddSelfAndChildrenRecursiveBinSpans(newStloc.BinSpans);
+					if (context.CalculateILSpans) {
+						body[pos].AddSelfAndChildrenRecursiveILSpans(newStloc.ILSpans);
+						body[initArrayPos].AddSelfAndChildrenRecursiveILSpans(newStloc.ILSpans);
 					}
 					body[pos] = newStloc;
 					body.RemoveAt(initArrayPos);
@@ -84,10 +84,10 @@ namespace ICSharpCode.Decompiler.ILAst
 					var arrayType = new ArraySig(elementType.ToTypeSig(), 1, new uint[1], new int[1]);
 					arrayType.Sizes[0] = (uint)(arrayLength + 1);
 					expr.Arguments[0] = new ILExpression(ILCode.InitArray, arrayType.ToTypeDefOrRef(), operands);
-					if (context.CalculateBinSpans) {
-						newarrExpr.AddSelfAndChildrenRecursiveBinSpans(expr.BinSpans);
+					if (context.CalculateILSpans) {
+						newarrExpr.AddSelfAndChildrenRecursiveILSpans(expr.ILSpans);
 						for (int i = 0; i < numberOfInstructionsToRemove; i++)
-							body[pos + 1 + i].AddSelfAndChildrenRecursiveBinSpans(expr.BinSpans);
+							body[pos + 1 + i].AddSelfAndChildrenRecursiveILSpans(expr.ILSpans);
 					}
 					body.RemoveRange(pos + 1, numberOfInstructionsToRemove);
 
@@ -126,9 +126,9 @@ namespace ICSharpCode.Decompiler.ILAst
 				int initArrayPos;
 				if (ForwardScanInitializeArrayRuntimeHelper(body, pos + 1, v, multAry, totalElements, out newArr, out initArrayPos)) {
 					var newStloc = new ILExpression(ILCode.Stloc, v, new ILExpression(ILCode.InitArray, multAry.ToTypeDefOrRef(), newArr));
-					if (context.CalculateBinSpans) {
-						body[pos].AddSelfAndChildrenRecursiveBinSpans(newStloc.BinSpans);
-						body[initArrayPos].AddSelfAndChildrenRecursiveBinSpans(newStloc.BinSpans);
+					if (context.CalculateILSpans) {
+						body[pos].AddSelfAndChildrenRecursiveILSpans(newStloc.ILSpans);
+						body[initArrayPos].AddSelfAndChildrenRecursiveILSpans(newStloc.ILSpans);
 					}
 					body[pos] = newStloc;
 					body.RemoveAt(initArrayPos);
@@ -306,8 +306,8 @@ namespace ICSharpCode.Decompiler.ILAst
 					var old = ctorArgs[0];
 					ctorArgs.RemoveAt(0);
 					newObjExpr = new ILExpression(ILCode.Newobj, ctor, ctorArgs);
-					if (context.CalculateBinSpans)
-						old.AddSelfAndChildrenRecursiveBinSpans(newObjExpr.BinSpans);
+					if (context.CalculateILSpans)
+						old.AddSelfAndChildrenRecursiveILSpans(newObjExpr.ILSpans);
 				} else {
 					return false;
 				}
@@ -358,24 +358,24 @@ namespace ICSharpCode.Decompiler.ILAst
 				return false;
 
 			if (expr.Code == ILCode.Stloc) {
-				if (context.CalculateBinSpans)
-					expr.Arguments[0].AddSelfAndChildrenRecursiveBinSpans(initializer.BinSpans);
+				if (context.CalculateILSpans)
+					expr.Arguments[0].AddSelfAndChildrenRecursiveILSpans(initializer.ILSpans);
 				expr.Arguments[0] = initializer;
 			} else {
 				Debug.Assert(expr.Code == ILCode.Call);
 				expr.Code = ILCode.Stloc;
 				expr.Operand = v;
-				if (context.CalculateBinSpans) {
+				if (context.CalculateILSpans) {
 					foreach (var arg in expr.Arguments)
-						arg.AddSelfAndChildrenRecursiveBinSpans(initializer.BinSpans);
+						arg.AddSelfAndChildrenRecursiveILSpans(initializer.ILSpans);
 				}
 				expr.Arguments.Clear();
 				expr.Arguments.Add(initializer);
 			}
 			// remove all the instructions that were pulled into the initializer
-			if (context.CalculateBinSpans) {
+			if (context.CalculateILSpans) {
 				for (int i = originalPos + 1; i < pos; i++)
-					body[i].AddSelfAndChildrenRecursiveBinSpans(initializer.BinSpans);
+					body[i].AddSelfAndChildrenRecursiveILSpans(initializer.ILSpans);
 			}
 			body.RemoveRange(originalPos + 1, pos - originalPos - 1);
 
@@ -565,8 +565,8 @@ namespace ICSharpCode.Decompiler.ILAst
 			while (initializerStack.Count > 1 && initializerStack[initializerStack.Count - 1].Arguments.Count == 1) {
 				ILExpression parent = initializerStack[initializerStack.Count - 2];
 				Debug.Assert(parent.Arguments.Last() == initializerStack[initializerStack.Count - 1]);
-				if (context.CalculateBinSpans)
-					parent.Arguments[parent.Arguments.Count - 1].AddSelfAndChildrenRecursiveBinSpans(parent.BinSpans);
+				if (context.CalculateILSpans)
+					parent.Arguments[parent.Arguments.Count - 1].AddSelfAndChildrenRecursiveILSpans(parent.ILSpans);
 				parent.Arguments.RemoveAt(parent.Arguments.Count - 1);
 				initializerStack.RemoveAt(initializerStack.Count - 1);
 			}
@@ -581,14 +581,14 @@ namespace ICSharpCode.Decompiler.ILAst
 					// nested collection/object initializer
 					ILExpression getCollection = element.Arguments[0];
 					var newExpr = new ILExpression(ILCode.InitializedObject, null);
-					if (context.CalculateBinSpans)
-						getCollection.Arguments[0].AddSelfAndChildrenRecursiveBinSpans(newExpr.BinSpans);
+					if (context.CalculateILSpans)
+						getCollection.Arguments[0].AddSelfAndChildrenRecursiveILSpans(newExpr.ILSpans);
 					getCollection.Arguments[0] = newExpr;
 					ChangeFirstArgumentToInitializedObject(element); // handle the collection elements
 				} else {
 					var newExpr = new ILExpression(ILCode.InitializedObject, null);
-					if (context.CalculateBinSpans)
-						element.Arguments[0].AddSelfAndChildrenRecursiveBinSpans(newExpr.BinSpans);
+					if (context.CalculateILSpans)
+						element.Arguments[0].AddSelfAndChildrenRecursiveILSpans(newExpr.ILSpans);
 					element.Arguments[0] = newExpr;
 				}
 			}

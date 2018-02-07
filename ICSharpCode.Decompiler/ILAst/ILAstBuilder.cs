@@ -865,7 +865,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					ehs.ExceptWith(nestedEHs);
 					List<ILNode> handlerAst = ConvertToAst(body.CutRange(startIdx, endIdx - startIdx), nestedEHs);
 					if (eh.HandlerType == ExceptionHandlerType.Catch) {
-						ILTryCatchBlock.CatchBlock catchBlock = new ILTryCatchBlock.CatchBlock(context.CalculateBinSpans, handlerAst) {
+						ILTryCatchBlock.CatchBlock catchBlock = new ILTryCatchBlock.CatchBlock(context.CalculateILSpans, handlerAst) {
 							ExceptionType = eh.CatchType.ToTypeSig(),
 						};
 						// Handle the automatically pushed exception on the stack
@@ -877,7 +877,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					} else if (eh.HandlerType == ExceptionHandlerType.Fault) {
 						tryCatchBlock.FaultBlock = new ILBlock(handlerAst, CodeBracesRangeFlags.FaultBraces);
 					} else if (eh.HandlerType == ExceptionHandlerType.Filter) {
-						ILTryCatchBlock.CatchBlock catchBlock = new ILTryCatchBlock.CatchBlock(context.CalculateBinSpans, handlerAst) {
+						ILTryCatchBlock.CatchBlock catchBlock = new ILTryCatchBlock.CatchBlock(context.CalculateILSpans, handlerAst) {
 							ExceptionType = eh.CatchType.ToTypeSig(),
 						};
 						// Handle the automatically pushed exception on the stack
@@ -894,7 +894,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 						nestedEHs = new HashSet<ExceptionHandler>(ehs.Where(e => (eh.FilterStart.GetOffset() <= e.TryStart.GetOffset() && (e.TryEnd?.Offset ?? codeSize) < ehHandlerStart) || (eh.FilterStart.GetOffset() < e.TryStart.GetOffset() && (e.TryEnd?.Offset ?? codeSize) <= ehHandlerStart)));
 						ehs.ExceptWith(nestedEHs);
 						List<ILNode> filterAst = ConvertToAst(body.CutRange(startIdx, endIdx - startIdx), nestedEHs);
-						var filterBlock = new ILTryCatchBlock.FilterILBlock(context.CalculateBinSpans, filterAst) {
+						var filterBlock = new ILTryCatchBlock.FilterILBlock(context.CalculateILSpans, filterAst) {
 							ExceptionType = null,
 						};
 						ByteCode ldfilter = ldfilters[eh];
@@ -931,8 +931,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 						catchBlock.ExceptionVariable = new ILVariable("ex_" + eh.HandlerStart.GetOffset().ToString("X2")) { GeneratedByDecompiler = true };
 					else
 						catchBlock.ExceptionVariable = null;
-					if (context.CalculateBinSpans)
-						catchBlock.Body[0].AddSelfAndChildrenRecursiveBinSpans(catchBlock.StlocBinSpans);
+					if (context.CalculateILSpans)
+						catchBlock.Body[0].AddSelfAndChildrenRecursiveILSpans(catchBlock.StlocILSpans);
 					catchBlock.Body.RemoveAt(0);
 				} else {
 					catchBlock.ExceptionVariable = ldexception.StoreTo[0];
@@ -959,16 +959,16 @@ namespace ICSharpCode.Decompiler.ILAst {
 				}
 				
 				ILExpression expr = new ILExpression(byteCode.Code, byteCode.Operand);
-				if (context.CalculateBinSpans) {
+				if (context.CalculateILSpans) {
 					if (byteCode.Code == ILCode.Dup) {
 						if (dupStart < 0)
 							dupStart = (int)byteCode.Offset;
 					}
 					else {
 						if (dupStart < 0)
-							expr.BinSpans.Add(new BinSpan(byteCode.Offset, byteCode.EndOffset - byteCode.Offset));
+							expr.ILSpans.Add(new ILSpan(byteCode.Offset, byteCode.EndOffset - byteCode.Offset));
 						else {
-							expr.BinSpans.Add(new BinSpan((uint)dupStart, byteCode.EndOffset - (uint)dupStart));
+							expr.ILSpans.Add(new ILSpan((uint)dupStart, byteCode.EndOffset - (uint)dupStart));
 							dupStart = -1;
 						}
 					}

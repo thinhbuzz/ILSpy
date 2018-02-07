@@ -511,11 +511,11 @@ namespace ICSharpCode.Decompiler.ILAst
 						if (n.Code == ILCode.NullCoalescing) {
 							// if both operands are nullable then the result is also nullable
 							if (n.Arguments[1].Code == ILCode.ValueOf) {
-								if (context.CalculateBinSpans)
-									n.Arguments[0].Arguments[0].BinSpans.AddRange(n.Arguments[0].BinSpans);
+								if (context.CalculateILSpans)
+									n.Arguments[0].Arguments[0].ILSpans.AddRange(n.Arguments[0].ILSpans);
 								n.Arguments[0] = n.Arguments[0].Arguments[0];
-								if (context.CalculateBinSpans)
-									n.Arguments[1].Arguments[0].BinSpans.AddRange(n.Arguments[1].BinSpans);
+								if (context.CalculateILSpans)
+									n.Arguments[1].Arguments[0].ILSpans.AddRange(n.Arguments[1].ILSpans);
 								n.Arguments[1] = n.Arguments[1].Arguments[0];
 							}
 						} else if (n.Code != ILCode.Ceq && n.Code != ILCode.Cne) {
@@ -530,11 +530,11 @@ namespace ICSharpCode.Decompiler.ILAst
 
 			void SetResult(ILExpression expr, ILExpression n)
 			{
-				if (context.CalculateBinSpans) {
+				if (context.CalculateILSpans) {
 					// IL ranges from removed nodes are assigned to the new operator expression
 					var removednodes = expr.GetSelfAndChildrenRecursive<ILExpression>().Except(n.GetSelfAndChildrenRecursive<ILExpression>());
-					n.BinSpans.AddRange(removednodes.SelectMany(el => el.BinSpans));
-					expr.BinSpans.Clear();
+					n.ILSpans.AddRange(removednodes.SelectMany(el => el.ILSpans));
+					expr.ILSpans.Clear();
 				}
 				// the new expression is wrapped in a container so that negations aren't pushed through lifted comparison operations
 				expr.Code = ILCode.Wrap;

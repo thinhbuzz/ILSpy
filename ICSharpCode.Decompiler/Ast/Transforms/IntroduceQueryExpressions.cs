@@ -20,7 +20,7 @@ using System.Linq;
 using dnSpy.Contracts.Text;
 using ICSharpCode.NRefactory.CSharp;
 
-//TODO: Verify that no BinSpans have been removed from this file
+//TODO: Verify that no ILSpans have been removed from this file
 
 namespace ICSharpCode.Decompiler.Ast.Transforms {
 	/// <summary>

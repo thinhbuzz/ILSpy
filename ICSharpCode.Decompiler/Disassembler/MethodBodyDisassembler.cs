@@ -117,7 +117,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 
 						if (builder != null) {
 							var next = i + 1 < instructions.Count ? instructions[i + 1] : null;
-							builder.Add(new SourceStatement(BinSpan.FromBounds(inst.Offset, next == null ? (uint)method.Body.GetCodeSize() : next.Offset), new TextSpan(startLocation, output.NextPosition - startLocation)));
+							builder.Add(new SourceStatement(ILSpan.FromBounds(inst.Offset, next == null ? (uint)method.Body.GetCodeSize() : next.Offset), new TextSpan(startLocation, output.NextPosition - startLocation)));
 						}
 
 						output.WriteLine();
@@ -234,7 +234,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 					
 					if (builder != null) {
 						var next = index + 1 < instructions.Count ? instructions[index + 1] : null;
-						builder.Add(new SourceStatement(BinSpan.FromBounds(inst.Offset, next == null ? (uint)codeSize : next.Offset), new TextSpan(startLocation, output.NextPosition - startLocation)));
+						builder.Add(new SourceStatement(ILSpan.FromBounds(inst.Offset, next == null ? (uint)codeSize : next.Offset), new TextSpan(startLocation, output.NextPosition - startLocation)));
 					}
 					
 					output.WriteLine();

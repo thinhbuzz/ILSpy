@@ -25,10 +25,10 @@ namespace ICSharpCode.NRefactory.VB.Ast {
 			set { SetChildByRole(Roles.Body, value); }
 		}
 		
-		public IList<BinSpan> HiddenInitializer { get; set; }			// |foreach| (var c in args)
-		public IList<BinSpan> HiddenGetEnumeratorBinSpans { get; set; }	// foreach (var c in |args|)
-		public IList<BinSpan> HiddenMoveNextBinSpans { get; set; }		// foreach (var c |in| args)
-		public IList<BinSpan> HiddenGetCurrentBinSpans { get; set; }	// foreach (|var c| in args)
+		public IList<ILSpan> HiddenInitializer { get; set; }			// |foreach| (var c in args)
+		public IList<ILSpan> HiddenGetEnumeratorILSpans { get; set; }	// foreach (var c in |args|)
+		public IList<ILSpan> HiddenMoveNextILSpans { get; set; }		// foreach (var c |in| args)
+		public IList<ILSpan> HiddenGetCurrentILSpans { get; set; }		// foreach (|var c| in args)
 
 		protected internal override bool DoMatch(AstNode other, ICSharpCode.NRefactory.PatternMatching.Match match)
 		{
