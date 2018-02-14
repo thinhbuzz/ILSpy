@@ -138,10 +138,12 @@ namespace ICSharpCode.Decompiler.ILAst {
 			AnalyzeMoveNext(out body, out tryCatchBlock, out finalState, out exitLabel);
 			if (tryCatchBlock != null) {
 				ValidateCatchBlock(tryCatchBlock.CatchBlocks[0], finalState, exitLabel);
-				var cb = tryCatchBlock.CatchBlocks[0];
-				catchHandlerOffset = GetOffset(cb.Body, 0, cb.Body.Count);
-				foreach (var span in cb.StlocILSpans)
-					catchHandlerOffset = Math.Min(span.Start, catchHandlerOffset);
+				if (context.CalculateILSpans) {
+					var cb = tryCatchBlock.CatchBlocks[0];
+					catchHandlerOffset = GetOffset(cb.Body, 0, cb.Body.Count);
+					foreach (var span in cb.StlocILSpans)
+						catchHandlerOffset = Math.Min(span.Start, catchHandlerOffset);
+				}
 			}
 			var newTopLevelBody = AnalyzeStateMachine(body);
 			MarkGeneratedVariables(newTopLevelBody);

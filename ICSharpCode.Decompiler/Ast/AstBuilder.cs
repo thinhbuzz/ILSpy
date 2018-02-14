@@ -881,7 +881,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			if (fieldDef.IsPrivate) {
 				if (context.Settings.MemberAddPrivateModifier)
 					modifiers |= Modifiers.Private;
-			} else if (fieldDef.IsAssembly || fieldDef.IsFamilyAndAssembly)
+			} else if (fieldDef.IsAssembly)
 				modifiers |= Modifiers.Internal;
 			else if (fieldDef.IsFamily)
 				modifiers |= Modifiers.Protected;
@@ -889,7 +889,9 @@ namespace ICSharpCode.Decompiler.Ast {
 				modifiers |= Modifiers.Protected | Modifiers.Internal;
 			else if (fieldDef.IsPublic)
 				modifiers |= Modifiers.Public;
-			
+			else if (fieldDef.IsFamilyAndAssembly)
+				modifiers |= Modifiers.Private | Modifiers.Protected;
+
 			if (fieldDef.IsLiteral) {
 				modifiers |= Modifiers.Const;
 			} else {
@@ -917,7 +919,7 @@ namespace ICSharpCode.Decompiler.Ast {
 				if (context.Settings.MemberAddPrivateModifier)
 					modifiers |= Modifiers.Private;
 			}
-			else if (methodDef.IsAssembly || methodDef.IsFamilyAndAssembly)
+			else if (methodDef.IsAssembly)
 				modifiers |= Modifiers.Internal;
 			else if (methodDef.IsFamily)
 				modifiers |= Modifiers.Protected;
@@ -925,7 +927,9 @@ namespace ICSharpCode.Decompiler.Ast {
 				modifiers |= Modifiers.Protected | Modifiers.Internal;
 			else if (methodDef.IsPublic)
 				modifiers |= Modifiers.Public;
-			
+			else if (methodDef.IsFamilyAndAssembly)
+				modifiers |= Modifiers.Private | Modifiers.Protected;
+
 			if (methodDef.IsStatic)
 				modifiers |= Modifiers.Static;
 			
@@ -1240,7 +1244,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			if ((v & Modifiers.Public) == Modifiers.Public)
 				return Modifiers.Public | (m & ~Modifiers.VisibilityMask);
 			// If both modifiers are private, no need to fix anything
-			if (v == Modifiers.Private)
+			if (v == Modifiers.Private || v == (Modifiers.Private | Modifiers.Protected))
 				return m;
 			// Otherwise, use the other modifiers (internal and/or protected)
 			return m & ~Modifiers.Private;
