@@ -477,7 +477,7 @@ namespace ICSharpCode.Decompiler.Ast {
 						ConvertCustomAttributes(Context.MetadataTextColorProvider, enumMember, field, context.Settings, stringBuilder);
 						enumMember.AddAnnotation(field);
 						enumMember.NameToken = Identifier.Create(CleanName(field.Name)).WithAnnotation(field);
-						var constant = field.Constant == null ? null : field.Constant.Value;
+						TryGetConstant(field, out var constant);
 						TypeCode c = constant == null ? TypeCode.Empty : Type.GetTypeCode(constant.GetType());
 						if (c < TypeCode.Char || c > TypeCode.Decimal)
 							continue;
@@ -1564,6 +1564,91 @@ namespace ICSharpCode.Decompiler.Ast {
 			}
 		}
 
+		static bool HasConstant(IHasConstant hc, out CustomAttribute constantAttribute) {
+			constantAttribute = null;
+			if (hc.Constant != null)
+				return true;
+			foreach (var ca in hc.CustomAttributes) {
+				var type = ca.AttributeType;
+				while (type != null) {
+					var fullName = type.FullName;
+					if (fullName == "System.Runtime.CompilerServices.CustomConstantAttribute" ||
+						fullName == "System.Runtime.CompilerServices.DecimalConstantAttribute") {
+						constantAttribute = ca;
+						return true;
+					}
+					type = type.GetBaseType();
+				}
+			}
+			return false;
+		}
+
+		static bool TryGetConstant(IHasConstant hc, out object constant) {
+			if (!HasConstant(hc, out var constantAttribute)) {
+				constant = null;
+				return false;
+			}
+
+			if (hc.Constant != null) {
+				constant = hc.Constant.Value;
+				return true;
+			}
+
+			if (constantAttribute != null) {
+				if (constantAttribute.TypeFullName == "System.Runtime.CompilerServices.DecimalConstantAttribute") {
+					if (TryGetDecimalConstantAttributeValue(constantAttribute, out var decimalValue)) {
+						constant = decimalValue;
+						return true;
+					}
+				}
+			}
+
+			constant = null;
+			return false;
+		}
+
+		static bool TryGetDecimalConstantAttributeValue(CustomAttribute ca, out decimal value) {
+			value = 0;
+			if (ca.ConstructorArguments.Count != 5)
+				return false;
+			if (!(ca.ConstructorArguments[0].Value is byte scale))
+				return false;
+			if (!(ca.ConstructorArguments[1].Value is byte sign))
+				return false;
+			int hi, mid, low;
+			if (ca.ConstructorArguments[2].Value is int) {
+				if (!(ca.ConstructorArguments[2].Value is int))
+					return false;
+				if (!(ca.ConstructorArguments[3].Value is int))
+					return false;
+				if (!(ca.ConstructorArguments[4].Value is int))
+					return false;
+				hi = (int)ca.ConstructorArguments[2].Value;
+				mid = (int)ca.ConstructorArguments[3].Value;
+				low = (int)ca.ConstructorArguments[4].Value;
+			}
+			else if (ca.ConstructorArguments[2].Value is uint) {
+				if (!(ca.ConstructorArguments[2].Value is uint))
+					return false;
+				if (!(ca.ConstructorArguments[3].Value is uint))
+					return false;
+				if (!(ca.ConstructorArguments[4].Value is uint))
+					return false;
+				hi = (int)(uint)ca.ConstructorArguments[2].Value;
+				mid = (int)(uint)ca.ConstructorArguments[3].Value;
+				low = (int)(uint)ca.ConstructorArguments[4].Value;
+			}
+			else
+				return false;
+			try {
+				value = new decimal(low, mid, hi, sign > 0, scale);
+				return true;
+			}
+			catch (ArgumentOutOfRangeException) {
+				return false;
+			}
+		}
+
 		FieldDeclaration CreateField(FieldDef fieldDef)
 		{
 			FieldDeclaration astField = new FieldDeclaration();
@@ -1572,8 +1657,8 @@ namespace ICSharpCode.Decompiler.Ast {
 			astField.AddChild(initializer, Roles.Variable);
 			astField.ReturnType = ConvertType(fieldDef.FieldType, stringBuilder, fieldDef);
 			astField.Modifiers = ConvertModifiers(fieldDef);
-			if (fieldDef.HasConstant) {
-				initializer.Initializer = CreateExpressionForConstant(fieldDef.Constant.Value, fieldDef.FieldType, stringBuilder, fieldDef.DeclaringType.IsEnum);
+			if (TryGetConstant(fieldDef, out var constant)) {
+				initializer.Initializer = CreateExpressionForConstant(constant, fieldDef.FieldType, stringBuilder, fieldDef.DeclaringType.IsEnum);
 			}
 			ConvertAttributes(Context.MetadataTextColorProvider, astField, fieldDef, context.Settings, stringBuilder);
 			SetNewModifier(astField);
@@ -1690,9 +1775,8 @@ namespace ICSharpCode.Decompiler.Ast {
 					if (paramDef.ParamDef.IsDefined(systemString, paramArrayAttributeString))
 						astParam.ParameterModifier = ParameterModifier.Params;
 				}
-				if (paramDef.HasParamDef && paramDef.ParamDef.IsOptional) {
-					var c = paramDef.ParamDef.Constant;
-					astParam.DefaultExpression = CreateExpressionForConstant(c == null ? null : c.Value, type, sb);
+				if (paramDef.HasParamDef && paramDef.ParamDef.IsOptional && TryGetConstant(paramDef.ParamDef, out var constant)) {
+					astParam.DefaultExpression = CreateExpressionForConstant(constant, type, sb);
 				}
 				
 				ConvertCustomAttributes(metadataTextColorProvider, astParam, paramDef.ParamDef, settings, sb);
@@ -2159,14 +2243,14 @@ namespace ICSharpCode.Decompiler.Ast {
 					if (customAttribute.HasNamedArguments) {
 						TypeDef resolvedAttributeType = attributeType.ResolveTypeDef();
 						foreach (var propertyNamedArg in customAttribute.Properties) {
-							var propertyReference = resolvedAttributeType != null ? resolvedAttributeType.Properties.FirstOrDefault(pr => pr.Name == propertyNamedArg.Name) : null;
+							var propertyReference = GetProperty(resolvedAttributeType, propertyNamedArg.Name);
 							var propertyName = IdentifierExpression.Create(propertyNamedArg.Name, metadataTextColorProvider.GetColor((object)propertyReference ?? BoxedTextColor.InstanceProperty), true).WithAnnotation(propertyReference);
 							var argumentValue = ConvertArgumentValue(propertyNamedArg.Argument, sb);
 							attribute.Arguments.Add(new AssignmentExpression(propertyName, argumentValue));
 						}
 
 						foreach (var fieldNamedArg in customAttribute.Fields) {
-							var fieldReference = resolvedAttributeType != null ? resolvedAttributeType.Fields.FirstOrDefault(f => f.Name == fieldNamedArg.Name) : null;
+							var fieldReference = GetField(resolvedAttributeType, fieldNamedArg.Name);
 							var fieldName = IdentifierExpression.Create(fieldNamedArg.Name, metadataTextColorProvider.GetColor((object)fieldReference ?? BoxedTextColor.InstanceField), true).WithAnnotation(fieldReference);
 							var argumentValue = ConvertArgumentValue(fieldNamedArg.Argument, sb);
 							attribute.Arguments.Add(new AssignmentExpression(fieldName, argumentValue));
@@ -2191,7 +2275,31 @@ namespace ICSharpCode.Decompiler.Ast {
 				}
 			}
 		}
+
+		static PropertyDef GetProperty(TypeDef type, UTF8String name)
+		{
+			while (type != null) {
+				foreach (var pd in type.Properties) {
+					if (pd.Name == name)
+						return pd;
+				}
+				type = type.BaseType.ResolveTypeDef();
+			}
+			return null;
+		}
 		
+		static FieldDef GetField(TypeDef type, UTF8String name)
+		{
+			while (type != null) {
+				foreach (var pd in type.Fields) {
+					if (pd.Name == name)
+						return pd;
+				}
+				type = type.BaseType.ResolveTypeDef();
+			}
+			return null;
+		}
+
 		static void ConvertSecurityAttributes(MetadataTextColorProvider metadataTextColorProvider, AstNode attributedNode, IHasDeclSecurity secDeclProvider, StringBuilder sb, string attributeTarget = null)
 		{
 			if (secDeclProvider == null || !secDeclProvider.HasDeclSecurities)
@@ -2303,7 +2411,7 @@ namespace ICSharpCode.Decompiler.Ast {
 					TypeCode enumBaseTypeCode = TypeCode.Int32;
 					foreach (FieldDef field in enumDefinition.Fields) {
 						if (field.IsStatic) {
-							var constant = field.Constant == null ? null : field.Constant.Value;
+							TryGetConstant(field, out var constant);
 							TypeCode c = constant == null ? TypeCode.Empty : Type.GetTypeCode(constant.GetType());
 							if (c >= TypeCode.Char && c <= TypeCode.Decimal &&
 								object.Equals(CSharpPrimitiveCast.Cast(TypeCode.Int64, constant, false), val))
@@ -2333,7 +2441,7 @@ namespace ICSharpCode.Decompiler.Ast {
 						}
 						Expression negatedExpr = null;
 						foreach (FieldDef field in enumDefinition.Fields.Where(fld => fld.IsStatic)) {
-							var constant = field.Constant == null ? null : field.Constant.Value;
+							TryGetConstant(field, out var constant);
 							TypeCode c = constant == null ? TypeCode.Empty : Type.GetTypeCode(constant.GetType());
 							if (c < TypeCode.Char || c > TypeCode.Decimal)
 								continue;

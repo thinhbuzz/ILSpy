@@ -931,21 +931,17 @@ namespace ICSharpCode.Decompiler.ILAst {
 				if (asmRef.Name == nameAssemblyVisualBasic)
 					return true;
 			}
-			var asmName = context.CurrentModule.Assembly?.Name;
-			if ((object)asmName != null) {
-				if (asmName == nameAssemblyVisualBasic)
-					return true;
-
-				// The VB runtime can be embedded if '/vbruntime*' option is used.
-				// Microsoft.CodeAnalysis.VisualBasic.Workspaces, Microsoft.CodeAnalysis.VisualBasic.Features and
-				// Microsoft.CodeAnalysis.VisualBasic all have the methods we're looking for too. Assume it's
-				// a VB assembly if the name contains VisualBasic since it's too expensive to check all
-				// definitions every time we decompile something.
-				if (asmName.Contains("VisualBasic") == true)
-					return true;
-			}
+			// The VB runtime can be embedded if '/vbruntime*' option is used, and if so, the compiler adds
+			// attribute "Microsoft.VisualBasic.Embedded" (the name doesn't end in Attribute)
+			if (context.CurrentModule.Assembly?.IsDefined(nameAssemblyVisualBasic, nameEmbedded) == true)
+				return true;
+			if (context.CurrentModule.IsDefined(nameAssemblyVisualBasic, nameEmbedded) == true)
+				return true;
+			if (context.CurrentModule.Assembly?.Name == nameAssemblyVisualBasic)
+				return true;
 			return false;
 		}
+		static readonly UTF8String nameEmbedded = new UTF8String("Embedded");
 		static readonly UTF8String nameAssemblyVisualBasic = new UTF8String("Microsoft.VisualBasic");
 		static readonly UTF8String nameClearProjectError = new UTF8String("ClearProjectError");
 		static readonly UTF8String nameSetProjectError = new UTF8String("SetProjectError");

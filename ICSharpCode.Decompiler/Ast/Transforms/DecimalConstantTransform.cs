@@ -19,6 +19,8 @@
 using ICSharpCode.NRefactory.CSharp;
 using ICSharpCode.NRefactory.PatternMatching;
 using dnlib.DotNet;
+using System.Linq;
+using System;
 
 namespace ICSharpCode.Decompiler.Ast.Transforms {
 	/// <summary>
@@ -46,6 +48,12 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 							if (attributeSection.Attributes.Count == 0)
 								attributeSection.Remove();
 							fieldDeclaration.Modifiers = (fieldDeclaration.Modifiers & ~staticReadOnly) | Modifiers.Const;
+							var comments = fieldDeclaration.GetChildrenByRole(Roles.Comment).ToArray();
+							Array.Reverse(comments);
+							foreach (var c in comments) {
+								c.Remove();
+								fieldDeclaration.InsertChildAfter(null, c, Roles.Comment);
+							}
 							return null;
 						}
 					}
@@ -53,7 +61,23 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			}
 			return null;
 		}
-		
+
+		public override object VisitParameterDeclaration(ParameterDeclaration parameterDeclaration, object data)
+		{
+			foreach (var attributeSection in parameterDeclaration.Attributes) {
+				foreach (var attribute in attributeSection.Attributes) {
+					ITypeDefOrRef tr = attribute.Type.Annotation<ITypeDefOrRef>();
+					if (tr != null && tr.Compare(systemRuntimeCompilerServicesString, decimalConstantAttributeString)) {
+						attribute.Remove();
+						if (attributeSection.Attributes.Count == 0)
+							attributeSection.Remove();
+						return null;
+					}
+				}
+			}
+			return null;
+		}
+
 		public void Run(AstNode compilationUnit)
 		{
 			compilationUnit.AcceptVisitor(this, null);
