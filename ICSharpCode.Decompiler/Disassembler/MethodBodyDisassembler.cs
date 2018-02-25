@@ -18,8 +18,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
+using dnlib.DotNet.Pdb;
 using dnSpy.Contracts.Decompiler;
 using dnSpy.Contracts.Text;
 
@@ -50,7 +52,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			uint rva = (uint)method.RVA;
 
 			if (options.ShowTokenAndRvaComments) {
-				output.WriteLine(string.Format("// Header Size: {0} {1}", method.Body.HeaderSize, method.Body.HeaderSize == 1 ? "byte" : "bytes"), BoxedTextColor.Comment);
+				output.WriteLine(string.Format("// Header Size: {0} {1}", body.HeaderSize, body.HeaderSize == 1 ? "byte" : "bytes"), BoxedTextColor.Comment);
 				output.WriteLine(string.Format("// Code Size: {0} (0x{0:X}) {1}", codeSize, codeSize == 1 ? "byte" : "bytes"), BoxedTextColor.Comment);
 				if (body.LocalVarSigTok != 0) {
 					output.Write("// LocalVarSig Token: ", BoxedTextColor.Comment);
@@ -65,17 +67,17 @@ namespace ICSharpCode.Decompiler.Disassembler {
             if (method.DeclaringType.Module.EntryPoint == method)
                 output.WriteLine (".entrypoint", BoxedTextColor.ILDirective);
 			
-			if (method.Body.HasVariables) {
+			if (body.HasVariables) {
 				output.Write(".locals", BoxedTextColor.ILDirective);
 				output.Write(" ", BoxedTextColor.Text);
-				if (method.Body.InitLocals) {
+				if (body.InitLocals) {
 					output.Write("init", BoxedTextColor.Keyword);
 					output.Write(" ", BoxedTextColor.Text);
 				}
 				var bh1 = BracePairHelper.Create(output, "(", CodeBracesRangeFlags.Parentheses);
 				output.WriteLine();
 				output.IncreaseIndent();
-				foreach (var v in method.Body.Variables) {
+				foreach (var v in body.Variables) {
 					var local = (SourceLocal)instructionOperandConverter.Convert(v);
 					var bh2 = BracePairHelper.Create(output, "[", CodeBracesRangeFlags.SquareBrackets);
 					bool hasName = !string.IsNullOrEmpty(local.Local.Name);
@@ -90,7 +92,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 						output.Write(" ", BoxedTextColor.Text);
 						output.Write(DisassemblerHelpers.Escape(local.Name), local, DecompilerReferenceFlags.Local | DecompilerReferenceFlags.Definition, BoxedTextColor.Local);
 					}
-					if (local.Local.Index + 1 < method.Body.Variables.Count)
+					if (local.Local.Index + 1 < body.Variables.Count)
 						output.Write(",", BoxedTextColor.Punctuation);
 					output.WriteLine();
 				}
@@ -100,31 +102,34 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			}
 			output.WriteLine();
 
-			uint baseRva = rva == 0 ? 0 : rva + method.Body.HeaderSize;
+			uint baseRva = rva == 0 ? 0 : rva + body.HeaderSize;
 			long baseOffs = baseRva == 0 ? 0 : method.Module.ToFileOffset(baseRva) ?? 0;
+			PdbAsyncMethodCustomDebugInfo pdbAsyncInfo = null;
+			if (options.ShowPdbInfo)
+				pdbAsyncInfo = method.CustomDebugInfos.OfType<PdbAsyncMethodCustomDebugInfo>().FirstOrDefault();
 			using (var byteReader = !options.ShowILBytes || options.CreateInstructionBytesReader == null ? null : options.CreateInstructionBytesReader(method)) {
 				if (detectControlStructure && body.Instructions.Count > 0) {
 					int index = 0;
 					HashSet<uint> branchTargets = GetBranchTargets(body.Instructions);
-					WriteStructureBody(body, new ILStructure(body), branchTargets, ref index, builder, instructionOperandConverter, method.Body.GetCodeSize(), baseRva, baseOffs, byteReader, method);
+					WriteStructureBody(body, new ILStructure(body), branchTargets, ref index, builder, instructionOperandConverter, body.GetCodeSize(), baseRva, baseOffs, byteReader, pdbAsyncInfo, method);
 				}
 				else {
-					var instructions = method.Body.Instructions;
+					var instructions = body.Instructions;
 					for (int i = 0; i < instructions.Count; i++) {
 						var inst = instructions[i];
 						int startLocation;
-						inst.WriteTo(output, options, baseRva, baseOffs, byteReader, method, instructionOperandConverter, out startLocation);
+						inst.WriteTo(output, options, baseRva, baseOffs, byteReader, method, instructionOperandConverter, pdbAsyncInfo, out startLocation);
 
 						if (builder != null) {
 							var next = i + 1 < instructions.Count ? instructions[i + 1] : null;
-							builder.Add(new SourceStatement(ILSpan.FromBounds(inst.Offset, next == null ? (uint)method.Body.GetCodeSize() : next.Offset), new TextSpan(startLocation, output.NextPosition - startLocation)));
+							builder.Add(new SourceStatement(ILSpan.FromBounds(inst.Offset, next == null ? (uint)body.GetCodeSize() : next.Offset), new TextSpan(startLocation, output.NextPosition - startLocation)));
 						}
 
 						output.WriteLine();
 					}
-					if (method.Body.HasExceptionHandlers) {
+					if (body.HasExceptionHandlers) {
 						output.WriteLine();
-						foreach (var eh in method.Body.ExceptionHandlers) {
+						foreach (var eh in body.ExceptionHandlers) {
 							eh.WriteTo(output, method);
 							output.WriteLine();
 						}
@@ -209,7 +214,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			return bh;
 		}
 		
-		void WriteStructureBody(CilBody body, ILStructure s, HashSet<uint> branchTargets, ref int index, MethodDebugInfoBuilder builder, InstructionOperandConverter instructionOperandConverter, int codeSize, uint baseRva, long baseOffs, IInstructionBytesReader byteReader, MethodDef method)
+		void WriteStructureBody(CilBody body, ILStructure s, HashSet<uint> branchTargets, ref int index, MethodDebugInfoBuilder builder, InstructionOperandConverter instructionOperandConverter, int codeSize, uint baseRva, long baseOffs, IInstructionBytesReader byteReader, PdbAsyncMethodCustomDebugInfo pdbAsyncInfo, MethodDef method)
 		{
 			bool isFirstInstructionInStructure = true;
 			bool prevInstructionWasBranch = false;
@@ -223,14 +228,14 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				if (childIndex < s.Children.Count && s.Children[childIndex].StartOffset <= offset && offset < s.Children[childIndex].EndOffset) {
 					ILStructure child = s.Children[childIndex++];
 					var bh = WriteStructureHeader(child);
-					WriteStructureBody(body, child, branchTargets, ref index, builder, instructionOperandConverter, codeSize, baseRva, baseOffs, byteReader, method);
+					WriteStructureBody(body, child, branchTargets, ref index, builder, instructionOperandConverter, codeSize, baseRva, baseOffs, byteReader, pdbAsyncInfo, method);
 					WriteStructureFooter(child, bh);
 				} else {
 					if (!isFirstInstructionInStructure && (prevInstructionWasBranch || branchTargets.Contains(offset))) {
 						output.WriteLine(); // put an empty line after branches, and in front of branch targets
 					}
 					int startLocation;
-					inst.WriteTo(output, options, baseRva, baseOffs, byteReader, method, instructionOperandConverter, out startLocation);
+					inst.WriteTo(output, options, baseRva, baseOffs, byteReader, method, instructionOperandConverter, pdbAsyncInfo, out startLocation);
 					
 					if (builder != null) {
 						var next = index + 1 < instructions.Count ? instructions[index + 1] : null;

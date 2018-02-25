@@ -557,6 +557,9 @@ namespace ICSharpCode.NRefactory.VB.Visitors {
 					case '\n':
 					case '\t':
 					case '\v':
+					case '\u0085':
+					case '\u2028':
+					case '\u2029':
 						part = literal.Substring(start, i - start);
 						if (!string.IsNullOrEmpty(part))
 							parts.Push(new PrimitiveExpression(part));
@@ -575,7 +578,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors {
 						start = i + 1;
 						break;
 					default:
-						if ((int)literal[i] > 255) {
+						if (char.IsControl(literal[i])) {
 							part = literal.Substring(start, i - start);
 							if (!string.IsNullOrEmpty(part))
 								parts.Push(new PrimitiveExpression(part));
