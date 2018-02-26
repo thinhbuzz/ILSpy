@@ -119,7 +119,11 @@ namespace ICSharpCode.Decompiler.Ast {
 				context.CancellationToken.ThrowIfCancellationRequested();
 				var optimizer = context.Cache.GetILAstOptimizer();
 				try {
+					int variableMapVersion = context.variableMap?.Version ?? -1;
 					optimizer.Optimize(context, ilMethod, autoPropertyProvider, out stateMachineKind, out inlinedMethod, out asyncInfo);
+					// Only do it if Optimize() didn't do it already
+					if (context.variableMap != null && context.variableMap.Version == variableMapVersion)
+						YieldReturnDecompiler.TranslateFieldsToLocalAccess(ilMethod.Body, context.variableMap, null, context.CalculateILSpans, false);
 					compilerName = optimizer.CompilerName;
 				}
 				finally {
@@ -1219,7 +1223,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			}
 			if (target is ThisReferenceExpression && !isVirtual) {
 				// a non-virtual call on "this" might be a "base"-call.
-				if (method.DeclaringType != null && method.DeclaringType.ScopeType.ResolveTypeDef() != this.methodDef.DeclaringType) {
+				if (method.DeclaringType != null && method.DeclaringType.ScopeType.ResolveTypeDef() != context.CurrentType) {
 					// If we're not calling a method in the current class; we must be calling one in the base class.
 					target = new BaseReferenceExpression();
 					target.AddAnnotation(method.DeclaringType);

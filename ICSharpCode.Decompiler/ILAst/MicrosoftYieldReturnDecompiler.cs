@@ -339,7 +339,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					var fd = f.ResolveFieldWithinSameModule();
 					if (fd?.DeclaringType == this.enumeratorType && fd.FieldType.RemovePinnedAndModifiers().Resolve() == context.CurrentType) {
 						ILVariable realVar;
-						if (fieldToParameterMap.TryGetValue(fd, out realVar) && realVar.IsParameter && realVar.OriginalParameter.IsHiddenThisParameter) {
+						if (variableMap.TryGetParameter(fd, out realVar) && realVar.IsParameter && realVar.OriginalParameter.IsHiddenThisParameter) {
 							cachedThisVar = v;
 							body.RemoveAt(CACHED_THIS_INDEX);
 							bodyLength--;

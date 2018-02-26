@@ -145,7 +145,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				var fd = GetFieldDefinition(field);
 				if (fd?.DeclaringType != enumeratorType)
 					continue;
-				if (fieldToParameterMap.ContainsKey(fd))
+				if (variableMap.TryGetParameter(fd, out var parameter))
 					break;
 				if (val == -1) {
 					if (fd.FieldSig.Type.ElementType != ElementType.I4)

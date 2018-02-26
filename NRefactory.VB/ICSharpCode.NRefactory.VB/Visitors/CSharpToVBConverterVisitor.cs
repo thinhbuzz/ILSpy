@@ -622,7 +622,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors {
 				case '\v':
 					return new IdentifierExpression(Identifier.CreateLiteralField("vbVerticalTab"));
 				default:
-					if (ch > 255)
+					if (char.IsControl(ch))
 						return new InvocationExpression(new IdentifierExpression(Identifier.Create(BoxedTextColor.StaticMethod, "ChrW")), new PrimitiveExpression((int)ch));
 					return new PrimitiveExpression(ch);
 			}

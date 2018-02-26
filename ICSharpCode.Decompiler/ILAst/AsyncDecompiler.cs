@@ -58,7 +58,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		protected MethodDef moveNextMethod;
 		protected FieldDef builderField;
 		protected FieldDef stateField;
-		protected Dictionary<FieldDef, ILVariable> fieldToParameterMap = new Dictionary<FieldDef, ILVariable>();
+		protected FieldToVariableMap variableMap;
 
 		protected ILLabel exitLabel;
 		// See Microsoft.CodeAnalysis.CSharp.MethodToStateMachineRewriter.cachedThis for info on why and when it's cached
@@ -69,6 +69,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		protected AsyncDecompiler(DecompilerContext context, AutoPropertyProvider autoPropertyProvider) {
 			this.context = context;
 			this.autoPropertyProvider = autoPropertyProvider;
+			variableMap = context.VariableMap;
 		}
 
 		static AsyncDecompiler TryCreate(DecompilerContext context, ILBlock method, AutoPropertyProvider autoPropertyProvider) =>
@@ -147,7 +148,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			}
 			var newTopLevelBody = AnalyzeStateMachine(body);
 			MarkGeneratedVariables(newTopLevelBody);
-			YieldReturnDecompiler.TranslateFieldsToLocalAccess(newTopLevelBody, fieldToParameterMap, cachedThisVar, context.CalculateILSpans);
+			YieldReturnDecompiler.TranslateFieldsToLocalAccess(newTopLevelBody, variableMap, cachedThisVar, context.CalculateILSpans, true);
 			return newTopLevelBody;
 		}
 		#endregion
@@ -356,7 +357,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				}
 				if (!v.IsParameter)
 					return false;
-				fieldToParameterMap[field] = v;
+				variableMap.SetParameter(field, v);
 			}
 			return true;
 		}

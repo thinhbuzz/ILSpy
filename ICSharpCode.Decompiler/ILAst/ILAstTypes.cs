@@ -507,6 +507,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		public ILVariable(string name) => Name = name;
 		public string Name;
 		public bool GeneratedByDecompiler;
+		public bool Renamed;
 		public TypeSig Type;
 		public TypeSig GetVariableType() => Type ?? OriginalVariable?.Type ?? OriginalParameter?.Type ?? new SentinelSig();
 		public Local OriginalVariable;

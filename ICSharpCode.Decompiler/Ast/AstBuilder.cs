@@ -23,6 +23,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading.Tasks;
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
 using dnSpy.Contracts.Decompiler;
@@ -80,17 +81,54 @@ namespace ICSharpCode.Decompiler.Ast {
 		bool transformationsHaveRun;
 		readonly StringBuilder stringBuilder;// PERF: prevent extra created strings
 		readonly char[] commentBuffer;// PERF: prevent extra created strings
+		readonly List<Task<AsyncMethodBodyResult>> methodBodyTasks = new List<Task<AsyncMethodBodyResult>>();
+		readonly List<AsyncMethodBodyDecompilationState> asyncMethodBodyDecompilationStates = new List<AsyncMethodBodyDecompilationState>();
 		internal AutoPropertyProvider AutoPropertyProvider { get; } = new AutoPropertyProvider();
+		readonly List<Comment> comments = new List<Comment>();
+
+		struct AsyncMethodBodyResult {
+			public readonly EntityDeclaration MethodNode;
+			public readonly MethodDef Method;
+			public readonly BlockStatement Body;
+			public readonly MethodDebugInfoBuilder Builder;
+			public readonly FieldToVariableMap VariableMap;
+			public readonly bool CurrentMethodIsAsync;
+			public readonly bool CurrentMethodIsYieldReturn;
+
+			public AsyncMethodBodyResult(EntityDeclaration methodNode, MethodDef method, BlockStatement body, MethodDebugInfoBuilder builder, FieldToVariableMap variableMap, bool currentMethodIsAsync, bool currentMethodIsYieldReturn) {
+				this.MethodNode = methodNode;
+				this.Method = method;
+				this.Body = body;
+				this.Builder = builder;
+				this.VariableMap = variableMap;
+				this.CurrentMethodIsAsync = currentMethodIsAsync;
+				this.CurrentMethodIsYieldReturn = currentMethodIsYieldReturn;
+			}
+		}
+		sealed class AsyncMethodBodyDecompilationState {
+			public readonly StringBuilder StringBuilder = new StringBuilder();
+		}
+
+		AsyncMethodBodyDecompilationState GetAsyncMethodBodyDecompilationState() {
+			lock (asyncMethodBodyDecompilationStates) {
+				if (asyncMethodBodyDecompilationStates.Count > 0) {
+					var state = asyncMethodBodyDecompilationStates[asyncMethodBodyDecompilationStates.Count - 1];
+					asyncMethodBodyDecompilationStates.RemoveAt(asyncMethodBodyDecompilationStates.Count - 1);
+					return state;
+				}
+			}
+			return new AsyncMethodBodyDecompilationState();
+		}
+
+		void Return(AsyncMethodBodyDecompilationState state) {
+			lock (asyncMethodBodyDecompilationStates)
+				asyncMethodBodyDecompilationStates.Add(state);
+		}
 
 		// "0x" + hexChars(uint)
 		const int COMMENT_BUFFER_LENGTH = 2 + 8;
 
 		public Func<AstBuilder, MethodDef, DecompiledBodyKind> GetDecompiledBodyKind { get; set; }
-
-		public static AstBuilder CreateAstBuilderTestContext(ModuleDef module)
-		{
-			return new AstBuilder(DecompilerContext.CreateTestContext(module));
-		}
 
 		public AstBuilder(DecompilerContext context)
 		{
@@ -113,6 +151,35 @@ namespace ICSharpCode.Decompiler.Ast {
 			this.stringBuilder.Clear();
 			this.context.Reset();
 			this.AutoPropertyProvider.Reset();
+			this.methodBodyTasks.Clear();
+		}
+
+		void WaitForBodies() {
+			if (methodBodyTasks.Count == 0)
+				return;
+			try {
+				for (int i = 0; i < methodBodyTasks.Count; i++) {
+					var result = methodBodyTasks[i].GetAwaiter().GetResult();
+					context.CancellationToken.ThrowIfCancellationRequested();
+					if (result.CurrentMethodIsAsync)
+						result.MethodNode.Modifiers |= Modifiers.Async;
+					result.MethodNode.SetChildByRole(Roles.Body, result.Body);
+					result.MethodNode.AddAnnotation(result.Builder);
+					result.MethodNode.AddAnnotation(result.VariableMap);
+					ConvertAttributes(result.MethodNode, result.Method, result.CurrentMethodIsAsync, result.CurrentMethodIsYieldReturn);
+
+					comments.Clear();
+					comments.AddRange(result.MethodNode.GetChildrenByRole(Roles.Comment));
+					for (int j = comments.Count - 1; j >= 0; j--) {
+						var c = comments[j];
+						c.Remove();
+						result.MethodNode.InsertChildAfter(null, c, Roles.Comment);
+					}
+				}
+			}
+			finally {
+				methodBodyTasks.Clear();
+			}
 		}
 
 		public static bool MemberIsHidden(IMemberRef member, DecompilerSettings settings)
@@ -226,6 +293,7 @@ namespace ICSharpCode.Decompiler.Ast {
 		
 		public void RunTransformations(Predicate<IAstTransform> transformAbortCondition)
 		{
+			WaitForBodies();
 			TransformationPipeline.RunTransformationsUntil(syntaxTree, transformAbortCondition, context);
 			transformationsHaveRun = true;
 		}
@@ -1128,36 +1196,40 @@ namespace ICSharpCode.Decompiler.Ast {
 				astMethod.Modifiers = ConvertModifiers(methodDef);
 				createMethodBody = true;
 			}
-			if (createMethodBody) {
-				MethodDebugInfoBuilder ms;
-				astMethod.Body = CreateMethodBody(methodDef, astMethod.Parameters, false, MethodKind.Method, out ms);
-				astMethod.AddAnnotation(ms);
-				if (context.CurrentMethodIsAsync)
-					astMethod.Modifiers |= Modifiers.Async;
+
+			OperatorDeclaration op = null;
+			OperatorType? opType = null;
+			if (methodDef.IsSpecialName && !methodDef.HasGenericParameters) {
+				opType = OperatorDeclaration.GetOperatorType(methodDef.Name);
+				if (opType != null)
+					op = new OperatorDeclaration();
 			}
-			else
+
+			if (createMethodBody) {
+				if (op != null)
+					AddMethodBody(op, methodDef, astMethod.Parameters, false, MethodKind.Method);
+				else
+					AddMethodBody(astMethod, methodDef, astMethod.Parameters, false, MethodKind.Method);
+			}
+			else {
 				ClearCurrentMethodState();
-			ConvertAttributes(astMethod, methodDef);
+				ConvertAttributes(astMethod, methodDef);
+			}
 			if (methodDef.HasCustomAttributes && astMethod.Parameters.Count > 0) {
 				if (methodDef.IsDefined(systemRuntimeCompilerServicesString, extensionAttributeString))
 					astMethod.Parameters.First().ParameterModifier = ParameterModifier.This;
 			}
-			
+
 			// Convert MethodDeclaration to OperatorDeclaration if possible
-			if (methodDef.IsSpecialName && !methodDef.HasGenericParameters) {
-				OperatorType? opType = OperatorDeclaration.GetOperatorType(methodDef.Name);
-				if (opType.HasValue) {
-					OperatorDeclaration op = new OperatorDeclaration();
-					op.CopyAnnotationsFrom(astMethod);
-					op.ReturnType = astMethod.ReturnType.Detach();
-					op.OperatorType = opType.Value;
-					op.Modifiers = astMethod.Modifiers;
-					astMethod.Parameters.MoveTo(op.Parameters);
-					astMethod.Attributes.MoveTo(op.Attributes);
-					op.Body = astMethod.Body.Detach();
-					AddComment(op, methodDef);
-					return op;
-				}
+			if (op != null) {
+				op.CopyAnnotationsFrom(astMethod);
+				op.ReturnType = astMethod.ReturnType.Detach();
+				op.OperatorType = opType.Value;
+				op.Modifiers = astMethod.Modifiers;
+				astMethod.Parameters.MoveTo(op.Parameters);
+				astMethod.Attributes.MoveTo(op.Attributes);
+				AddComment(op, methodDef);
+				return op;
 			}
 			if (isRefReturnType)
 				astMethod.Modifiers |= Modifiers.Ref;
@@ -1226,12 +1298,9 @@ namespace ICSharpCode.Decompiler.Ast {
 			}
 			astMethod.NameToken = Identifier.Create(CleanName(methodDef.DeclaringType.Name)).WithAnnotation(methodDef.DeclaringType);
 			astMethod.Parameters.AddRange(MakeParameters(Context.MetadataTextColorProvider, methodDef, context.Settings, stringBuilder));
-			MethodDebugInfoBuilder builder;
-			astMethod.Body = CreateMethodBody(methodDef, astMethod.Parameters, false, MethodKind.Method, out builder);
-			astMethod.AddAnnotation(builder);
-			ConvertAttributes(astMethod, methodDef);
-			if (methodDef.IsStatic && methodDef.DeclaringType.IsBeforeFieldInit && !astMethod.Body.IsNull) {
-				astMethod.Body.InsertChildAfter(null, new Comment(" Note: this type is marked as 'beforefieldinit'."), Roles.Comment);
+			AddMethodBody(astMethod, methodDef, astMethod.Parameters, false, MethodKind.Method);
+			if (methodDef.IsStatic && methodDef.DeclaringType.IsBeforeFieldInit) {
+				astMethod.InsertChildAfter(null, new Comment(" Note: this type is marked as 'beforefieldinit'."), Roles.Comment);
 			}
 			AddComment(astMethod, methodDef);
 			return astMethod;
@@ -1286,23 +1355,18 @@ namespace ICSharpCode.Decompiler.Ast {
 			astProp.ReturnType = ConvertType(propDef.PropertySig.GetRetType(), stringBuilder, propDef);
 			bool isRefReturnType = UndoByRefToPointer(astProp.ReturnType);
 
-			MethodDebugInfoBuilder builder;
 			if (propDef.GetMethod != null) {
 				astProp.Getter = new Accessor();
-				astProp.Getter.Body = CreateMethodBody(propDef.GetMethod, null, false, MethodKind.Property, out builder);
+				AddMethodBody(astProp.Getter, propDef.GetMethod, null, false, MethodKind.Property);
 				astProp.Getter.AddAnnotation(propDef.GetMethod);
-				astProp.Getter.AddAnnotation(builder);
-				ConvertAttributes(astProp.Getter, propDef.GetMethod);
 				
 				if ((getterModifiers & Modifiers.VisibilityMask) != (astProp.Modifiers & Modifiers.VisibilityMask))
 					astProp.Getter.Modifiers = getterModifiers & Modifiers.VisibilityMask;
 			}
 			if (propDef.SetMethod != null) {
 				astProp.Setter = new Accessor();
-				astProp.Setter.Body = CreateMethodBody(propDef.SetMethod, null, true, MethodKind.Property, out builder);
+				AddMethodBody(astProp.Setter, propDef.SetMethod, null, true, MethodKind.Property);
 				astProp.Setter.AddAnnotation(propDef.SetMethod);
-				astProp.Setter.AddAnnotation(builder);
-				ConvertAttributes(astProp.Setter, propDef.SetMethod);
 				Parameter lastParam = propDef.SetMethod.Parameters.SkipNonNormal().LastOrDefault();
 				if (lastParam != null) {
 					ConvertCustomAttributes(Context.MetadataTextColorProvider, astProp.Setter, lastParam.ParamDef, context.Settings, stringBuilder, "param");
@@ -1377,20 +1441,13 @@ namespace ICSharpCode.Decompiler.Ast {
 					astEvent.PrivateImplementationType = ConvertType(methDecl == null ? null : methDecl.DeclaringType, stringBuilder);
 				}
 				
-				MethodDebugInfoBuilder builder;
 				if (eventDef.AddMethod != null) {
-					astEvent.AddAccessor = new Accessor {
-						Body = CreateMethodBody(eventDef.AddMethod, null, true, MethodKind.Event, out builder)
-					}.WithAnnotation(eventDef.AddMethod);
-					astEvent.AddAccessor.AddAnnotation(builder);
-					ConvertAttributes(astEvent.AddAccessor, eventDef.AddMethod);
+					astEvent.AddAccessor = new Accessor().WithAnnotation(eventDef.AddMethod);
+					AddMethodBody(astEvent.AddAccessor, eventDef.AddMethod, null, true, MethodKind.Event);
 				}
 				if (eventDef.RemoveMethod != null) {
-					astEvent.RemoveAccessor = new Accessor {
-						Body = CreateMethodBody(eventDef.RemoveMethod, null, true, MethodKind.Event, out builder)
-					}.WithAnnotation(eventDef.RemoveMethod);
-					astEvent.RemoveAccessor.AddAnnotation(builder);
-					ConvertAttributes(astEvent.RemoveAccessor, eventDef.RemoveMethod);
+					astEvent.RemoveAccessor = new Accessor().WithAnnotation(eventDef.RemoveMethod);
+					AddMethodBody(astEvent.RemoveAccessor, eventDef.RemoveMethod, null, true, MethodKind.Event);
 				}
 				MethodDef accessor = eventDef.AddMethod ?? eventDef.RemoveMethod;
 				if (accessor != null && accessor.IsVirtual == accessor.IsNewSlot) {
@@ -1424,12 +1481,11 @@ namespace ICSharpCode.Decompiler.Ast {
 			context.CurrentMethodIsYieldReturn = false;
 		}
 		
-		BlockStatement CreateMethodBody(MethodDef method, IEnumerable<ParameterDeclaration> parameters, bool valueParameterIsKeyword, MethodKind methodKind, out MethodDebugInfoBuilder builder)
-		{
+		void AddMethodBody(EntityDeclaration methodNode, MethodDef method, IEnumerable<ParameterDeclaration> parameters, bool valueParameterIsKeyword, MethodKind methodKind) {
 			ClearCurrentMethodState();
 			if (method.Body == null) {
-				builder = null;
-				return null;
+				ConvertAttributes(methodNode, method);
+				return;
 			}
 
 			BlockStatement bs;
@@ -1442,7 +1498,30 @@ namespace ICSharpCode.Decompiler.Ast {
 			case DecompiledBodyKind.Full:
 				string msg;
 				try {
-					return AstMethodBodyBuilder.CreateMethodBody(method, context, AutoPropertyProvider, parameters, valueParameterIsKeyword, stringBuilder, out builder);
+					if (context.AsyncMethodBodyDecompilation) {
+						parameters = parameters?.ToArray();
+						var context = this.context.Clone();
+						var bodyTask = Task.Run(() => {
+							if (context.CancellationToken.IsCancellationRequested)
+								return default(AsyncMethodBodyResult);
+							var asyncState = GetAsyncMethodBodyDecompilationState();
+							var stringBuilder = asyncState.StringBuilder;
+							var body = AstMethodBodyBuilder.CreateMethodBody(method, context, AutoPropertyProvider, parameters, valueParameterIsKeyword, stringBuilder, out var builder2);
+							Return(asyncState);
+							return new AsyncMethodBodyResult(methodNode, method, body, builder2, context.variableMap, context.CurrentMethodIsAsync, context.CurrentMethodIsYieldReturn);
+						}, context.CancellationToken);
+						methodBodyTasks.Add(bodyTask);
+					}
+					else {
+						var body = AstMethodBodyBuilder.CreateMethodBody(method, context, AutoPropertyProvider, parameters, valueParameterIsKeyword, stringBuilder, out var builder);
+						if (context.CurrentMethodIsAsync)
+							methodNode.Modifiers |= Modifiers.Async;
+						methodNode.SetChildByRole(Roles.Body, body);
+						methodNode.AddAnnotation(builder);
+						methodNode.AddAnnotation(context.variableMap);
+						ConvertAttributes(methodNode, method);
+					}
+					return;
 				}
 				catch (OperationCanceledException) {
 					throw;
@@ -1457,8 +1536,11 @@ namespace ICSharpCode.Decompiler.Ast {
 					emptyStmt.AddAnnotation(new List<ILSpan> { new ILSpan(0, (uint)method.Body.GetCodeSize()) });
 				bs.Statements.Add(emptyStmt);
 				bs.InsertChildAfter(null, new Comment(msg, CommentType.MultiLine), Roles.Comment);
-				builder = new MethodDebugInfoBuilder(context.SettingsVersion, StateMachineKind.None, method, null, method.Body.Variables.Select(a => new SourceLocal(a, CreateLocalName(a), a.Type, SourceVariableFlags.None)).ToArray(), null, null);
-				return bs;
+				var builder3 = new MethodDebugInfoBuilder(context.SettingsVersion, StateMachineKind.None, method, null, method.Body.Variables.Select(a => new SourceLocal(a, CreateLocalName(a), a.Type, SourceVariableFlags.None)).ToArray(), null, null);
+				methodNode.SetChildByRole(Roles.Body, bs);
+				methodNode.AddAnnotation(builder3);
+				ConvertAttributes(methodNode, method);
+				return;
 
 			case DecompiledBodyKind.Empty:
 				bs = new BlockStatement();
@@ -1504,12 +1586,13 @@ namespace ICSharpCode.Decompiler.Ast {
 						bs.Statements.Add(ret);
 					}
 				}
-				builder = null;
-				return bs;
+				methodNode.SetChildByRole(Roles.Body, bs);
+				ConvertAttributes(methodNode, method);
+				return;
 
 			case DecompiledBodyKind.None:
-				builder = null;
-				return null;
+				ConvertAttributes(methodNode, method);
+				return;
 
 			default:
 				throw new InvalidOperationException();
@@ -1902,13 +1985,18 @@ namespace ICSharpCode.Decompiler.Ast {
 			}
 			return mre;
 		}
-		
+
 		void ConvertAttributes(EntityDeclaration attributedNode, MethodDef methodDef)
 		{
+			ConvertAttributes(attributedNode, methodDef, context.CurrentMethodIsAsync, context.CurrentMethodIsYieldReturn);
+		}
+
+		void ConvertAttributes(EntityDeclaration attributedNode, MethodDef methodDef, bool methodIsAsync, bool methodIsIterator)
+		{
 			var options = ConvertCustomAttributesFlags.None;
-			if (context.CurrentMethodIsAsync)
+			if (methodIsAsync)
 				options |= ConvertCustomAttributesFlags.IsAsync;
-			if (context.CurrentMethodIsYieldReturn)
+			if (methodIsIterator)
 				options |= ConvertCustomAttributesFlags.IsYieldReturn;
 			ConvertCustomAttributes(Context.MetadataTextColorProvider, attributedNode, methodDef, context.Settings, stringBuilder, options: options);
 			ConvertSecurityAttributes(Context.MetadataTextColorProvider, attributedNode, methodDef, stringBuilder);

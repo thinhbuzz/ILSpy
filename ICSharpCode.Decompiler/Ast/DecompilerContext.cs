@@ -21,6 +21,7 @@ using System.Threading;
 using dnlib.DotNet;
 using dnSpy.Contracts.Decompiler;
 using ICSharpCode.Decompiler.Ast;
+using ICSharpCode.Decompiler.ILAst;
 
 namespace ICSharpCode.Decompiler {
 	public class DecompilerContext
@@ -36,14 +37,22 @@ namespace ICSharpCode.Decompiler {
 		public bool CurrentMethodIsYieldReturn;
 		public readonly DecompilerCache Cache;
 		public bool CalculateILSpans;
+		public bool AsyncMethodBodyDecompilation;
 		public readonly List<string> UsingNamespaces = new List<string>();
 
-		public static DecompilerContext CreateTestContext(ModuleDef currentModule)
-		{
-			var ctx = new DecompilerContext(0, currentModule);
-			ctx.Settings.InitializeForTest();
-			return ctx;
+		internal FieldToVariableMap VariableMap {
+			get {
+				if (variableMap == null)
+					variableMap = new FieldToVariableMap();
+				return variableMap;
+			}
 		}
+		internal FieldToVariableMap variableMap;
+
+		/// <summary>
+		/// Used to pass variable names from a method to its anonymous methods.
+		/// </summary>
+		internal List<string> ReservedVariableNames = new List<string>();
 
 		public DecompilerContext(int settingsVersion, ModuleDef currentModule, MetadataTextColorProvider metadataTextColorProvider = null)
 			: this(settingsVersion, currentModule, metadataTextColorProvider, false) {
@@ -57,18 +66,36 @@ namespace ICSharpCode.Decompiler {
 			this.Cache = new DecompilerCache(this);
 			this.MetadataTextColorProvider = metadataTextColorProvider ?? CSharpMetadataTextColorProvider.Instance;
 		}
-		
-		/// <summary>
-		/// Used to pass variable names from a method to its anonymous methods.
-		/// </summary>
-		internal List<string> ReservedVariableNames = new List<string>();
-		
-		public DecompilerContext Clone()
+
+		DecompilerContext(DecompilerContext other)
+		{
+			MetadataTextColorProvider = other.MetadataTextColorProvider;
+			CurrentModule = other.CurrentModule;
+			CancellationToken = other.CancellationToken;
+			CurrentType = other.CurrentType;
+			CurrentMethod = other.CurrentMethod;
+			Settings = other.Settings.Clone();
+			SettingsVersion = other.SettingsVersion;
+			CurrentMethodIsAsync = other.CurrentMethodIsAsync;
+			CurrentMethodIsYieldReturn = other.CurrentMethodIsYieldReturn;
+			Cache = new DecompilerCache(this);
+			CalculateILSpans = other.CalculateILSpans;
+			AsyncMethodBodyDecompilation = other.AsyncMethodBodyDecompilation;
+			UsingNamespaces.AddRange(other.UsingNamespaces);
+			ReservedVariableNames.AddRange(other.ReservedVariableNames);
+			// It's not cloned. It must be unique per base-enclosing method. I.e., it's shared
+			// by the method and all inlined method bodies, but not by other non-inlined methods
+			variableMap = null;
+		}
+
+		internal DecompilerContext CloneDontUse()
 		{
 			DecompilerContext ctx = (DecompilerContext)MemberwiseClone();
 			ctx.ReservedVariableNames = new List<string>(ctx.ReservedVariableNames);
 			return ctx;
 		}
+
+		internal DecompilerContext Clone() => new DecompilerContext(this);
 
 		public void Reset()
 		{
@@ -81,6 +108,7 @@ namespace ICSharpCode.Decompiler {
 			this.CurrentMethodIsYieldReturn = false;
 			this.UsingNamespaces.Clear();
 			this.Cache.Reset();
+			this.variableMap = null;
 		}
 	}
 }

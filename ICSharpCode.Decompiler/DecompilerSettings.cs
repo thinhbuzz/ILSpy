@@ -40,27 +40,6 @@ namespace ICSharpCode.Decompiler {
 		protected virtual void OnModified() {
 		}
 
-		public DecompilerSettings InitializeForTest() {
-			RemoveEmptyDefaultConstructors = true;
-			ShowTokenAndRvaComments = false;
-			SortMembers = false;
-			ForceShowAllMembers = false;
-			SortSystemUsingStatementsFirst = false;
-			DecompilationObject0 = DecompilationObject.NestedTypes;
-			DecompilationObject1 = DecompilationObject.Fields;
-			DecompilationObject2 = DecompilationObject.Events;
-			DecompilationObject3 = DecompilationObject.Properties;
-			DecompilationObject4 = DecompilationObject.Methods;
-			MaxArrayElements = int.MaxValue;
-			SortCustomAttributes = true;
-			UseSourceCodeOrder = false;
-			OneCustomAttributePerLine = false;
-			TypeAddInternalModifier = true;
-			MemberAddPrivateModifier = true;
-			RemoveNewDelegateClass = false;
-			return this;
-		}
-
 		DecompilationObject[] decompilationObjects = new DecompilationObject[5] {
 			DecompilationObject.Methods,
 			DecompilationObject.Properties,

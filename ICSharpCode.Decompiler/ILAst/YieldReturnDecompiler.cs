@@ -42,7 +42,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		protected MethodDef disposeMethod;
 		protected FieldDef stateField;
 		protected FieldDef currentField;
-		protected Dictionary<FieldDef, ILVariable> fieldToParameterMap = new Dictionary<FieldDef, ILVariable>();
+		protected FieldToVariableMap variableMap;
 		protected List<ILNode> newBody;
 		protected MethodDef iteratorMoveNextMethod;
 
@@ -54,6 +54,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		protected YieldReturnDecompiler(DecompilerContext context, AutoPropertyProvider autoPropertyProvider) {
 			this.context = context;
 			this.autoPropertyProvider = autoPropertyProvider;
+			variableMap = context.VariableMap;
 		}
 
 		static YieldReturnDecompiler TryCreate(DecompilerContext context, ILBlock method, AutoPropertyProvider autoPropertyProvider) =>
@@ -176,7 +177,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				var fd = GetFieldDefinition(storedField);
 				if (fd == null || !loadedArg.IsParameter)
 					return false;
-				fieldToParameterMap[fd] = loadedArg;
+				variableMap.SetParameter(fd, loadedArg);
 			}
 			return true;
 		}
@@ -247,8 +248,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 						FieldDef loadedField = GetFieldDefinition(ldField);
 						if (storedField != null && loadedField != null) {
 							ILVariable mappedParameter;
-							if (fieldToParameterMap.TryGetValue(loadedField, out mappedParameter))
-								fieldToParameterMap[storedField] = mappedParameter;
+							if (variableMap.TryGetParameter(loadedField, out mappedParameter))
+								variableMap.SetParameter(storedField, mappedParameter);
 						}
 					}
 				}
@@ -262,11 +263,12 @@ namespace ICSharpCode.Decompiler.ILAst {
 		protected abstract void AnalyzeMoveNext();
 
 		#region TranslateFieldsToLocalAccess
-		void TranslateFieldsToLocalAccess() => TranslateFieldsToLocalAccess(newBody, fieldToParameterMap, cachedThisVar, context.CalculateILSpans);
-		internal static void TranslateFieldsToLocalAccess(List<ILNode> newBody, Dictionary<FieldDef, ILVariable> fieldToParameterMap, ILVariable cachedThisField, bool calculateILSpans) {
+		void TranslateFieldsToLocalAccess() => TranslateFieldsToLocalAccess(newBody, variableMap, cachedThisVar, context.CalculateILSpans, true);
+		internal static void TranslateFieldsToLocalAccess(List<ILNode> newBody, FieldToVariableMap variableMap, ILVariable cachedThisField, bool calculateILSpans, bool fixLocals) {
+			variableMap.Version++;
 			ILVariable realThisParameter = null;
 			if (cachedThisField != null) {
-				foreach (var kv in fieldToParameterMap) {
+				foreach (var kv in variableMap.GetParameters()) {
 					if (kv.Value.OriginalParameter?.IsHiddenThisParameter == true) {
 						realThisParameter = kv.Value;
 						break;
@@ -275,19 +277,24 @@ namespace ICSharpCode.Decompiler.ILAst {
 				if (realThisParameter == null)
 					throw new SymbolicAnalysisFailedException();
 			}
-			var fieldToLocalMap = new DefaultDictionary<FieldDef, ILVariable>(f => new ILVariable(string.IsNullOrEmpty(f.Name) ? "_f_" + f.Rid.ToString("X") : f.Name.String) { Type = f.FieldType, HoistedField = f });
 			List<ILExpression> listExpr = null;
 			foreach (ILNode node in newBody) {
 				foreach (ILExpression expr in node.GetSelfAndChildrenRecursive(listExpr ?? (listExpr = new List<ILExpression>()))) {
 					FieldDef field;
+					ILVariable parameter, local;
 					switch (expr.Code) {
 					case ILCode.Ldfld:
 						if (expr.Arguments[0].MatchThis() && (field = GetFieldDefinition(expr.Operand as IField)) != null) {
-							expr.Code = ILCode.Ldloc;
-							if (fieldToParameterMap.ContainsKey(field))
-								expr.Operand = fieldToParameterMap[field];
+							if (variableMap.TryGetParameter(field, out parameter))
+								expr.Operand = parameter;
+							else if (!fixLocals) {
+								if (!variableMap.TryGetLocal(field, out local))
+									break;
+								expr.Operand = local;
+							}
 							else
-								expr.Operand = fieldToLocalMap[field];
+								expr.Operand = variableMap.GetOrCreateLocal(field);
+							expr.Code = ILCode.Ldloc;
 							if (calculateILSpans)
 								expr.ILSpans.AddRange(expr.Arguments[0].GetSelfAndChildrenRecursiveILSpans());
 							expr.Arguments.Clear();
@@ -295,11 +302,16 @@ namespace ICSharpCode.Decompiler.ILAst {
 						break;
 					case ILCode.Stfld:
 						if (expr.Arguments[0].MatchThis() && (field = GetFieldDefinition(expr.Operand as IField)) != null) {
-							expr.Code = ILCode.Stloc;
-							if (fieldToParameterMap.ContainsKey(field))
-								expr.Operand = fieldToParameterMap[field];
+							if (variableMap.TryGetParameter(field, out parameter))
+								expr.Operand = parameter;
+							else if (!fixLocals) {
+								if (!variableMap.TryGetLocal(field, out local))
+									break;
+								expr.Operand = local;
+							}
 							else
-								expr.Operand = fieldToLocalMap[field];
+								expr.Operand = variableMap.GetOrCreateLocal(field);
+							expr.Code = ILCode.Stloc;
 							if (calculateILSpans)
 								expr.ILSpans.AddRange(expr.Arguments[0].GetSelfAndChildrenRecursiveILSpans());
 							expr.Arguments.RemoveAt(0);
@@ -307,11 +319,16 @@ namespace ICSharpCode.Decompiler.ILAst {
 						break;
 					case ILCode.Ldflda:
 						if (expr.Arguments[0].MatchThis() && (field = GetFieldDefinition(expr.Operand as IField)) != null) {
-							expr.Code = ILCode.Ldloca;
-							if (fieldToParameterMap.ContainsKey(field))
-								expr.Operand = fieldToParameterMap[field];
+							if (variableMap.TryGetParameter(field, out parameter))
+								expr.Operand = parameter;
+							else if (!fixLocals) {
+								if (!variableMap.TryGetLocal(field, out local))
+									break;
+								expr.Operand = local;
+							}
 							else
-								expr.Operand = fieldToLocalMap[field];
+								expr.Operand = variableMap.GetOrCreateLocal(field);
+							expr.Code = ILCode.Ldloca;
 							if (calculateILSpans)
 								expr.ILSpans.AddRange(expr.Arguments[0].GetSelfAndChildrenRecursiveILSpans());
 							expr.Arguments.Clear();
@@ -325,10 +342,27 @@ namespace ICSharpCode.Decompiler.ILAst {
 				}
 			}
 			if (calculateILSpans) {
-				foreach (var kv in fieldToParameterMap)
+				foreach (var kv in variableMap.GetParameters())
 					kv.Value.HoistedField = kv.Key;
 			}
 		}
 		#endregion
+	}
+
+	sealed class FieldToVariableMap {
+		public int Version;
+		readonly Dictionary<FieldDef, ILVariable> paramDict;
+		readonly DefaultDictionary<FieldDef, ILVariable> localDict;
+
+		public FieldToVariableMap() {
+			paramDict = new Dictionary<FieldDef, ILVariable>();
+			localDict = new DefaultDictionary<FieldDef, ILVariable>(f => new ILVariable(string.IsNullOrEmpty(f.Name) ? "_f_" + f.Rid.ToString("X") : f.Name.String) { Type = f.FieldType, HoistedField = f });
+		}
+
+		public Dictionary<FieldDef, ILVariable> GetParameters() => paramDict;
+		public bool TryGetParameter(FieldDef field, out ILVariable parameter) => paramDict.TryGetValue(field, out parameter);
+		public void SetParameter(FieldDef field, ILVariable parameter) => paramDict[field] = parameter;
+		public bool TryGetLocal(FieldDef field, out ILVariable local) => localDict.TryGetValue(field, out local);
+		public ILVariable GetOrCreateLocal(FieldDef field) => localDict[field];
 	}
 }

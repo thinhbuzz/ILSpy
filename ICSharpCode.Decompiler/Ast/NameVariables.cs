@@ -62,7 +62,13 @@ namespace ICSharpCode.Decompiler.Ast {
 				nv.AddExistingName(name);
 			foreach (var p in parameters)
 				nv.AddExistingName(p.Name);
+			foreach (var l in variables) {
+				if (l.Renamed)
+					nv.AddExistingName(l.Name);
+			}
 			foreach (var v in variables) {
+				if (v.Renamed)
+					continue;
 				if (v.OriginalVariable != null && context.Settings.UseDebugSymbols) {
 					string varName = v.OriginalVariable.Name;
 					v.Name = GetName(nv, varName);
@@ -72,10 +78,16 @@ namespace ICSharpCode.Decompiler.Ast {
 			}
 			// Now generate names:
 			foreach (ILVariable p in parameters) {
+				if (p.Renamed)
+					continue;
+				p.Renamed = true;
 				if (string.IsNullOrEmpty(p.Name))
 					p.Name = nv.GenerateNameForVariable(p, methodBody);
 			}
 			foreach (ILVariable varDef in variables) {
+				if (varDef.Renamed)
+					continue;
+				varDef.Renamed = true;
 				if (string.IsNullOrEmpty(varDef.Name))
 					varDef.Name = nv.GenerateNameForVariable(varDef, methodBody);
 			}

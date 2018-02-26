@@ -187,7 +187,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			if (!IsAnonymousMethod(context, method))
 				return false;
 
-			var ilSpans = objectCreateExpression.GetAllRecursiveILSpans();
+			var ilSpans = context.CalculateILSpans ? objectCreateExpression.GetAllRecursiveILSpans() : null;
 			
 			// Create AnonymousMethodExpression and prepare parameters
 			AnonymousMethodExpression ame = new AnonymousMethodExpression();
@@ -204,7 +204,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			
 			// Decompile the anonymous method:
 			
-			DecompilerContext subContext = context.Clone();
+			DecompilerContext subContext = context.CloneDontUse();
 			subContext.CurrentMethod = method;
 			subContext.CurrentMethodIsAsync = false;
 			subContext.CurrentMethodIsYieldReturn = false;
@@ -241,7 +241,8 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				if (node is ThisReferenceExpression) {
 					var newTarget = target.Clone();
 					newTarget.RemoveAllILSpansRecursive();
-					newTarget.AddAnnotation(node.GetAllRecursiveILSpans());
+					if (context.CalculateILSpans)
+						newTarget.AddAnnotation(node.GetAllRecursiveILSpans());
 					node.ReplaceWith(newTarget);
 				}
 			}
@@ -425,6 +426,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				List<ILVariable> parameterOccurrances = rootBlock.Descendants.OfType<IdentifierExpression>()
 					.Select(n => n.Annotation<ILVariable>()).Where(p => p != null && p.IsParameter).ToList();
 				AstNode next;
+				FieldDef thisField = null;
 				for (; cur != null; cur = next) {
 					next = cur.NextSibling;
 					
@@ -448,6 +450,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 						bool isDisplayClassParentPointerAssignment = false;
 						if (right is ThisReferenceExpression) {
 							isParameter = true;
+							thisField = fieldDef;
 						} else if (right is IdentifierExpression) {
 							// handle parameters only if the whole method contains no other occurrence except for 'right'
 							ILVariable v = right.Annotation<ILVariable>();
@@ -510,13 +513,25 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				// Now figure out where the closure was accessed and use the simpler replacement expression there:
 				foreach (var identExpr in blockStatement.Descendants.OfType<IdentifierExpression>()) {
 					if (identExpr.Identifier == variable.Name) {
-						MemberReferenceExpression mre = (MemberReferenceExpression)identExpr.Parent;
+						AstNode mre = identExpr.Parent;
 						AstNode replacement;
 						var fieldDef = mre.Annotation<IField>().ResolveFieldWithinSameModule();
 						if (fieldDef != null && dict.TryGetValue(fieldDef, out replacement)) {
 							var newReplacement = replacement.Clone();
-							newReplacement.AddAnnotation(mre.GetAllRecursiveILSpans());
+							newReplacement.RemoveAllILSpansRecursive();
+							if (context.CalculateILSpans)
+								newReplacement.AddAnnotation(mre.GetAllRecursiveILSpans());
 							mre.ReplaceWith(newReplacement);
+							// mcs: this.$this.field
+							if (fieldDef == thisField && newReplacement.Parent is MemberReferenceExpression parentMre && parentMre.MemberName == "$this" && parentMre.Parent is MemberReferenceExpression parentParentMre) {
+								var oldMemberToken = parentMre.MemberNameToken.Detach();
+								parentMre.MemberNameToken = parentParentMre.MemberNameToken.Detach();
+								if (context.CalculateILSpans)
+									parentMre.AddAnnotation(oldMemberToken.GetAllRecursiveILSpans());
+								parentParentMre.ReplaceWith(parentMre.Detach());
+								parentMre.RemoveAnnotations<IField>();//'$this' field
+								parentMre.AddAnnotationsFrom(parentParentMre);//'field' field
+							}
 						}
 					}
 				}
