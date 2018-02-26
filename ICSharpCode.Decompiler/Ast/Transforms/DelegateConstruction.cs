@@ -240,9 +240,10 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			foreach (AstNode node in body.Descendants) {
 				if (node is ThisReferenceExpression) {
 					var newTarget = target.Clone();
-					newTarget.RemoveAllILSpansRecursive();
-					if (context.CalculateILSpans)
+					if (context.CalculateILSpans) {
+						newTarget.RemoveAllILSpansRecursive();
 						newTarget.AddAnnotation(node.GetAllRecursiveILSpans());
+					}
 					node.ReplaceWith(newTarget);
 				}
 			}
@@ -518,9 +519,10 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 						var fieldDef = mre.Annotation<IField>().ResolveFieldWithinSameModule();
 						if (fieldDef != null && dict.TryGetValue(fieldDef, out replacement)) {
 							var newReplacement = replacement.Clone();
-							newReplacement.RemoveAllILSpansRecursive();
-							if (context.CalculateILSpans)
+							if (context.CalculateILSpans) {
+								newReplacement.RemoveAllILSpansRecursive();
 								newReplacement.AddAnnotation(mre.GetAllRecursiveILSpans());
+							}
 							mre.ReplaceWith(newReplacement);
 							// mcs: this.$this.field
 							if (fieldDef == thisField && newReplacement.Parent is MemberReferenceExpression parentMre && parentMre.MemberName == "$this" && parentMre.Parent is MemberReferenceExpression parentParentMre) {

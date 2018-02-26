@@ -153,6 +153,9 @@ namespace ICSharpCode.Decompiler.Ast {
 			
 			Statement insertionPoint = astBlock.Statements.FirstOrDefault();
 			foreach (ILVariable v in localVariablesToDefine) {
+				if (v.Declared)
+					continue;
+				v.Declared = true;
 				AstType type;
 				if (v.Type.ContainsAnonymousType())
 					type = new SimpleType("var").WithAnnotation(BoxedTextColor.Keyword);

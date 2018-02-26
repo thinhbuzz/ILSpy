@@ -504,10 +504,42 @@ namespace ICSharpCode.Decompiler.ILAst {
 	
 	public class ILVariable
 	{
+		[Flags]
+		enum Flags : byte {
+			GeneratedByDecompiler = 1,
+			Renamed = 2,
+			Declared = 4,
+		}
 		public ILVariable(string name) => Name = name;
 		public string Name;
-		public bool GeneratedByDecompiler;
-		public bool Renamed;
+		Flags flags;
+		public bool GeneratedByDecompiler {
+			get => (flags & Flags.GeneratedByDecompiler) != 0;
+			set {
+				if (value)
+					flags |= Flags.GeneratedByDecompiler;
+				else
+					flags &= ~Flags.GeneratedByDecompiler;
+			}
+		}
+		public bool Renamed {
+			get => (flags & Flags.Renamed) != 0;
+			set {
+				if (value)
+					flags |= Flags.Renamed;
+				else
+					flags &= ~Flags.Renamed;
+			}
+		}
+		public bool Declared {
+			get => (flags & Flags.Declared) != 0;
+			set {
+				if (value)
+					flags |= Flags.Declared;
+				else
+					flags &= ~Flags.Declared;
+			}
+		}
 		public TypeSig Type;
 		public TypeSig GetVariableType() => Type ?? OriginalVariable?.Type ?? OriginalParameter?.Type ?? new SentinelSig();
 		public Local OriginalVariable;
