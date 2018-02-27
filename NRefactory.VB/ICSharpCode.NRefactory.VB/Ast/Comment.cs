@@ -30,7 +30,9 @@ namespace ICSharpCode.NRefactory.VB {
 				return endLocation;
 			}
 		}
-		
+
+		public CSharp.CommentReference[] References { get; set; }
+
 		public Comment (string content, bool isDocumentation = false)
 		{
 			this.IsDocumentationComment = isDocumentation;

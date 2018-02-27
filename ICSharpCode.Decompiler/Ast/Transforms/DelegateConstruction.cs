@@ -230,9 +230,13 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 					where v != null && v.IsParameter && method.Parameters.Contains(v.OriginalParameter)
 					select ident;
 				if (!parameterReferencingIdentifiers.Any()) {
-					ame.AddAnnotation(ame.Parameters.GetAllRecursiveILSpans());
-					ame.Parameters.Clear();
-					ame.HasParameterList = false;
+					var parentMethod = objectCreateExpression.Parent.Annotation<IMethod>().ResolveMethodDef();
+					var type = parentMethod?.DeclaringType;
+					if (type != null && !HasTwoOrMoreMethods(type, parentMethod.Name)) {
+						ame.AddAnnotation(ame.Parameters.GetAllRecursiveILSpans());
+						ame.Parameters.Clear();
+						ame.HasParameterList = false;
+					}
 				}
 			}
 			
@@ -277,7 +281,19 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			replacement.AddAnnotation(ilSpans);
 			return true;
 		}
-		
+
+		static bool HasTwoOrMoreMethods(TypeDef type, UTF8String name) {
+			int count = 0;
+			while (type != null) {
+				foreach (var m in type.Methods) {
+					if (m.Name == name && ++count >= 2)
+						return true;
+				}
+				type = type.BaseType.ResolveTypeDef();
+			}
+			return false;
+		}
+
 		internal static bool IsPotentialClosure(DecompilerContext context, TypeDef potentialDisplayClass)
 		{
 			if (potentialDisplayClass == null || !potentialDisplayClass.IsCompilerGeneratedOrIsInCompilerGeneratedClass())

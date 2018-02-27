@@ -82,7 +82,7 @@ namespace ICSharpCode.NRefactory.VB {
 		{
 		}
 		
-		public void WriteComment(bool isDocumentation, string content)
+		public void WriteComment(bool isDocumentation, string content, CSharp.CommentReference[] refs)
 		{
 			WriteIndentation();
 			if (isDocumentation)

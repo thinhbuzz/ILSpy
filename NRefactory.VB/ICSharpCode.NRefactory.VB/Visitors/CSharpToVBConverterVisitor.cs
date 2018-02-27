@@ -1743,7 +1743,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors {
 				if (members.Pop().inIterator) {
 					result.Modifiers |= Modifiers.Iterator;
 				}
-				
+
 				return EndNode(methodDeclaration, result);
 			}
 		}
@@ -1811,14 +1811,32 @@ namespace ICSharpCode.NRefactory.VB.Visitors {
 			}
 		}
 
+		static bool IsSameType(List<ImplementsResult> overrides, ITypeDefOrRef type, UTF8String memberName) {
+			if (overrides == null)
+				return false;
+			foreach (var ovr in overrides) {
+				if (ovr.OriginalName != memberName)
+					continue;
+				var comparer = new SigComparer(0);
+				if (comparer.Equals(type, ovr.Type))
+					return true;
+			}
+			return false;
+		}
+
 		IEnumerable<ImplementsResult> GetMethods(MethodDef method) {
+			List<ImplementsResult> overrides = null;
 			foreach (var o in method.Overrides) {
 				var m = o.MethodDeclaration.ResolveMethodDef();
 				if (m == null)
 					continue;
 				if (!m.DeclaringType.IsInterface)
 					continue;
-				yield return new ImplementsResult(o.MethodDeclaration, o.MethodDeclaration);
+				var res = new ImplementsResult(o.MethodDeclaration, o.MethodDeclaration);
+				if (overrides == null)
+					overrides = new List<ImplementsResult>();
+				overrides.Add(res);
+				yield return res;
 			}
 			var comparer = new SigComparer(0, method.Module);
 			foreach (var ii in method.DeclaringType.Interfaces) {
@@ -1831,12 +1849,15 @@ namespace ICSharpCode.NRefactory.VB.Visitors {
 					var ifaceMethodSig = GetMethodBaseSig(ii.Interface, ifaceMethod.MethodSig);
 					if (!comparer.Equals(ifaceMethodSig, method.MethodSig))
 						continue;
+					if (IsSameType(overrides, ii.Interface, ifaceMethod.Name))
+						continue;
 					yield return new ImplementsResult(ii.Interface, ifaceMethod.Name, ifaceMethod);
 				}
 			}
 		}
 
 		static IEnumerable<ImplementsResult> GetProperties(PropertyDef prop) {
+			List<ImplementsResult> overrides = null;
 			var pm = prop.GetMethod ?? prop.SetMethod;
 			if (pm != null) {
 				foreach (var o in pm.Overrides) {
@@ -1848,7 +1869,11 @@ namespace ICSharpCode.NRefactory.VB.Visitors {
 					var p = m.DeclaringType.Properties.FirstOrDefault(a => a.GetMethod == m || a.SetMethod == m);
 					if (p == null)
 						continue;
-					yield return new ImplementsResult(o.MethodDeclaration.DeclaringType, p.Name, (object)GetProperty(o.MethodDeclaration) ?? o.MethodDeclaration);
+					var res = new ImplementsResult(o.MethodDeclaration.DeclaringType, p.Name, (object)GetProperty(o.MethodDeclaration) ?? o.MethodDeclaration);
+					if (overrides == null)
+						overrides = new List<ImplementsResult>();
+					overrides.Add(res);
+					yield return res;
 				}
 			}
 			var comparer = new SigComparer(0, prop.Module);
@@ -1866,6 +1891,8 @@ namespace ICSharpCode.NRefactory.VB.Visitors {
 						ifaceMethodSig.HasThis = prop.PropertySig.HasThis;
 					}
 					if (!comparer.Equals(ifaceMethodSig, prop.PropertySig))
+						continue;
+					if (IsSameType(overrides, ii.Interface, ifaceProp.Name))
 						continue;
 					yield return new ImplementsResult(ii.Interface, ifaceProp.Name, ifaceProp);
 				}
@@ -1901,6 +1928,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors {
 		}
 
 		static IEnumerable<ImplementsResult> GetEvents(EventDef evt) {
+			List<ImplementsResult> overrides = null;
 			var em = evt.AddMethod ?? evt.RemoveMethod ?? evt.InvokeMethod;
 			if (em != null) {
 				foreach (var o in em.Overrides) {
@@ -1912,7 +1940,11 @@ namespace ICSharpCode.NRefactory.VB.Visitors {
 					var e = m.DeclaringType.Events.FirstOrDefault(a => a.AddMethod == m || a.RemoveMethod == m || a.InvokeMethod == m);
 					if (e == null)
 						continue;
-					yield return new ImplementsResult(o.MethodDeclaration.DeclaringType, e.Name, (object)GetEvent(o.MethodDeclaration) ?? o.MethodDeclaration);
+					var res = new ImplementsResult(o.MethodDeclaration.DeclaringType, e.Name, (object)GetEvent(o.MethodDeclaration) ?? o.MethodDeclaration);
+					if (overrides == null)
+						overrides = new List<ImplementsResult>();
+					overrides.Add(res);
+					yield return res;
 				}
 			}
 			var comparer = new SigComparer(0, evt.Module);
@@ -1925,6 +1957,8 @@ namespace ICSharpCode.NRefactory.VB.Visitors {
 						continue;
 					var eventType = GetReplacedType(ii.Interface, ifaceEvent.EventType);
 					if (!comparer.Equals(eventType, evt.EventType))
+						continue;
+					if (IsSameType(overrides, ii.Interface, ifaceEvent.Name))
 						continue;
 					yield return new ImplementsResult(ii.Interface, ifaceEvent.Name, ifaceEvent);
 				}
@@ -2412,6 +2446,9 @@ namespace ICSharpCode.NRefactory.VB.Visitors {
 		
 		public AstNode VisitComment (CSharp.Comment comment, object data)
 		{
+			if (!comment.IsDocumentation)
+				return null;
+
 			var c = new Comment (comment.Content, comment.CommentType == CSharp.CommentType.Documentation);
 			
 			if (comment.CommentType == CSharp.CommentType.MultiLine)
@@ -2588,6 +2625,7 @@ namespace ICSharpCode.NRefactory.VB.Visitors {
 		T EndNode<T>(CSharp.AstNode node, T result) where T : VB.AstNode
 		{
 			if (result != null) {
+				CopyComments(node, result);
 				CopyAnnotations(node, result);
 			}
 			
@@ -2640,6 +2678,15 @@ namespace ICSharpCode.NRefactory.VB.Visitors {
 		public AstNode VisitErrorNode(ICSharpCode.NRefactory.CSharp.AstNode errorNode, object data)
 		{
 			return null;
+		}
+
+		void CopyComments(CSharp.AstNode node, AstNode result)
+		{
+			foreach (CSharp.Comment c in node.GetChildrenByRole(CSharp.Roles.Comment).Reverse()) {
+				if (c.IsDocumentation)
+					continue;
+				result.InsertChildAfter(null, new Comment(c.Content) { References = c.References }, AstNode.Roles.Comment);
+			}
 		}
 	}
 }

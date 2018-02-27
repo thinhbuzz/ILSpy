@@ -947,8 +947,14 @@ namespace ICSharpCode.NRefactory.VB {
 			containerStack.Push(node);
 			positionStack.Push(node.FirstChild);
 			formatter.StartNode(node);
+			for (var child = node.FirstChild; ; child = child.NextSibling) {
+				var comment = child as Comment;
+				if (comment == null)
+					break;
+				WriteComment(comment);
+			}
 		}
-		
+
 		object EndNode(AstNode node)
 		{
 			Debug.Assert(node == containerStack.Peek());
@@ -2162,10 +2168,16 @@ namespace ICSharpCode.NRefactory.VB {
 		
 		public object VisitComment(Comment comment, object data)
 		{
-			formatter.WriteComment(comment.IsDocumentationComment, comment.Content);
+			if (comment.IsDocumentationComment)
+				WriteComment(comment);
 			return null;
 		}
-		
+
+		void WriteComment(Comment comment)
+		{
+			formatter.WriteComment(comment.IsDocumentationComment, comment.Content, comment.References);
+		}
+
 		public object VisitEventDeclaration(EventDeclaration eventDeclaration, object data)
 		{
 			StartNode(eventDeclaration);

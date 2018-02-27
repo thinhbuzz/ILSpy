@@ -36,7 +36,7 @@ namespace ICSharpCode.NRefactory.VB {
 		
 		void NewLine();
 		
-		void WriteComment(bool isDocumentation, string content);
+		void WriteComment(bool isDocumentation, string content, CSharp.CommentReference[] refs);
 
 		void DebugStart(AstNode node);
 		void DebugHidden(object hiddenILSpans);
