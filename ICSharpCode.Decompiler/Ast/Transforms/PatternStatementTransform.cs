@@ -1461,8 +1461,8 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 		{
 			if (!m.Success)
 				return false;
-			if (m.Get<MemberReferenceExpression>("field").Single().MemberName != ev.Name)
-				return false; // field name must match event name
+			if (!AstBuilder.IsEventBackingFieldName(m.Get<MemberReferenceExpression>("field").Single().MemberName, ev.Name))
+				return false;
 			if (hasType && !ev.ReturnType.IsMatch(m.Get("type").Single()))
 				return false; // variable types must match event type
 			var combineMethod = m.Get<AstNode>("delegateCombine").Single().Parent.Annotation<IMethod>();

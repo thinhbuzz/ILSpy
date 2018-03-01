@@ -232,10 +232,27 @@ namespace ICSharpCode.Decompiler.Ast {
 						return true;
 				}
 				// event-fields are not [CompilerGenerated]
-				if (settings.AutomaticEvents && field.DeclaringType.Events.Any(ev => ev.Name == field.Name))
+				if (settings.AutomaticEvents) {
+					string fieldName = field.Name;
+					foreach (var e in field.DeclaringType.Events) {
+						if (IsEventBackingFieldName(fieldName, e.Name))
+							return true;
+					}
 					return true;
+				}
 			}
-			
+
+			return false;
+		}
+
+		internal static bool IsEventBackingFieldName(string fieldName, string eventName) {
+			if (fieldName == eventName)
+				return true;
+
+			const string VB_PATTERN = "Event";
+			if (fieldName.Length == VB_PATTERN.Length + eventName.Length && fieldName.StartsWith(eventName) && fieldName.EndsWith(VB_PATTERN))
+				return true;
+
 			return false;
 		}
 

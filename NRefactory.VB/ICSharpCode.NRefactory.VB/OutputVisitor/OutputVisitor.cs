@@ -421,7 +421,7 @@ namespace ICSharpCode.NRefactory.VB {
 			}
 			if (typeDeclaration.ImplementsTypes.Any()) {
 				Indent();
-				WriteImplementsClause(typeDeclaration.ImplementsTypes);
+				WriteImplementsClause(typeDeclaration.ImplementsTypes, typeDeclaration.ClassType == ClassType.Interface);
 				Unindent();
 				NewLine();
 			}
@@ -1462,10 +1462,10 @@ namespace ICSharpCode.NRefactory.VB {
 			}
 		}
 		
-		void WriteImplementsClause(AstNodeCollection<AstType> implementsClause)
+		void WriteImplementsClause(AstNodeCollection<AstType> implementsClause, bool isInterface)
 		{
 			if (implementsClause.Any()) {
-				WriteKeyword("Implements");
+				WriteKeyword(isInterface ? "Inherits" : "Implements");
 				WriteCommaSeparatedList(implementsClause);
 			}
 		}

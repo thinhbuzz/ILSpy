@@ -454,7 +454,13 @@ namespace ICSharpCode.NRefactory.VB.Visitors {
 			memberAccessExpression.Target = (Expression)memberReferenceExpression.Target.AcceptVisitor(this, data);
 			memberAccessExpression.MemberName = Identifier.Create(memberReferenceExpression.MemberNameToken.Annotations, memberReferenceExpression.MemberName);
 			memberAccessExpression.MemberName.AddAnnotation(memberReferenceExpression.Annotation<IMemberRef>());
-			ConvertNodes(memberReferenceExpression.TypeArguments, memberAccessExpression.TypeArguments);
+			bool isExtensionMethod = false;
+			if (memberReferenceExpression.Parent is CSharp.InvocationExpression invocExpr) {
+				var method = invocExpr.Annotation<dnlib.DotNet.IMethod>().ResolveMethodDef();
+				isExtensionMethod = method?.CustomAttributes.IsDefined("System.Runtime.CompilerServices.ExtensionAttribute") == true;
+			}
+			if (!isExtensionMethod)
+				ConvertNodes(memberReferenceExpression.TypeArguments, memberAccessExpression.TypeArguments);
 			if (provider.IsMethodGroup(memberReferenceExpression)) {
 				return EndNode(memberReferenceExpression, new UnaryOperatorExpression(UnaryOperatorType.AddressOf, memberAccessExpression));
 			}
@@ -1624,9 +1630,8 @@ namespace ICSharpCode.NRefactory.VB.Visitors {
 			ConvertNodes(fieldDeclaration.Attributes, decl.Attributes);
 			if (IsOwnerAModule(fieldDeclaration))
 				fieldDeclaration.Modifiers &= ~CSharp.Modifiers.Static;
-			// private is optional in C# but required in VB
 			var modifiers = fieldDeclaration.Modifiers;
-			if ((modifiers & CSharp.Modifiers.VisibilityMask) == CSharp.Modifiers.None)
+			if (modifiers == CSharp.Modifiers.None)
 				modifiers |= CSharp.Modifiers.Private;
 			decl.Modifiers = ConvertModifiers(modifiers, fieldDeclaration);
 			ConvertNodes(fieldDeclaration.Variables, decl.Variables);
@@ -2548,7 +2553,9 @@ namespace ICSharpCode.NRefactory.VB.Visitors {
 				mod |= Modifiers.Overridable;
 			if ((modifier & CSharp.Modifiers.Async) == CSharp.Modifiers.Async)
 				mod |= Modifiers.Async;
-			
+			if ((modifier & CSharp.Modifiers.Sealed) == CSharp.Modifiers.Sealed)
+				mod |= Modifiers.NotInheritable;
+
 			return mod;
 		}
 		
