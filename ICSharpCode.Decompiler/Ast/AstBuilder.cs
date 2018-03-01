@@ -238,7 +238,6 @@ namespace ICSharpCode.Decompiler.Ast {
 						if (IsEventBackingFieldName(fieldName, e.Name))
 							return true;
 					}
-					return true;
 				}
 			}
 
