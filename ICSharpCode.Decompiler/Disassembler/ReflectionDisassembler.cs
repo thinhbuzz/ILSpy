@@ -1528,12 +1528,12 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				output.Write(".custom", BoxedTextColor.ILDirective);
 				output.Write(" ", BoxedTextColor.Text);
 				a.Constructor.WriteMethodTo(output);
-				byte[] blob = a.GetBlob();
-				if (blob != null) {
+				uint blobOffset = a.BlobOffset;
+				if (blobOffset != 0 && options.OwnerModule is ModuleDefMD md && md.Metadata.BlobStream.TryCreateReader(blobOffset, out var reader)) {
 					output.Write(" ", BoxedTextColor.Text);
 					output.Write("=", BoxedTextColor.Operator);
 					output.Write(" ", BoxedTextColor.Text);
-					WriteBlob(blob);
+					WriteBlob(reader.ToArray());
 				}
 				output.WriteLine();
 			}

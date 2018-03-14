@@ -107,32 +107,31 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			PdbAsyncMethodCustomDebugInfo pdbAsyncInfo = null;
 			if (options.ShowPdbInfo)
 				pdbAsyncInfo = method.CustomDebugInfos.OfType<PdbAsyncMethodCustomDebugInfo>().FirstOrDefault();
-			using (var byteReader = !options.ShowILBytes || options.CreateInstructionBytesReader == null ? null : options.CreateInstructionBytesReader(method)) {
-				if (detectControlStructure && body.Instructions.Count > 0) {
-					int index = 0;
-					HashSet<uint> branchTargets = GetBranchTargets(body.Instructions);
-					WriteStructureBody(body, new ILStructure(body), branchTargets, ref index, builder, instructionOperandConverter, body.GetCodeSize(), baseRva, baseOffs, byteReader, pdbAsyncInfo, method);
-				}
-				else {
-					var instructions = body.Instructions;
-					for (int i = 0; i < instructions.Count; i++) {
-						var inst = instructions[i];
-						int startLocation;
-						inst.WriteTo(output, options, baseRva, baseOffs, byteReader, method, instructionOperandConverter, pdbAsyncInfo, out startLocation);
+			var byteReader = !options.ShowILBytes || options.CreateInstructionBytesReader == null ? null : options.CreateInstructionBytesReader(method);
+			if (detectControlStructure && body.Instructions.Count > 0) {
+				int index = 0;
+				HashSet<uint> branchTargets = GetBranchTargets(body.Instructions);
+				WriteStructureBody(body, new ILStructure(body), branchTargets, ref index, builder, instructionOperandConverter, body.GetCodeSize(), baseRva, baseOffs, byteReader, pdbAsyncInfo, method);
+			}
+			else {
+				var instructions = body.Instructions;
+				for (int i = 0; i < instructions.Count; i++) {
+					var inst = instructions[i];
+					int startLocation;
+					inst.WriteTo(output, options, baseRva, baseOffs, byteReader, method, instructionOperandConverter, pdbAsyncInfo, out startLocation);
 
-						if (builder != null) {
-							var next = i + 1 < instructions.Count ? instructions[i + 1] : null;
-							builder.Add(new SourceStatement(ILSpan.FromBounds(inst.Offset, next == null ? (uint)body.GetCodeSize() : next.Offset), new TextSpan(startLocation, output.NextPosition - startLocation)));
-						}
-
-						output.WriteLine();
+					if (builder != null) {
+						var next = i + 1 < instructions.Count ? instructions[i + 1] : null;
+						builder.Add(new SourceStatement(ILSpan.FromBounds(inst.Offset, next == null ? (uint)body.GetCodeSize() : next.Offset), new TextSpan(startLocation, output.NextPosition - startLocation)));
 					}
-					if (body.HasExceptionHandlers) {
+
+					output.WriteLine();
+				}
+				if (body.HasExceptionHandlers) {
+					output.WriteLine();
+					foreach (var eh in body.ExceptionHandlers) {
+						eh.WriteTo(output, method);
 						output.WriteLine();
-						foreach (var eh in body.ExceptionHandlers) {
-							eh.WriteTo(output, method);
-							output.WriteLine();
-						}
 					}
 				}
 			}
