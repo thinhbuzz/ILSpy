@@ -161,7 +161,7 @@ namespace ICSharpCode.Decompiler.Ast {
 					type = new SimpleType("var").WithAnnotation(BoxedTextColor.Keyword);
 				else
 					type = AstBuilder.ConvertType(v.Type, stringBuilder);
-				bool isRefType = AstBuilder.UndoByRefToPointer(type);
+				bool isRefType = v.Type.RemovePinnedAndModifiers().GetElementType() == ElementType.ByRef && AstBuilder.UndoByRefToPointer(type);
 				var newVarDecl = new VariableDeclarationStatement(GetParameterColor(v), type, v.Name);
 				if (isRefType)
 					newVarDecl.Modifiers |= Modifiers.Ref;

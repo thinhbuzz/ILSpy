@@ -1190,7 +1190,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			MethodDeclaration astMethod = new MethodDeclaration();
 			astMethod.AddAnnotation(methodDef);
 			astMethod.ReturnType = ConvertType(methodDef.ReturnType, stringBuilder, methodDef.Parameters.ReturnParameter.ParamDef);
-			bool isRefReturnType = UndoByRefToPointer(astMethod.ReturnType);
+			bool isRefReturnType = methodDef.ReturnType.RemovePinnedAndModifiers().GetElementType() == ElementType.ByRef && UndoByRefToPointer(astMethod.ReturnType);
 			astMethod.NameToken = Identifier.Create(CleanName(methodDef.Name)).WithAnnotation(methodDef);
 			astMethod.TypeParameters.AddRange(MakeTypeParameters(methodDef.GenericParameters));
 			astMethod.Parameters.AddRange(MakeParameters(Context.MetadataTextColorProvider, methodDef, context.Settings, stringBuilder));
@@ -1369,7 +1369,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			}
 			astProp.NameToken = Identifier.Create(CleanName(propDef.Name)).WithAnnotation(propDef);
 			astProp.ReturnType = ConvertType(propDef.PropertySig.GetRetType(), stringBuilder, propDef);
-			bool isRefReturnType = UndoByRefToPointer(astProp.ReturnType);
+			bool isRefReturnType = propDef.PropertySig.RetType.RemovePinnedAndModifiers().GetElementType() == ElementType.ByRef && UndoByRefToPointer(astProp.ReturnType);
 
 			if (propDef.GetMethod != null) {
 				astProp.Getter = new Accessor();
