@@ -1522,7 +1522,8 @@ namespace ICSharpCode.Decompiler.Ast {
 								return default(AsyncMethodBodyResult);
 							var asyncState = GetAsyncMethodBodyDecompilationState();
 							var stringBuilder = asyncState.StringBuilder;
-							var body = AstMethodBodyBuilder.CreateMethodBody(method, context, AutoPropertyProvider, parameters, valueParameterIsKeyword, stringBuilder, out var builder2);
+							var autoPropertyProvider = new AutoPropertyProvider();
+							var body = AstMethodBodyBuilder.CreateMethodBody(method, context, autoPropertyProvider, parameters, valueParameterIsKeyword, stringBuilder, out var builder2);
 							Return(asyncState);
 							return new AsyncMethodBodyResult(methodNode, method, body, builder2, context.variableMap, context.CurrentMethodIsAsync, context.CurrentMethodIsYieldReturn);
 						}, context.CancellationToken);
@@ -1883,7 +1884,7 @@ namespace ICSharpCode.Decompiler.Ast {
 				if (module != null && paramDef.HasParamDef && paramDef.ParamDef.HasMarshalType) {
 					astParam.Attributes.Add(new AttributeSection(ConvertMarshalInfo(paramDef.ParamDef, module, sb)));
 				}
-				if (module != null && paramDef.HasParamDef && astParam.ParameterModifier != ParameterModifier.Out) {
+				if (module != null && paramDef.HasParamDef && astParam.ParameterModifier != ParameterModifier.Out && astParam.ParameterModifier != ParameterModifier.In) {
 					if (paramDef.ParamDef.IsIn)
 						astParam.Attributes.Add(new AttributeSection(CreateNonCustomAttribute(typeof(InAttribute), module, GetSystemRuntimeInteropServicesAssemblyRef(module))));
 					if (paramDef.ParamDef.IsOut)
@@ -2267,7 +2268,6 @@ namespace ICSharpCode.Decompiler.Ast {
 		static readonly UTF8String debuggerStepThroughAttributeString = new UTF8String("DebuggerStepThroughAttribute");
 		static readonly UTF8String debuggerHiddenAttributeString = new UTF8String("DebuggerHiddenAttribute");
 		static readonly UTF8String asyncStateMachineAttributeString = new UTF8String("AsyncStateMachineAttribute");
-		static readonly UTF8String debuggerBrowsableAttributeString = new UTF8String("DebuggerBrowsableAttribute");
 		static readonly UTF8String iteratorStateMachineAttributeString = new UTF8String("IteratorStateMachineAttribute");
 		static readonly UTF8String isReadOnlyAttributeString = new UTF8String("IsReadOnlyAttribute");
 		static readonly UTF8String isByRefLikeAttributeString = new UTF8String("IsByRefLikeAttribute");
@@ -2278,7 +2278,6 @@ namespace ICSharpCode.Decompiler.Ast {
 				EntityDeclaration entityDecl = attributedNode as EntityDeclaration;
 				var attributes = new List<ICSharpCode.NRefactory.CSharp.Attribute>();
 				bool isType = attributedNode is TypeDeclaration;
-				bool isFieldOrEvent = attributedNode is FieldDeclaration || attributedNode is EventDeclaration || attributedNode is CustomEventDeclaration;
 				bool isParameter = attributedNode is ParameterDeclaration;
 				bool isMethod = attributedNode is MethodDeclaration || attributedNode is Accessor;
 				bool isProperty = attributedNode is PropertyDeclaration;
@@ -2304,8 +2303,6 @@ namespace ICSharpCode.Decompiler.Ast {
 					if ((isYieldReturn || isAsync) && attributeType.Compare(systemDiagnosticsString, debuggerStepThroughAttributeString))
 						continue;
 					if ((isYieldReturn || isAsync) && attributeType.Compare(systemDiagnosticsString, debuggerHiddenAttributeString))
-						continue;
-					if (isFieldOrEvent && attributeType.Compare(systemDiagnosticsString, debuggerBrowsableAttributeString))
 						continue;
 					if (isParameter && (attributeType.Compare(systemRuntimeCompilerServicesString, dynamicAttributeString) || attributeType.Compare(systemRuntimeCompilerServicesString, isReadOnlyAttributeString)))
 						continue;

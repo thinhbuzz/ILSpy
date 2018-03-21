@@ -499,7 +499,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 							// conflict between namespace and type name/member name
 							SimpleType simpleType2;
 							ns = new MemberType { Target = simpleType2 = new SimpleType("global").WithAnnotation(BoxedTextColor.Keyword), IsDoubleColon = true, MemberNameToken = Identifier.Create(parts[0]).WithAnnotation(BoxedTextColor.Namespace) }.WithAnnotation(BoxedTextColor.Namespace);
-							simpleType2.IdentifierToken.WithAnnotation(BoxedTextColor.Namespace).WithAnnotation(new NamespaceReference(nsAsm, parts[0]));
+							simpleType2.IdentifierToken.WithAnnotation(BoxedTextColor.Keyword);
 						} else {
 							SimpleType simpleType2;
 							ns = simpleType2 = new SimpleType(parts[0]).WithAnnotation(BoxedTextColor.Namespace);
