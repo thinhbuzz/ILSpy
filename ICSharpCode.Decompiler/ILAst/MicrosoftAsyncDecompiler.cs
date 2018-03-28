@@ -159,7 +159,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				compilerName = PredefinedCompilerNames.MicrosoftCSharp;
 
 			var body = ilMethod.Body;
-			if (body.Count < 6)
+			if (body.Count < 5)
 				throw new SymbolicAnalysisFailedException();
 			int pos = 0;
 
@@ -210,9 +210,14 @@ namespace ICSharpCode.Decompiler.ILAst {
 			if (setResultAndExitLabel == null)
 				throw new SymbolicAnalysisFailedException();
 
+			bool methodNeverReturns = false;
 			ILVariable tmpV;
+			if ((body[pos] as ILExpression)?.Code == ILCode.Ret) {
+				methodNeverReturns = true;
+				finalState = -2;
+			}
 			// VB14 sometimes generates this code
-			if (body[pos].Match(ILCode.Stloc, out tmpV, out ldci4)) {
+			else if (body[pos].Match(ILCode.Stloc, out tmpV, out ldci4)) {
 				if (!ldci4.Match(ILCode.Ldc_I4, out finalState) || finalState >= -1)
 					throw new SymbolicAnalysisFailedException();
 				pos++;
@@ -229,12 +234,16 @@ namespace ICSharpCode.Decompiler.ILAst {
 			else if (!MatchStateAssignment(body[pos++], out finalState))
 				throw new SymbolicAnalysisFailedException();
 
-			if (!MatchCallSetResult(body[pos++], out resultExpr, out resultVariable))
-				throw new SymbolicAnalysisFailedException();
+			if (!methodNeverReturns) {
+				if (!MatchCallSetResult(body[pos++], out resultExpr, out resultVariable))
+					throw new SymbolicAnalysisFailedException();
 
-			exitLabel = body[pos++] as ILLabel;
-			if (exitLabel == null)
-				throw new SymbolicAnalysisFailedException();
+				exitLabel = body[pos++] as ILLabel;
+				if (exitLabel == null)
+					throw new SymbolicAnalysisFailedException();
+			}
+			else
+				exitLabel = setResultAndExitLabel;
 
 			bodyInfo = new ILMethodBody(tryCatchBlock.TryBlock.Body);
 		}
