@@ -533,6 +533,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		public void RunStep2(DecompilerContext context, ILBlock method, out AsyncMethodDebugInfo asyncInfo, List<ILExpression> listExpr, List<ILBlock> listBlock, Dictionary<ILLabel, int> labelRefCount, List<ILNode> list_ILNode, Func<ILBlock, ILInlining> getILInlining) {
 			Debug.Assert(context.CurrentMethodIsAsync);
 			Step2(method);
+			BaseMethodWrapperFixer.FixBaseCalls(context.CurrentMethod.DeclaringType, method, listExpr);
 			ILAstOptimizer.RemoveRedundantCode(context, method, listExpr, listBlock, labelRefCount);
 			// Repeat the inlining/copy propagation optimization because the conversion of field access
 			// to local variables can open up additional inlining possibilities.

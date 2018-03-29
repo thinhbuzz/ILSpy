@@ -258,7 +258,7 @@ namespace ICSharpCode.Decompiler {
 			if (member == null)
 				return false;
 			var u = member.Name;
-			return (object)u != null && u.Data != null && u.Data.Length > 0 && u.Data[0] == '<';
+			return (object)u != null && u.Data != null && u.Data.Length > 0 && (u.Data[0] == '<' || (u.Data[0] == '$' && u.StartsWith("$VB", StringComparison.Ordinal)));
 		}
 		
 		public static bool ContainsAnonymousType(this TypeSig type)

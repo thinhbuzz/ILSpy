@@ -100,6 +100,7 @@
     <Compile Include="ILAst\AsyncDecompiler.cs" />
     <Compile Include="ILAst\AutoPropertyInfo.cs" />
     <Compile Include="ILAst\AutoPropertyProvider.cs" />
+    <Compile Include="ILAst\BaseMethodWrapperFixer.cs" />
     <Compile Include="ILAst\LiftedOperators.cs" />
     <Compile Include="ILAst\InitializerPeepholeTransforms.cs" />
     <Compile Include="ILAst\DefaultDictionary.cs" />

@@ -83,6 +83,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			stateMachineKind = StateMachineKind.IteratorMethod;
 			inlinedMethod = yrd.iteratorMoveNextMethod;
 			compilerName = yrd.CompilerName;
+			BaseMethodWrapperFixer.FixBaseCalls(context.CurrentMethod.DeclaringType, method, listExpr);
 
 			// Repeat the inlining/copy propagation optimization because the conversion of field access
 			// to local variables can open up additional inlining possibilities.
