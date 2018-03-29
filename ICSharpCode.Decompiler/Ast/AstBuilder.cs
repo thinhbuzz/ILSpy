@@ -1505,6 +1505,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			}
 
 			BlockStatement bs;
+			MethodDebugInfoBuilder builder3;
 			var bodyKind = GetDecompiledBodyKind?.Invoke(this, method) ?? DecompiledBodyKind.Full;
 			// In order for auto events to be optimized from custom to auto events, they must have bodies.
 			// DecompileTypeMethodsTransform has a fix to remove the hidden custom events' bodies.
@@ -1523,7 +1524,17 @@ namespace ICSharpCode.Decompiler.Ast {
 							var asyncState = GetAsyncMethodBodyDecompilationState();
 							var stringBuilder = asyncState.StringBuilder;
 							var autoPropertyProvider = new AutoPropertyProvider();
-							var body = AstMethodBodyBuilder.CreateMethodBody(method, context, autoPropertyProvider, parameters, valueParameterIsKeyword, stringBuilder, out var builder2);
+							BlockStatement body;
+							MethodDebugInfoBuilder builder2;
+							try {
+								body = AstMethodBodyBuilder.CreateMethodBody(method, context, autoPropertyProvider, parameters, valueParameterIsKeyword, stringBuilder, out builder2);
+							}
+							catch (OperationCanceledException) {
+								throw;
+							}
+							catch (Exception ex) {
+								CreateBadMethod(method, ex, out body, out builder2);
+							}
 							Return(asyncState);
 							return new AsyncMethodBodyResult(methodNode, method, body, builder2, context.variableMap, context.CurrentMethodIsAsync, context.CurrentMethodIsYieldReturn);
 						}, context.CancellationToken);
@@ -1544,16 +1555,8 @@ namespace ICSharpCode.Decompiler.Ast {
 					throw;
 				}
 				catch (Exception ex) {
-					msg = string.Format("{0}An exception occurred when decompiling this method ({1:X8}){0}{0}{2}{0}",
-							Environment.NewLine, method.MDToken.ToUInt32(), ex.ToString());
+					CreateBadMethod(method, ex, out bs, out builder3);
 				}
-				bs = new BlockStatement();
-				var emptyStmt = new EmptyStatement();
-				if (method.Body != null)
-					emptyStmt.AddAnnotation(new List<ILSpan> { new ILSpan(0, (uint)method.Body.GetCodeSize()) });
-				bs.Statements.Add(emptyStmt);
-				bs.InsertChildAfter(null, new Comment(msg, CommentType.MultiLine), Roles.Comment);
-				var builder3 = new MethodDebugInfoBuilder(context.SettingsVersion, StateMachineKind.None, method, null, method.Body.Variables.Select(a => new SourceLocal(a, CreateLocalName(a), a.Type, SourceVariableFlags.None)).ToArray(), null, null);
 				methodNode.SetChildByRole(Roles.Body, bs);
 				methodNode.AddAnnotation(builder3);
 				ConvertAttributes(methodNode, method);
@@ -1614,6 +1617,19 @@ namespace ICSharpCode.Decompiler.Ast {
 			default:
 				throw new InvalidOperationException();
 			}
+		}
+
+		void CreateBadMethod(MethodDef method, Exception ex, out BlockStatement bs, out MethodDebugInfoBuilder builder) {
+			var msg = string.Format("{0}An exception occurred when decompiling this method ({1:X8}){0}{0}{2}{0}",
+					Environment.NewLine, method.MDToken.ToUInt32(), ex.ToString());
+
+			bs = new BlockStatement();
+			var emptyStmt = new EmptyStatement();
+			if (method.Body != null)
+				emptyStmt.AddAnnotation(new List<ILSpan> { new ILSpan(0, (uint)method.Body.GetCodeSize()) });
+			bs.Statements.Add(emptyStmt);
+			bs.InsertChildAfter(null, new Comment(msg, CommentType.MultiLine), Roles.Comment);
+			builder = new MethodDebugInfoBuilder(context.SettingsVersion, StateMachineKind.None, method, null, method.Body.Variables.Select(a => new SourceLocal(a, CreateLocalName(a), a.Type, SourceVariableFlags.None)).ToArray(), null, null);
 		}
 
 		static string CreateLocalName(Local local) {
