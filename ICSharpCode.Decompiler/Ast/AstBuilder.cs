@@ -1513,7 +1513,6 @@ namespace ICSharpCode.Decompiler.Ast {
 				bodyKind = DecompiledBodyKind.Full;
 			switch (bodyKind) {
 			case DecompiledBodyKind.Full:
-				string msg;
 				try {
 					if (context.AsyncMethodBodyDecompilation) {
 						parameters = parameters?.ToArray();
