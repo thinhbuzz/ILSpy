@@ -279,7 +279,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				this.transform.stringBuilder.Clear();
 				if (type == null)
 					return this.transform.stringBuilder;
-				return FullNameCreator.NamespaceSB(type, false, this.transform.stringBuilder);
+				return FullNameFactory.NamespaceSB(type, false, this.transform.stringBuilder);
 			}
 			
 			public override object VisitNamespaceDeclaration(NamespaceDeclaration namespaceDeclaration, object data)
@@ -566,7 +566,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				this.transform.stringBuilder.Clear();
 				if (type == null)
 					return this.transform.stringBuilder;
-				return FullNameCreator.NamespaceSB(type, false, this.transform.stringBuilder);
+				return FullNameFactory.NamespaceSB(type, false, this.transform.stringBuilder);
 			}
 
 			StringBuilder GetName(IType type)
@@ -574,7 +574,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				this.transform.stringBuilder.Clear();
 				if (type == null)
 					return this.transform.stringBuilder;
-				return FullNameCreator.NameSB(type, false, this.transform.stringBuilder);
+				return FullNameFactory.NameSB(type, false, this.transform.stringBuilder);
 			}
 		}
 	}

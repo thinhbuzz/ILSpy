@@ -421,14 +421,14 @@ namespace ICSharpCode.Decompiler.Ast {
 				name = "ptr";
 			} else {
 				stringBuilder.Clear();
-				if (FullNameCreator.NameSB(type, false, stringBuilder).EndsWith("Exception")) {
+				if (FullNameFactory.NameSB(type, false, stringBuilder).EndsWith("Exception")) {
 					name = "ex";
 				}
 				else {
 					stringBuilder.Clear();
-					if (!typeNameToVariableNameDict.TryGetValue(FullNameCreator.FullName(type, false, null, null, null, stringBuilder), out name)) {
+					if (!typeNameToVariableNameDict.TryGetValue(FullNameFactory.FullName(type, false, null, null, null, stringBuilder), out name)) {
 						stringBuilder.Clear();
-						name = FullNameCreator.Name(type, false, stringBuilder);
+						name = FullNameFactory.Name(type, false, stringBuilder);
 						// remove the 'I' for interfaces
 						if (name.Length >= 3 && name[0] == 'I' && char.IsUpper(name[1]) && char.IsLower(name[2]))
 							name = name.Substring(1);

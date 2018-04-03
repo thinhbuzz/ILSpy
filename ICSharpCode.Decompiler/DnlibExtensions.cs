@@ -488,7 +488,7 @@ namespace ICSharpCode.Decompiler {
 			var sb = new StringBuilder();
 
 			sb.Append("method ");
-			FullNameCreator.FullNameSB(methodSig.RetType, false, null, null, null, sb);
+			FullNameFactory.FullNameSB(methodSig.RetType, false, null, null, null, sb);
 			sb.Append(" *(");
 			PrintArgs(sb, methodSig.Params, true);
 			if (methodSig.ParamsAfterSentinel != null) {
@@ -508,7 +508,7 @@ namespace ICSharpCode.Decompiler {
 				return string.Empty;
 			var sb = new StringBuilder();
 
-			FullNameCreator.FullNameSB(methodSig.RetType, false, null, null, null, sb);
+			FullNameFactory.FullNameSB(methodSig.RetType, false, null, null, null, sb);
 			sb.Append("(");
 			PrintArgs(sb, methodSig.Params, true);
 			if (methodSig.ParamsAfterSentinel != null) {
@@ -527,7 +527,7 @@ namespace ICSharpCode.Decompiler {
 				if (!isFirst)
 					sb.Append(",");
 				isFirst = false;
-				FullNameCreator.FullNameSB(arg, false, null, null, null, sb);
+				FullNameFactory.FullNameSB(arg, false, null, null, null, sb);
 			}
 		}
 
@@ -566,7 +566,7 @@ namespace ICSharpCode.Decompiler {
 			if (tr != null)
 				return tr.Namespace;
 			sb.Length = 0;
-			return FullNameCreator.Namespace(type, false, sb);
+			return FullNameFactory.Namespace(type, false, sb);
 		}
 
 		public static string GetName(this IType type, StringBuilder sb) {
@@ -577,7 +577,7 @@ namespace ICSharpCode.Decompiler {
 			if (tr != null)
 				return tr.Name;
 			sb.Length = 0;
-			return FullNameCreator.Name(type, false, sb);
+			return FullNameFactory.Name(type, false, sb);
 		}
 
 		public static bool Compare(this ITypeDefOrRef type, UTF8String expNs, UTF8String expName) {

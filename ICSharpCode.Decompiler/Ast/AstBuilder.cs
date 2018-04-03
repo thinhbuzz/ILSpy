@@ -2269,7 +2269,7 @@ namespace ICSharpCode.Decompiler.Ast {
 		{
 			if (!sort)
 				return customAttributeProvider.CustomAttributes;
-			return customAttributeProvider.CustomAttributes.OrderBy(a => { sb.Clear(); return FullNameCreator.FullName(a.AttributeType, false, null, sb); });
+			return customAttributeProvider.CustomAttributes.OrderBy(a => { sb.Clear(); return FullNameFactory.FullName(a.AttributeType, false, null, sb); });
 		}
 
 		[Flags]
@@ -2422,7 +2422,7 @@ namespace ICSharpCode.Decompiler.Ast {
 				return;
 			var attributes = new List<ICSharpCode.NRefactory.CSharp.Attribute>();
 			foreach (var secDecl in secDeclProvider.DeclSecurities.OrderBy(d => d.Action)) {
-				foreach (var secAttribute in secDecl.SecurityAttributes.OrderBy(a => { sb.Clear(); return FullNameCreator.FullName(a.AttributeType, false, null, sb); })) {
+				foreach (var secAttribute in secDecl.SecurityAttributes.OrderBy(a => { sb.Clear(); return FullNameFactory.FullName(a.AttributeType, false, null, sb); })) {
 					if (secAttribute.AttributeType == null)
 						continue;
 					var attribute = new ICSharpCode.NRefactory.CSharp.Attribute();
