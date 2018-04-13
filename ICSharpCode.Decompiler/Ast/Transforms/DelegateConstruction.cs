@@ -170,6 +170,8 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 		{
 			if (method == null || !(method.HasGeneratedName() || method.Name.Contains("$")))
 				return false;
+			if (method.IsLocalFunction())
+				return false;
 			if (!(method.IsCompilerGenerated() || IsPotentialClosure(context, method.DeclaringType)))
 				return false;
 			return true;

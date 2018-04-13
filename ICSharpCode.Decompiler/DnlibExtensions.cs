@@ -260,6 +260,11 @@ namespace ICSharpCode.Decompiler {
 			var u = member.Name;
 			return (object)u != null && u.Data != null && u.Data.Length > 0 && (u.Data[0] == '<' || (u.Data[0] == '$' && u.StartsWith("$VB", StringComparison.Ordinal)));
 		}
+
+		public static bool IsLocalFunction(this MethodDef method) {
+			var name = method.Name.String;
+			return name.StartsWith("<") && name.Contains(">g__");
+		}
 		
 		public static bool ContainsAnonymousType(this TypeSig type)
 		{
