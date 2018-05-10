@@ -733,7 +733,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				return null;
 
 			var varDecl = FindVariableDeclaration(node, loopInit.Identifier);
-			if (!IsVariableValueUnused(varDecl, whileStmt))
+			if (varDecl == null || !IsVariableValueUnused(varDecl, whileStmt))
 				return null;
 
 			// Make sure the loop variable, or compiler generated array local, isn't used by any of the other statements
