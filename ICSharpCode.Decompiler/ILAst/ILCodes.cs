@@ -423,10 +423,11 @@ namespace ICSharpCode.Decompiler.ILAst {
 				boxedSBytes_Int32[i] = (int)(sbyte)(i + sbyte.MinValue);
 		}
 
-		public static void ExpandMacro(ref ILCode code, ref object operand, MethodDef method)
+		public static bool ExpandMacro(ref ILCode code, ref object operand, MethodDef method)
 		{
 			var methodBody = method.Body;
-			switch (code) {
+			try {
+				switch (code) {
 					case ILCode.Ldarg_0:   code = ILCode.Ldarg; operand = method.Parameters[0]; break;
 					case ILCode.Ldarg_1:   code = ILCode.Ldarg; operand = method.Parameters[1]; break;
 					case ILCode.Ldarg_2:   code = ILCode.Ldarg; operand = method.Parameters[2]; break;
@@ -487,7 +488,12 @@ namespace ICSharpCode.Decompiler.ILAst {
 					case ILCode.Stind_I8:  code = ILCode.Stobj; operand = method.Module.CorLibTypes.Int64.TypeDefOrRef; break;
 					case ILCode.Stind_R4:  code = ILCode.Stobj; operand = method.Module.CorLibTypes.Single.TypeDefOrRef; break;
 					case ILCode.Stind_R8:  code = ILCode.Stobj; operand = method.Module.CorLibTypes.Double.TypeDefOrRef; break;
+				}
 			}
+			catch (System.ArgumentOutOfRangeException) {
+				return false;
+			}
+			return true;
 		}
 	}
 }

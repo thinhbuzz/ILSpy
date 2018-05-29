@@ -296,7 +296,11 @@ namespace ICSharpCode.Decompiler.ILAst {
 				}
 				ILCode code = ilCodeTranslation[inst.OpCode.Code];
 				object operand = inst.Operand;
-				ILCodeUtil.ExpandMacro(ref code, ref operand, methodDef);
+				ILCode codeBkp = code;
+				if (!ILCodeUtil.ExpandMacro(ref code, ref operand, methodDef)) {
+					code = codeBkp;
+					operand = inst.Operand;
+				}
 				ByteCode byteCode = new ByteCode() {
 					Offset      = inst.Offset,
 					EndOffset   = next?.Offset ?? (uint)methodDef.Body.GetCodeSize(),
