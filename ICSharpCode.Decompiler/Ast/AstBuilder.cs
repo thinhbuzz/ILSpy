@@ -1188,6 +1188,7 @@ namespace ICSharpCode.Decompiler.Ast {
 		EntityDeclaration CreateMethod(MethodDef methodDef)
 		{
 			MethodDeclaration astMethod = new MethodDeclaration();
+			EntityDeclaration returnValue = astMethod;
 			astMethod.AddAnnotation(methodDef);
 			astMethod.ReturnType = ConvertType(methodDef.ReturnType, stringBuilder, methodDef.Parameters.ReturnParameter.ParamDef);
 			bool isRefReturnType = methodDef.ReturnType.RemovePinnedAndModifiers().GetElementType() == ElementType.ByRef && UndoByRefToPointer(astMethod.ReturnType);
@@ -1223,9 +1224,9 @@ namespace ICSharpCode.Decompiler.Ast {
 
 			if (createMethodBody) {
 				if (op != null)
-					AddMethodBody(op, methodDef, astMethod.Parameters, false, MethodKind.Method);
+					AddMethodBody(op, out _, methodDef, astMethod.Parameters, false, MethodKind.Method);
 				else
-					AddMethodBody(astMethod, methodDef, astMethod.Parameters, false, MethodKind.Method);
+					AddMethodBody(astMethod, out returnValue, methodDef, astMethod.Parameters, false, MethodKind.Method);
 			}
 			else {
 				ClearCurrentMethodState();
@@ -1251,8 +1252,8 @@ namespace ICSharpCode.Decompiler.Ast {
 				astMethod.Modifiers |= Modifiers.Ref;
 			if (DnlibExtensions.HasIsReadOnlyAttribute(methodDef.Parameters.ReturnParameter.ParamDef))
 				astMethod.Modifiers |= Modifiers.Readonly;
-			AddComment(astMethod, methodDef);
-			return astMethod;
+			AddComment(returnValue, methodDef);
+			return returnValue;
 		}
 		
 		bool IsExplicitInterfaceImplementation(MethodDef methodDef)
@@ -1314,7 +1315,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			}
 			astMethod.NameToken = Identifier.Create(CleanName(methodDef.DeclaringType.Name)).WithAnnotation(methodDef.DeclaringType);
 			astMethod.Parameters.AddRange(MakeParameters(Context.MetadataTextColorProvider, methodDef, context.Settings, stringBuilder));
-			AddMethodBody(astMethod, methodDef, astMethod.Parameters, false, MethodKind.Method);
+			AddMethodBody(astMethod, out _, methodDef, astMethod.Parameters, false, MethodKind.Method);
 			if (methodDef.IsStatic && methodDef.DeclaringType.IsBeforeFieldInit) {
 				astMethod.InsertChildAfter(null, new Comment(" Note: this type is marked as 'beforefieldinit'."), Roles.Comment);
 			}
@@ -1373,7 +1374,7 @@ namespace ICSharpCode.Decompiler.Ast {
 
 			if (propDef.GetMethod != null) {
 				astProp.Getter = new Accessor();
-				AddMethodBody(astProp.Getter, propDef.GetMethod, null, false, MethodKind.Property);
+				AddMethodBody(astProp.Getter, out _, propDef.GetMethod, null, false, MethodKind.Property);
 				astProp.Getter.AddAnnotation(propDef.GetMethod);
 				
 				if ((getterModifiers & Modifiers.VisibilityMask) != (astProp.Modifiers & Modifiers.VisibilityMask))
@@ -1381,7 +1382,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			}
 			if (propDef.SetMethod != null) {
 				astProp.Setter = new Accessor();
-				AddMethodBody(astProp.Setter, propDef.SetMethod, null, true, MethodKind.Property);
+				AddMethodBody(astProp.Setter, out _, propDef.SetMethod, null, true, MethodKind.Property);
 				astProp.Setter.AddAnnotation(propDef.SetMethod);
 				Parameter lastParam = propDef.SetMethod.Parameters.SkipNonNormal().LastOrDefault();
 				if (lastParam != null) {
@@ -1459,11 +1460,11 @@ namespace ICSharpCode.Decompiler.Ast {
 				
 				if (eventDef.AddMethod != null) {
 					astEvent.AddAccessor = new Accessor().WithAnnotation(eventDef.AddMethod);
-					AddMethodBody(astEvent.AddAccessor, eventDef.AddMethod, null, true, MethodKind.Event);
+					AddMethodBody(astEvent.AddAccessor, out _, eventDef.AddMethod, null, true, MethodKind.Event);
 				}
 				if (eventDef.RemoveMethod != null) {
 					astEvent.RemoveAccessor = new Accessor().WithAnnotation(eventDef.RemoveMethod);
-					AddMethodBody(astEvent.RemoveAccessor, eventDef.RemoveMethod, null, true, MethodKind.Event);
+					AddMethodBody(astEvent.RemoveAccessor, out _, eventDef.RemoveMethod, null, true, MethodKind.Event);
 				}
 				MethodDef accessor = eventDef.AddMethod ?? eventDef.RemoveMethod;
 				if (accessor != null && accessor.IsVirtual == accessor.IsNewSlot) {
@@ -1497,7 +1498,8 @@ namespace ICSharpCode.Decompiler.Ast {
 			context.CurrentMethodIsYieldReturn = false;
 		}
 		
-		void AddMethodBody(EntityDeclaration methodNode, MethodDef method, IEnumerable<ParameterDeclaration> parameters, bool valueParameterIsKeyword, MethodKind methodKind) {
+		void AddMethodBody(EntityDeclaration methodNode, out EntityDeclaration updatedNode, MethodDef method, IEnumerable<ParameterDeclaration> parameters, bool valueParameterIsKeyword, MethodKind methodKind) {
+			updatedNode = methodNode;
 			ClearCurrentMethodState();
 			if (method.Body == null) {
 				ConvertAttributes(methodNode, method);
@@ -1605,6 +1607,15 @@ namespace ICSharpCode.Decompiler.Ast {
 						bs.Statements.Add(ret);
 					}
 				}
+				if (method.IsVirtual && method.MethodSig.GetParamCount() == 0 && method.MethodSig.GetRetType().GetElementType() == ElementType.Void && method.Name == name_Finalize) {
+					var dd = new DestructorDeclaration();
+					dd.AddAnnotation(methodNode.Annotation<MethodDef>());
+					methodNode.Attributes.MoveTo(dd.Attributes);
+					dd.Modifiers = methodNode.Modifiers & ~(Modifiers.Protected | Modifiers.Override);
+					dd.NameToken = Identifier.Create(AstBuilder.CleanName(context.CurrentType.Name));
+					updatedNode = dd;
+					methodNode = dd;
+				}
 				methodNode.SetChildByRole(Roles.Body, bs);
 				ConvertAttributes(methodNode, method);
 				return;
@@ -1617,6 +1628,7 @@ namespace ICSharpCode.Decompiler.Ast {
 				throw new InvalidOperationException();
 			}
 		}
+		static readonly UTF8String name_Finalize = new UTF8String("Finalize");
 
 		void CreateBadMethod(MethodDef method, Exception ex, out BlockStatement bs, out MethodDebugInfoBuilder builder) {
 			var msg = string.Format("{0}An exception occurred when decompiling this method ({1:X8}){0}{0}{2}{0}",
