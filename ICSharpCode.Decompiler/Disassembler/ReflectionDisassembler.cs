@@ -217,6 +217,8 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			{ MethodImplAttributes.PreserveSig, "preservesig" },
 			{ MethodImplAttributes.InternalCall, "internalcall" },
 			{ MethodImplAttributes.ForwardRef, "forwardref" },
+			{ MethodImplAttributes.AggressiveInlining, "aggressiveinlining" },
+			{ MethodImplAttributes.AggressiveOptimization, "aggressiveoptimization" },
 		};
 
 		void WriteXmlDocComment(IMemberDef mr) {
