@@ -169,7 +169,7 @@ namespace ICSharpCode.Decompiler.Ast {
 				astBlock.Statements.InsertBefore(insertionPoint, newVarDecl);
 			}
 
-			builder = new MethodDebugInfoBuilder(context.SettingsVersion, stateMachineKind, inlinedMethod ?? methodDef, inlinedMethod != null ? methodDef : null, CreateSourceLocals(localVariables), CreateSourceParameters(localVariables), asyncInfo);
+			builder = new MethodDebugInfoBuilder(context.SettingsVersion, stateMachineKind, inlinedMethod ?? methodDef, inlinedMethod != null ? methodDef : null, CreateSourceLocals(localVariables), CreateSourceParameters(astBuilder.Parameters), asyncInfo);
 			builder.CompilerName = compilerName;
 			
 			return astBlock;
@@ -203,7 +203,7 @@ namespace ICSharpCode.Decompiler.Ast {
 		}
 
 		readonly List<SourceParameter> sourceParametersList = new List<SourceParameter>();
-		SourceParameter[] CreateSourceParameters(HashSet<ILVariable> variables) {
+		SourceParameter[] CreateSourceParameters(List<ILVariable> variables) {
 			foreach (var v in variables) {
 				if (!v.IsParameter)
 					continue;
