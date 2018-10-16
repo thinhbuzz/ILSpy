@@ -1,153 +1,24 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="..\..\..\..\DnSpyCommon.props" />
+
   <PropertyGroup>
-    <ProjectGuid>{984CC812-9470-4A13-AFF9-CC44068D666C}</ProjectGuid>
-    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <OutputType>Library</OutputType>
-    <RootNamespace>ICSharpCode.Decompiler</RootNamespace>
-    <AssemblyName>ICSharpCode.Decompiler</AssemblyName>
-    <TargetFrameworkVersion>v4.7.1</TargetFrameworkVersion>
-    <AllowUnsafeBlocks>False</AllowUnsafeBlocks>
-    <NoStdLib>False</NoStdLib>
-    <WarningLevel>4</WarningLevel>
-    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
-    <SignAssembly>True</SignAssembly>
+    <SignAssembly>true</SignAssembly>
     <AssemblyOriginatorKeyFile>..\..\NRefactory\ICSharpCode.NRefactory.snk</AssemblyOriginatorKeyFile>
-    <DelaySign>False</DelaySign>
-    <AssemblyOriginatorKeyMode>File</AssemblyOriginatorKeyMode>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Platform)' == 'AnyCPU' ">
-    <PlatformTarget>AnyCPU</PlatformTarget>
-    <RegisterForComInterop>False</RegisterForComInterop>
-    <GenerateSerializationAssemblies>Auto</GenerateSerializationAssemblies>
-    <BaseAddress>448462848</BaseAddress>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
-    <OutputPath>bin\Debug\</OutputPath>
-    <DebugSymbols>true</DebugSymbols>
-    <DebugType>portable</DebugType>
-    <Optimize>False</Optimize>
-    <DefineConstants>DEBUG;TRACE</DefineConstants>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
-    <OutputPath>bin\Release\</OutputPath>
-    <DebugSymbols>true</DebugSymbols>
-    <DebugType>portable</DebugType>
-    <Optimize>True</Optimize>
-    <DefineConstants>TRACE</DefineConstants>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(BuildNuGetPackage)' == 'True' ">
-    <OutputPath>bin\NuGet-$(Configuration)\</OutputPath>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|AnyCPU'">
     <NoWarn>1685</NoWarn>
-    <Prefer32Bit>false</Prefer32Bit>
+
+    <AssemblyTitle>ICSharpCode.Decompiler</AssemblyTitle>
+    <Company>ic#code</Company>
+    <Description>IL decompiler engine</Description>
+    <Copyright>Copyright 2011-2014 AlphaSierraPapa for the SharpDevelop Team</Copyright>
+    <Version>2.3.1.0</Version>
   </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|AnyCPU'">
-    <NoWarn>1685</NoWarn>
-    <Prefer32Bit>false</Prefer32Bit>
-  </PropertyGroup>
+
   <ItemGroup>
-    <Reference Include="System" />
-    <Reference Include="System.Core">
-      <RequiredTargetFramework>3.5</RequiredTargetFramework>
-    </Reference>
+    <ProjectReference Include="..\..\..\..\dnSpy\dnSpy.Contracts.Logic\dnSpy.Contracts.Logic.csproj" />
+    <ProjectReference Include="..\..\..\..\Libraries\dnlib\src\dnlib.csproj" />
+    <ProjectReference Include="..\..\NRefactory\ICSharpCode.NRefactory.CSharp\ICSharpCode.NRefactory.CSharp.csproj" />
+    <ProjectReference Include="..\..\NRefactory\ICSharpCode.NRefactory\ICSharpCode.NRefactory.csproj" />
   </ItemGroup>
-  <ItemGroup>
-    <Compile Include="Ast\Annotations.cs" />
-    <Compile Include="Ast\AstBuilder.cs" />
-    <Compile Include="Ast\AstMethodBodyBuilder.cs" />
-    <Compile Include="Ast\Cache\ObjectPool.cs" />
-    <Compile Include="Ast\CommentStatement.cs" />
-    <Compile Include="Ast\DecompilerCache.cs" />
-    <Compile Include="Ast\DecompilerContext.cs" />
-    <Compile Include="Ast\NameVariables.cs" />
-    <Compile Include="Ast\NRefactoryExtensions.cs" />
-    <Compile Include="Ast\TextTokenWriter.cs" />
-    <Compile Include="Ast\Transforms\AddCheckedBlocks.cs" />
-    <Compile Include="Ast\Transforms\CombineQueryExpressions.cs" />
-    <Compile Include="Ast\Transforms\ContextTrackingVisitor.cs" />
-    <Compile Include="Ast\Transforms\ConvertConstructorCallIntoInitializer.cs" />
-    <Compile Include="Ast\Transforms\CustomPatterns.cs" />
-    <Compile Include="Ast\Transforms\DecimalConstantTransform.cs" />
-    <Compile Include="Ast\Transforms\DeclareVariables.cs" />
-    <Compile Include="Ast\Transforms\DelegateConstruction.cs" />
-    <Compile Include="Ast\Transforms\ExpressionTreeConverter.cs" />
-    <Compile Include="Ast\Transforms\FlattenSwitchBlocks.cs" />
-    <Compile Include="Ast\Transforms\IntroduceExtensionMethods.cs" />
-    <Compile Include="Ast\Transforms\IntroduceQueryExpressions.cs" />
-    <Compile Include="Ast\Transforms\IntroduceUnsafeModifier.cs" />
-    <Compile Include="Ast\Transforms\IntroduceUsingDeclarations.cs" />
-    <Compile Include="Ast\Transforms\ReplaceMethodCallsWithOperators.cs" />
-    <Compile Include="Ast\Transforms\PushNegation.cs" />
-    <Compile Include="Ast\Transforms\TransformationPipeline.cs" />
-    <Compile Include="Ast\Transforms\PatternStatementTransform.cs" />
-    <Compile Include="DnlibExtensions.cs" />
-    <Compile Include="DecompilerException.cs" />
-    <Compile Include="DecompilerSettings.cs" />
-    <Compile Include="Disassembler\DisassemblerHelpers.cs" />
-    <Compile Include="Disassembler\ILStructure.cs" />
-    <Compile Include="Disassembler\MethodBodyDisassembler.cs" />
-    <Compile Include="Disassembler\ReflectionDisassembler.cs" />
-    <Compile Include="FlowAnalysis\ControlFlowEdge.cs" />
-    <Compile Include="FlowAnalysis\ControlFlowGraph.cs" />
-    <Compile Include="IdentifierFormatted.cs" />
-    <Compile Include="FlowAnalysis\ControlFlowNode.cs" />
-    <Compile Include="FlowAnalysis\ControlStructureDetector.cs" />
-    <Compile Include="FlowAnalysis\OpCodeInfo.cs" />
-    <Compile Include="ILAst\AsyncDecompiler.cs" />
-    <Compile Include="ILAst\AutoPropertyInfo.cs" />
-    <Compile Include="ILAst\AutoPropertyProvider.cs" />
-    <Compile Include="ILAst\BaseMethodWrapperFixer.cs" />
-    <Compile Include="ILAst\LiftedOperators.cs" />
-    <Compile Include="ILAst\InitializerPeepholeTransforms.cs" />
-    <Compile Include="ILAst\DefaultDictionary.cs" />
-    <Compile Include="ILAst\GotoRemoval.cs" />
-    <Compile Include="ILAst\ILAstBuilder.cs" />
-    <Compile Include="ILAst\ILAstOptimizer.cs" />
-    <Compile Include="ILAst\ILAstTypes.cs" />
-    <Compile Include="ILAst\ILCodes.cs" />
-    <Compile Include="ILAst\ILInlining.cs" />
-    <Compile Include="ILAst\LoopsAndConditions.cs" />
-    <Compile Include="ILAst\MethodUtils.cs" />
-    <Compile Include="ILAst\MicrosoftAsyncDecompiler.cs" />
-    <Compile Include="ILAst\MicrosoftYieldReturnDecompiler.cs" />
-    <Compile Include="ILAst\MonoAsyncDecompiler.cs" />
-    <Compile Include="ILAst\MonoStateMachineUtils.cs" />
-    <Compile Include="ILAst\MonoYieldReturnDecompiler.cs" />
-    <Compile Include="ILAst\PatternMatching.cs" />
-    <Compile Include="ILAst\PeepholeTransform.cs" />
-    <Compile Include="ILAst\SimpleControlFlow.cs" />
-    <Compile Include="ILAst\StateRange.cs" />
-    <Compile Include="ILAst\SymbolicExecution.cs" />
-    <Compile Include="ILAst\TypeAnalysis.cs" />
-    <Compile Include="ILAst\Utils.cs" />
-    <Compile Include="ILAst\VisualBasic11YieldReturnDecompiler.cs" />
-    <Compile Include="ILAst\YieldReturnDecompiler.cs" />
-    <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="StringBuilderExtensions.cs" />
-    <Compile Include="TextOutputWriter.cs" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\..\..\..\dnSpy\dnSpy.Contracts.Logic\dnSpy.Contracts.Logic.csproj">
-      <Project>{bb748e78-376f-429a-8d83-9a8946ec179f}</Project>
-      <Name>dnSpy.Contracts.Logic</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\..\Libraries\dnlib\src\dnlib.csproj">
-      <Project>{fdfc1237-143f-4919-8318-4926901f4639}</Project>
-      <Name>dnlib</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\..\NRefactory\ICSharpCode.NRefactory.CSharp\ICSharpCode.NRefactory.CSharp.csproj">
-      <Project>{53dca265-3c3c-42f9-b647-f72ba678122b}</Project>
-      <Name>ICSharpCode.NRefactory.CSharp</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\..\NRefactory\ICSharpCode.NRefactory\ICSharpCode.NRefactory.csproj">
-      <Project>{3b2a5653-ec97-4001-bb9b-d90f1af2c371}</Project>
-      <Name>ICSharpCode.NRefactory</Name>
-    </ProjectReference>
-  </ItemGroup>
-  <ItemGroup />
-  <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.Targets" />
+
 </Project>
