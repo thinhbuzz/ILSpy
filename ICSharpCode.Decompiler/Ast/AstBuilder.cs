@@ -2213,7 +2213,9 @@ namespace ICSharpCode.Decompiler.Ast {
 			if (sami != null) {
 				if (sami.IsVariantTypeValid) {
 					var varEnum = module.UpdateRowId(new TypeRefUser(module, systemRuntimeInteropServicesName, "VarEnum", interopAsmRef));
+#pragma warning disable CS0618 // 'VarEnum' is obsolete: 'Marshalling VARIANTs may be unavailable in future releases.'
 					attr.AddNamedArgument(module, attrType, interopAsmRef, typeof(VarEnum), interopAsmRef, "SafeArraySubType", MakePrimitive((int)sami.VariantType, varEnum, sb));
+#pragma warning restore CS0618 // 'VarEnum' is obsolete: 'Marshalling VARIANTs may be unavailable in future releases.'
 				}
 				if (sami.IsUserDefinedSubTypeValid)
 					attr.AddNamedArgument(module, attrType, interopAsmRef, typeof(Type), null, "SafeArrayUserDefinedSubType", CreateTypeOfExpression(sami.UserDefinedSubType, sb));
