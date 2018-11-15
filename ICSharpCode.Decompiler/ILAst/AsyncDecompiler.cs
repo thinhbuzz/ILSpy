@@ -29,7 +29,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 	/// </summary>
 	abstract class AsyncDecompiler {
 		public static bool IsCompilerGeneratedStateMachine(TypeDef type) {
-			if (!(type.DeclaringType != null && type.IsCompilerGenerated()))
+			if (!(type.DeclaringType != null && (type.IsCompilerGenerated() || type.HasGeneratedName())))
 				return false;
 			foreach (var ii in type.Interfaces) {
 				var iface = ii.Interface;
