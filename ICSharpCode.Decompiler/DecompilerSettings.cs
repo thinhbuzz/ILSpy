@@ -457,6 +457,18 @@ namespace ICSharpCode.Decompiler {
 		// arrays could cause OOM exceptions.
 		int maxArrayElements = 10000;
 
+		public int MaxStringLength {
+			get { return maxStringLength; }
+			set {
+				if (maxStringLength != value) {
+					maxStringLength = value;
+					OnPropertyChanged(nameof(MaxStringLength));
+				}
+			}
+		}
+		int maxStringLength = ConstMaxStringLength;
+		public const int ConstMaxStringLength = 20000;
+
 		public bool SortCustomAttributes {
 			get { return sortCustomAttributes; }
 			set {
@@ -609,6 +621,7 @@ namespace ICSharpCode.Decompiler {
 			if (ForceShowAllMembers != other.ForceShowAllMembers) return false;
 			if (SortSystemUsingStatementsFirst != other.SortSystemUsingStatementsFirst) return false;
 			if (MaxArrayElements != other.MaxArrayElements) return false;
+			if (MaxStringLength != other.MaxStringLength) return false;
 			if (SortCustomAttributes != other.SortCustomAttributes) return false;
 			if (UseSourceCodeOrder != other.UseSourceCodeOrder) return false;
 			if (AllowFieldInitializers != other.AllowFieldInitializers) return false;
@@ -667,6 +680,7 @@ namespace ICSharpCode.Decompiler {
 					h ^= (uint)decompilationObjects[i] << (i * 8);
 
 				h ^= (uint)MaxArrayElements;
+				h ^= (uint)MaxStringLength;
 
 				//TODO: CSharpFormattingOptions. This isn't currently used but it has a ton of properties
 
@@ -706,6 +720,7 @@ namespace ICSharpCode.Decompiler {
 			other.ForceShowAllMembers = this.ForceShowAllMembers;
 			other.SortSystemUsingStatementsFirst = this.SortSystemUsingStatementsFirst;
 			other.MaxArrayElements = this.MaxArrayElements;
+			other.MaxStringLength = this.MaxStringLength;
 			other.SortCustomAttributes = this.SortCustomAttributes;
 			other.UseSourceCodeOrder = this.UseSourceCodeOrder;
 			other.AllowFieldInitializers = this.AllowFieldInitializers;

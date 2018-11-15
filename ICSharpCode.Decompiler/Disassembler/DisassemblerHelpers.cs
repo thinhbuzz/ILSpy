@@ -196,7 +196,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 						writer.Write(" ", BoxedTextColor.Text);
 					}
 				}
-				WriteOperand(writer, instructionOperandConverter?.Convert(instruction.Operand) ?? instruction.Operand, method);
+				WriteOperand(writer, instructionOperandConverter?.Convert(instruction.Operand) ?? instruction.Operand, options.MaxStringLength, method);
 			}
 			if (options != null && options.GetOpCodeDocumentation != null) {
 				var doc = options.GetOpCodeDocumentation(instruction.OpCode);
@@ -624,7 +624,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			}
 		}
 		
-		public static void WriteOperand(IDecompilerOutput writer, object operand, MethodDef method = null)
+		public static void WriteOperand(IDecompilerOutput writer, object operand, int maxStringLength, MethodDef method = null)
 		{
 			Instruction targetInstruction = operand as Instruction;
 			if (targetInstruction != null) {
@@ -699,7 +699,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			string s = operand as string;
 			if (s != null) {
 				int start = writer.NextPosition;
-				writer.Write("\"" + NRefactory.CSharp.TextWriterTokenWriter.ConvertString(s) + "\"", BoxedTextColor.String);
+				writer.Write("\"" + NRefactory.CSharp.TextWriterTokenWriter.ConvertStringMaxLength(s, maxStringLength) + "\"", BoxedTextColor.String);
 				int end = writer.NextPosition;
 				writer.AddBracePair(new TextSpan(start, 1), new TextSpan(end - 1, 1), CodeBracesRangeFlags.DoubleQuotes);
 			} else if (operand is char) {

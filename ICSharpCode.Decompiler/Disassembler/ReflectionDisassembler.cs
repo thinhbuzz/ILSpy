@@ -98,6 +98,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			this.OptionsVersion = optionsVersion;
 			this.CancellationToken = cancellationToken;
 			this.OwnerModule = ownerModule;
+			this.MaxStringLength = int.MaxValue;
 		}
 
 		public readonly ModuleDef OwnerModule;
@@ -138,6 +139,11 @@ namespace ICSharpCode.Decompiler.Disassembler {
 		/// Shows line numbers if a PDB file has been loaded
 		/// </summary>
 		public bool ShowPdbInfo;
+
+		/// <summary>
+		/// Max length of a string
+		/// </summary>
+		public int MaxStringLength;
 
 		/// <summary>
 		/// Gets incremented when the options change
@@ -264,13 +270,13 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				if (method.HasImplMap) {
 					ImplMap info = method.ImplMap;
 					var bh2 = BracePairHelper.Create(output, "(", CodeBracesRangeFlags.Parentheses);
-					output.Write("\"" + NRefactory.CSharp.TextWriterTokenWriter.ConvertString(info.Module == null ? string.Empty : info.Module.Name.String) + "\"", BoxedTextColor.String);
+					output.Write("\"" + NRefactory.CSharp.TextWriterTokenWriter.ConvertStringMaxLength(info.Module == null ? string.Empty : info.Module.Name.String, options.MaxStringLength) + "\"", BoxedTextColor.String);
 
 					if (!string.IsNullOrEmpty(info.Name) && info.Name != method.Name) {
 						output.Write(" ", BoxedTextColor.Text);
 						output.Write("as", BoxedTextColor.Keyword);
 						output.Write(" ", BoxedTextColor.Text);
-						output.Write("\"" + NRefactory.CSharp.TextWriterTokenWriter.ConvertString(info.Name) + "\"", BoxedTextColor.String);
+						output.Write("\"" + NRefactory.CSharp.TextWriterTokenWriter.ConvertStringMaxLength(info.Name, options.MaxStringLength) + "\"", BoxedTextColor.String);
 					}
 
 					if (info.IsNoMangle) {
@@ -553,7 +559,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				// secdecls use special syntax for strings
 				output.Write("string", BoxedTextColor.Keyword);
 				var bh1 = BracePairHelper.Create(output, "(", CodeBracesRangeFlags.Parentheses);
-				output.Write(string.Format("'{0}'", NRefactory.CSharp.TextWriterTokenWriter.ConvertString((UTF8String)na.Argument.Value).Replace("'", "\'")), BoxedTextColor.String);
+				output.Write(string.Format("'{0}'", NRefactory.CSharp.TextWriterTokenWriter.ConvertStringMaxLength((UTF8String)na.Argument.Value, options.MaxStringLength).Replace("'", "\'")), BoxedTextColor.String);
 				bh1.Write(")");
 			} else {
 				WriteConstant(na.Argument.Value);
@@ -872,7 +878,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 						if (sami.IsUserDefinedSubTypeValid) {
 							output.Write(",", BoxedTextColor.Punctuation);
 							output.Write(" ", BoxedTextColor.Text);
-							output.Write("\"" + NRefactory.CSharp.TextWriterTokenWriter.ConvertString(sami.UserDefinedSubType.FullName) + "\"", BoxedTextColor.String);
+							output.Write("\"" + NRefactory.CSharp.TextWriterTokenWriter.ConvertStringMaxLength(sami.UserDefinedSubType.FullName, options.MaxStringLength) + "\"", BoxedTextColor.String);
 						}
 					}
 					break;
@@ -923,17 +929,17 @@ namespace ICSharpCode.Decompiler.Disassembler {
 						goto default;
 					output.Write("custom", BoxedTextColor.Keyword);
 					var bh3 = BracePairHelper.Create(output, "(", CodeBracesRangeFlags.Parentheses);
-					output.Write(string.Format("\"{0}\"", NRefactory.CSharp.TextWriterTokenWriter.ConvertString(cmi.CustomMarshaler == null ? string.Empty : cmi.CustomMarshaler.FullName)), BoxedTextColor.String);
+					output.Write(string.Format("\"{0}\"", NRefactory.CSharp.TextWriterTokenWriter.ConvertStringMaxLength(cmi.CustomMarshaler == null ? string.Empty : cmi.CustomMarshaler.FullName, options.MaxStringLength)), BoxedTextColor.String);
 					output.Write(",", BoxedTextColor.Punctuation);
 					output.Write(" ", BoxedTextColor.Text);
-					output.Write(string.Format("\"{0}\"", NRefactory.CSharp.TextWriterTokenWriter.ConvertString(cmi.Cookie)), BoxedTextColor.String);
+					output.Write(string.Format("\"{0}\"", NRefactory.CSharp.TextWriterTokenWriter.ConvertStringMaxLength(cmi.Cookie, options.MaxStringLength)), BoxedTextColor.String);
 					if (!UTF8String.IsNullOrEmpty(cmi.Guid) || !UTF8String.IsNullOrEmpty(cmi.NativeTypeName)) {
 						output.Write(",", BoxedTextColor.Punctuation);
 						output.Write(" ", BoxedTextColor.Text);
-						output.Write(string.Format("\"{0}\"", NRefactory.CSharp.TextWriterTokenWriter.ConvertString(cmi.Guid)), BoxedTextColor.String);
+						output.Write(string.Format("\"{0}\"", NRefactory.CSharp.TextWriterTokenWriter.ConvertStringMaxLength(cmi.Guid, options.MaxStringLength)), BoxedTextColor.String);
 						output.Write(",", BoxedTextColor.Punctuation);
 						output.Write(" ", BoxedTextColor.Text);
-						output.Write(string.Format("\"{0}\"", NRefactory.CSharp.TextWriterTokenWriter.ConvertString(cmi.NativeTypeName)), BoxedTextColor.String);
+						output.Write(string.Format("\"{0}\"", NRefactory.CSharp.TextWriterTokenWriter.ConvertStringMaxLength(cmi.NativeTypeName, options.MaxStringLength)), BoxedTextColor.String);
 					}
 					bh3.Write(")");
 					break;
@@ -1055,11 +1061,11 @@ namespace ICSharpCode.Decompiler.Disassembler {
 					} else if (cd.HasValue && (double.IsNaN(cd.Value) || double.IsInfinity(cd.Value))) {
 						output.Write(string.Format("0x{0:x16}", BitConverter.DoubleToInt64Bits(cd.Value)), BoxedTextColor.Number);
 					} else {
-						DisassemblerHelpers.WriteOperand(output, constant);
+						DisassemblerHelpers.WriteOperand(output, constant, options.MaxStringLength);
 					}
 					bh1.Write(")");
 				} else {
-					DisassemblerHelpers.WriteOperand(output, constant);
+					DisassemblerHelpers.WriteOperand(output, constant, options.MaxStringLength);
 				}
 			}
 		}

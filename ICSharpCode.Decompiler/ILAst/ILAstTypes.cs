@@ -789,7 +789,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					var op = v.GetTextReferenceObject();
 					output.Write(v.Name, op, DecompilerReferenceFlags.Local, v.IsParameter ? BoxedTextColor.Parameter : BoxedTextColor.Local);
 				} else {
-					DisassemblerHelpers.WriteOperand(output, Operand);
+					DisassemblerHelpers.WriteOperand(output, Operand, DecompilerSettings.ConstMaxStringLength);
 				}
 				first = false;
 			}
