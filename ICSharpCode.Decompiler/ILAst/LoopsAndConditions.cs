@@ -18,6 +18,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using dnSpy.Contracts.Decompiler;
 using ICSharpCode.Decompiler.FlowAnalysis;
 
@@ -438,6 +439,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		
 		static HashSet<ControlFlowNode> FindDominatedNodes(HashSet<ControlFlowNode> scope, ControlFlowNode head)
 		{
+			RuntimeHelpers.EnsureSufficientExecutionStack();
 			HashSet<ControlFlowNode> agenda = new HashSet<ControlFlowNode>();
 			HashSet<ControlFlowNode> result = new HashSet<ControlFlowNode>();
 			agenda.Add(head);
