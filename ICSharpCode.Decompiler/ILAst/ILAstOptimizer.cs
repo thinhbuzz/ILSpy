@@ -928,7 +928,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 		bool IsVisualBasicModule() {
 			foreach (var asmRef in context.CurrentModule.GetAssemblyRefs()) {
-				if (asmRef.Name == nameAssemblyVisualBasic)
+				if (asmRef.Name == nameAssemblyVisualBasic || asmRef.Name == nameAssemblyVisualBasicCore)
 					return true;
 			}
 			// The VB runtime can be embedded if '/vbruntime*' option is used, and if so, the compiler adds
@@ -937,12 +937,13 @@ namespace ICSharpCode.Decompiler.ILAst {
 				return true;
 			if (context.CurrentModule.IsDefined(nameAssemblyVisualBasic, nameEmbedded) == true)
 				return true;
-			if (context.CurrentModule.Assembly?.Name == nameAssemblyVisualBasic)
+			if (context.CurrentModule.Assembly?.Name == nameAssemblyVisualBasic || context.CurrentModule.Assembly?.Name == nameAssemblyVisualBasicCore)
 				return true;
 			return false;
 		}
 		static readonly UTF8String nameEmbedded = new UTF8String("Embedded");
 		static readonly UTF8String nameAssemblyVisualBasic = new UTF8String("Microsoft.VisualBasic");
+		static readonly UTF8String nameAssemblyVisualBasicCore = new UTF8String("Microsoft.VisualBasic.Core");
 		static readonly UTF8String nameClearProjectError = new UTF8String("ClearProjectError");
 		static readonly UTF8String nameSetProjectError = new UTF8String("SetProjectError");
 		static readonly UTF8String nameProjectData = new UTF8String("ProjectData");
