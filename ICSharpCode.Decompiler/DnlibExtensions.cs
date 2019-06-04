@@ -30,6 +30,29 @@ namespace ICSharpCode.Decompiler {
 	/// </summary>
 	static class DnlibExtensions
 	{
+		sealed class InterfaceImplComparer : IComparer<InterfaceImpl> {
+			public static readonly InterfaceImplComparer Instance = new InterfaceImplComparer();
+
+			public int Compare(InterfaceImpl x, InterfaceImpl y) {
+				int c = StringComparer.OrdinalIgnoreCase.Compare(x.Interface.Name, y.Interface.Name);
+				if (c != 0)
+					return c;
+				c = x.MDToken.Raw.CompareTo(y.MDToken.Raw);
+				if (c != 0)
+					return c;
+				return x.GetHashCode().CompareTo(y.GetHashCode());
+			}
+		}
+
+		public static IEnumerable<InterfaceImpl> GetInterfaceImpls(this TypeDef type, bool sortMembers)
+		{
+			if (!sortMembers)
+				return type.Interfaces;
+			var ary = type.Interfaces.ToArray();
+			Array.Sort(ary, InterfaceImplComparer.Instance);
+			return ary;
+		}
+
 		public static IEnumerable<TypeDef> GetNestedTypes(this TypeDef type, bool sortMembers)
 		{
 			if (!sortMembers)

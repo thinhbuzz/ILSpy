@@ -597,7 +597,7 @@ namespace ICSharpCode.Decompiler.Ast {
 				if (typeDef.BaseType != null && !DnlibExtensions.IsValueType(typeDef) && !typeDef.BaseType.IsSystemObject()) {
 					astType.AddChild(ConvertType(typeDef.BaseType, stringBuilder), Roles.BaseType);
 				}
-				foreach (var i in typeDef.Interfaces)
+				foreach (var i in GetInterfaceImpls(typeDef))
 					astType.AddChild(ConvertType(i.Interface, stringBuilder), Roles.BaseType);
 				
 				AddTypeMembers(astType, typeDef);
@@ -1061,6 +1061,13 @@ namespace ICSharpCode.Decompiler.Ast {
 		}
 
 		#endregion
+
+		IEnumerable<InterfaceImpl> GetInterfaceImpls(TypeDef type)
+		{
+			if (context.Settings.UseSourceCodeOrder)
+				return type.Interfaces;// These are already sorted by MD token
+			return type.GetInterfaceImpls(context.Settings.SortMembers);
+		}
 
 		IEnumerable<TypeDef> GetNestedTypes(TypeDef type)
 		{
