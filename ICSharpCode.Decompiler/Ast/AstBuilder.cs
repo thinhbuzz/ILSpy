@@ -994,7 +994,7 @@ namespace ICSharpCode.Decompiler.Ast {
 		}
 		static readonly UTF8String isVolatileString = new UTF8String("IsVolatile");
 
-		Modifiers ConvertModifiers(MethodDef methodDef)
+		Modifiers ConvertModifiers(MethodDef methodDef, bool canBeReadOnlyMember)
 		{
 			if (methodDef == null)
 				return Modifiers.None;
@@ -1034,8 +1034,15 @@ namespace ICSharpCode.Decompiler.Ast {
 			}
 			if (!methodDef.HasBody && !methodDef.IsAbstract)
 				modifiers |= Modifiers.Extern;
+			if (canBeReadOnlyMember && IsReadonlyMember(methodDef))
+				modifiers |= Modifiers.ReadonlyMember;
 			
 			return modifiers;
+		}
+
+		bool IsReadonlyMember(MethodDef methodDef)
+		{
+			return methodDef != null && !methodDef.IsStatic && DnlibExtensions.HasIsReadOnlyAttribute(methodDef);
 		}
 
 		// mcs doesn't set IsNewSlot if it doesn't override anything so verify that
@@ -1209,15 +1216,17 @@ namespace ICSharpCode.Decompiler.Ast {
 				if (IsExplicitInterfaceImplementation(methodDef)) {
 					var methDecl = methodDef.Overrides.First().MethodDeclaration;
 					astMethod.PrivateImplementationType = ConvertType(methDecl == null ? null : methDecl.DeclaringType, stringBuilder);
+					if (IsReadonlyMember(methodDef))
+						astMethod.Modifiers |= Modifiers.ReadonlyMember;
 				} else {
-					astMethod.Modifiers = ConvertModifiers(methodDef);
+					astMethod.Modifiers = ConvertModifiers(methodDef, true);
 					if (methodDef.IsVirtual == methodDef.IsNewSlot)
 						SetNewModifier(astMethod);
 				}
 				createMethodBody = true;
 			} else if (methodDef.IsStatic) {
 				// decompile static method in interface
-				astMethod.Modifiers = ConvertModifiers(methodDef);
+				astMethod.Modifiers = ConvertModifiers(methodDef, true);
 				createMethodBody = true;
 			}
 
@@ -1315,7 +1324,7 @@ namespace ICSharpCode.Decompiler.Ast {
 		{
 			ConstructorDeclaration astMethod = new ConstructorDeclaration();
 			astMethod.AddAnnotation(methodDef);
-			astMethod.Modifiers = ConvertModifiers(methodDef);
+			astMethod.Modifiers = ConvertModifiers(methodDef, false);
 			if (methodDef.IsStatic) {
 				// don't show visibility for static ctors
 				astMethod.Modifiers &= ~Modifiers.VisibilityMask;
@@ -1354,14 +1363,14 @@ namespace ICSharpCode.Decompiler.Ast {
 				var methDecl = accessor.Overrides.First().MethodDeclaration;
 				astProp.PrivateImplementationType = ConvertType(methDecl == null ? null : methDecl.DeclaringType, stringBuilder);
 			} else if (!propDef.DeclaringType.IsInterface) {
-				getterModifiers = ConvertModifiers(propDef.GetMethod);
-				setterModifiers = ConvertModifiers(propDef.SetMethod);
+				getterModifiers = ConvertModifiers(propDef.GetMethod, true);
+				setterModifiers = ConvertModifiers(propDef.SetMethod, true);
 				astProp.Modifiers = FixUpVisibility(getterModifiers | setterModifiers);
 				try {
 					if (accessor != null && accessor.IsVirtual && !accessor.IsNewSlot && (propDef.GetMethod == null || propDef.SetMethod == null)) {
 						foreach (var basePropDef in TypesHierarchyHelpers.FindBaseProperties(propDef)) {
 							if (basePropDef.GetMethod != null && basePropDef.SetMethod != null) {
-								var propVisibilityModifiers = ConvertModifiers(basePropDef.GetMethod) | ConvertModifiers(basePropDef.SetMethod);
+								var propVisibilityModifiers = ConvertModifiers(basePropDef.GetMethod, true) | ConvertModifiers(basePropDef.SetMethod, true);
 								astProp.Modifiers = FixUpVisibility((astProp.Modifiers & ~Modifiers.VisibilityMask) | (propVisibilityModifiers & Modifiers.VisibilityMask));
 								break;
 							} else {
@@ -1383,14 +1392,16 @@ namespace ICSharpCode.Decompiler.Ast {
 				astProp.Getter = new Accessor();
 				AddMethodBody(astProp.Getter, out _, propDef.GetMethod, null, false, MethodKind.Property);
 				astProp.Getter.AddAnnotation(propDef.GetMethod);
-				
+				astProp.Getter.Modifiers = getterModifiers & Modifiers.ReadonlyMember;
+
 				if ((getterModifiers & Modifiers.VisibilityMask) != (astProp.Modifiers & Modifiers.VisibilityMask))
-					astProp.Getter.Modifiers = getterModifiers & Modifiers.VisibilityMask;
+					astProp.Getter.Modifiers = getterModifiers & (Modifiers.VisibilityMask | Modifiers.ReadonlyMember);
 			}
 			if (propDef.SetMethod != null) {
 				astProp.Setter = new Accessor();
 				AddMethodBody(astProp.Setter, out _, propDef.SetMethod, null, true, MethodKind.Property);
 				astProp.Setter.AddAnnotation(propDef.SetMethod);
+				astProp.Setter.Modifiers = setterModifiers & Modifiers.ReadonlyMember;
 				Parameter lastParam = propDef.SetMethod.Parameters.SkipNonNormal().LastOrDefault();
 				if (lastParam != null) {
 					ConvertCustomAttributes(Context.MetadataTextColorProvider, astProp.Setter, lastParam.ParamDef, context.Settings, stringBuilder, "param");
@@ -1398,9 +1409,23 @@ namespace ICSharpCode.Decompiler.Ast {
 						astProp.Setter.Attributes.Add(new AttributeSection(ConvertMarshalInfo(lastParam.ParamDef, propDef.Module, stringBuilder)) { AttributeTarget = "param" });
 					}
 				}
-				
+
 				if ((setterModifiers & Modifiers.VisibilityMask) != (astProp.Modifiers & Modifiers.VisibilityMask))
-					astProp.Setter.Modifiers = setterModifiers & Modifiers.VisibilityMask;
+					astProp.Setter.Modifiers = setterModifiers & (Modifiers.VisibilityMask | Modifiers.ReadonlyMember);
+			}
+			astProp.Modifiers &= ~Modifiers.ReadonlyMember;
+			if (astProp.Setter.IsNull && !astProp.Getter.IsNull && (astProp.Getter.Modifiers & Modifiers.ReadonlyMember) != 0) {
+				astProp.Getter.Modifiers &= ~Modifiers.ReadonlyMember;
+				astProp.Modifiers |= Modifiers.ReadonlyMember;
+			}
+			else if (!astProp.Setter.IsNull && astProp.Getter.IsNull && (astProp.Setter.Modifiers & Modifiers.ReadonlyMember) != 0) {
+				astProp.Setter.Modifiers &= ~Modifiers.ReadonlyMember;
+				astProp.Modifiers |= Modifiers.ReadonlyMember;
+			}
+			else if (!astProp.Setter.IsNull && !astProp.Getter.IsNull && (astProp.Getter.Modifiers & Modifiers.ReadonlyMember) != 0 && (astProp.Setter.Modifiers & Modifiers.ReadonlyMember) != 0) {
+				astProp.Getter.Modifiers &= ~Modifiers.ReadonlyMember;
+				astProp.Setter.Modifiers &= ~Modifiers.ReadonlyMember;
+				astProp.Modifiers |= Modifiers.ReadonlyMember;
 			}
 			ConvertCustomAttributes(Context.MetadataTextColorProvider, astProp, propDef, context.Settings, stringBuilder);
 
@@ -1445,7 +1470,7 @@ namespace ICSharpCode.Decompiler.Ast {
 				astEvent.Variables.Add(new VariableInitializer(eventDef, CleanName(eventDef.Name)));
 				astEvent.ReturnType = ConvertType(eventDef.EventType, stringBuilder, eventDef);
 				if (!eventDef.DeclaringType.IsInterface)
-					astEvent.Modifiers = ConvertModifiers(eventDef.AddMethod);
+					astEvent.Modifiers = ConvertModifiers(eventDef.AddMethod, true);
 				if (eventDef.RemoveMethod != null)
 					AddComment(astEvent, eventDef.RemoveMethod, "remove");
 				if (eventDef.AddMethod != null)
@@ -1459,7 +1484,7 @@ namespace ICSharpCode.Decompiler.Ast {
 				astEvent.NameToken = Identifier.Create(CleanName(eventDef.Name)).WithAnnotation(eventDef);
 				astEvent.ReturnType = ConvertType(eventDef.EventType, stringBuilder, eventDef);
 				if (eventDef.AddMethod == null || !IsExplicitInterfaceImplementation(eventDef.AddMethod))
-					astEvent.Modifiers = ConvertModifiers(eventDef.AddMethod);
+					astEvent.Modifiers = ConvertModifiers(eventDef.AddMethod, true);
 				else {
 					var methDecl = eventDef.AddMethod.Overrides.First().MethodDeclaration;
 					astEvent.PrivateImplementationType = ConvertType(methDecl == null ? null : methDecl.DeclaringType, stringBuilder);
@@ -2357,6 +2382,8 @@ namespace ICSharpCode.Decompiler.Ast {
 					if (isProperty && attributeType.Compare(systemRuntimeCompilerServicesString, isReadOnlyAttributeString))
 						continue;
 					if (isReturnTarget && attributeType.Compare(systemRuntimeCompilerServicesString, isReadOnlyAttributeString))
+						continue;
+					if (isMethod && attributeType.Compare(systemRuntimeCompilerServicesString, isReadOnlyAttributeString))
 						continue;
 
 					var attribute = new ICSharpCode.NRefactory.CSharp.Attribute();
