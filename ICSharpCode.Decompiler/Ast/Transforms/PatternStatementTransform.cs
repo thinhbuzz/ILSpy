@@ -754,7 +754,10 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				var composedType = (ComposedType)arrayType;
 				if (!composedType.ArraySpecifiers.Any())
 					return null;
-				elemType = composedType.BaseType;
+				if (composedType.ArraySpecifiers.Count <= 1)
+					elemType = composedType.BaseType;
+				else
+					elemType = AstBuilder.ConvertType((type as ArraySigBase).Next, stringBuilder);
 			}
 			else if (arrayType is PrimitiveType) {
 				var primType = (PrimitiveType)arrayType;
