@@ -386,8 +386,16 @@ namespace ICSharpCode.Decompiler.Ast {
 		{
 			if (!module.HasExportedTypes)
 				return;
-			foreach (ExportedType type in module.ExportedTypes) {
+			IAssembly lastAssembly = null;
+			var exportedTypes = module.ExportedTypes.ToArray();
+			Array.Sort(exportedTypes, SortExportedTypes);
+			foreach (ExportedType type in exportedTypes) {
 				if (type.MovedToAnotherAssembly) {
+					if (lastAssembly == null || !AssemblyNameComparer.CompareAll.Equals(type.DefinitionAssembly, lastAssembly)) {
+						lastAssembly = type.DefinitionAssembly;
+						var cmt = new Comment(" " + lastAssembly.FullNameToken);
+						astCompileUnit.AddChild(cmt, Roles.Comment);
+					}
 					var forwardedType = CreateTypeOfExpression(type.ToTypeRef(), stringBuilder);
 					astCompileUnit.AddChild(
 						new AttributeSection {
@@ -404,7 +412,35 @@ namespace ICSharpCode.Decompiler.Ast {
 				}
 			}
 		}
-		
+
+		static int SortExportedTypes(ExportedType x, ExportedType y) {
+			var xasm = x.DefinitionAssembly;
+			var yasm = y.DefinitionAssembly;
+			int c = StringComparer.OrdinalIgnoreCase.Compare(xasm.FullNameToken, yasm.FullNameToken);
+			if (c != 0) return c;
+			return StringComparer.OrdinalIgnoreCase.Compare(GetName(x), GetName(y));
+		}
+
+		static string GetName(ExportedType type) {
+			if (!(type.DeclaringType is ExportedType declType))
+				return type.Name;
+			if (!(declType.DeclaringType is ExportedType declType2))
+				return declType.Name + "." + type.Name;
+			var declTypes = new List<ExportedType>();
+			var t = type;
+			while (!(t is null)) {
+				declTypes.Add(t);
+				t = t.DeclaringType;
+			}
+			var sb = new StringBuilder();
+			for (int i = declTypes.Count - 1; i >= 0; i--) {
+				if (i != declTypes.Count - 1)
+					sb.Append('.');
+				sb.Append(declTypes[i].Name.String);
+			}
+			return sb.ToString();
+		}
+
 		NamespaceDeclaration GetCodeNamespace(string name, IAssembly asm)
 		{
 			if (string.IsNullOrEmpty(name)) {
