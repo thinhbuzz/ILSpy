@@ -1469,12 +1469,19 @@ namespace ICSharpCode.Decompiler.Ast {
 				context.DefaultMemberAttributeValue = ca == null || ca.ConstructorArguments.Count != 1 ? null : ca.ConstructorArguments[0].Value as UTF8String;
 				context.DefaultMemberAttributeValueInitialized = true;
 			}
-			if (context.DefaultMemberAttributeValue != null && propDef.Name == context.DefaultMemberAttributeValue) {
+			if (context.DefaultMemberAttributeValue != null && context.DefaultMemberAttributeValue != "Item" && propDef.Name == context.DefaultMemberAttributeValue) {
 				var attribute = new ICSharpCode.NRefactory.CSharp.Attribute();
 				var attributeType = context.CurrentModule.CorLibTypes.GetTypeRef("System.Runtime.CompilerServices", "IndexerNameAttribute");
 				attribute.AddAnnotation(attributeType);
 				attribute.Type = ConvertType(attributeType, stringBuilder);
 				attribute.Arguments.Add(new PrimitiveExpression(context.DefaultMemberAttributeValue));
+
+				SimpleType st = attribute.Type as SimpleType;
+				if (st != null && st.Identifier.EndsWith("Attribute", StringComparison.Ordinal)) {
+					var id = Identifier.Create(st.Identifier.Substring(0, st.Identifier.Length - "Attribute".Length));
+					id.AddAnnotationsFrom(st.IdentifierToken);
+					st.IdentifierToken = id;
+				}
 
 				var section = new AttributeSection();
 				section.Attributes.Add(attribute);
