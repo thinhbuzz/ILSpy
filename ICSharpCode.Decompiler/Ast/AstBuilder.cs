@@ -1464,6 +1464,22 @@ namespace ICSharpCode.Decompiler.Ast {
 				astProp.Modifiers |= Modifiers.ReadonlyMember;
 			}
 			ConvertCustomAttributes(Context.MetadataTextColorProvider, astProp, propDef, context.Settings, stringBuilder);
+			if (!context.DefaultMemberAttributeValueInitialized) {
+				var ca = context.CurrentType.CustomAttributes.Find("System.Reflection.DefaultMemberAttribute");
+				context.DefaultMemberAttributeValue = ca == null || ca.ConstructorArguments.Count != 1 ? null : ca.ConstructorArguments[0].Value as UTF8String;
+				context.DefaultMemberAttributeValueInitialized = true;
+			}
+			if (context.DefaultMemberAttributeValue != null && propDef.Name == context.DefaultMemberAttributeValue) {
+				var attribute = new ICSharpCode.NRefactory.CSharp.Attribute();
+				var attributeType = context.CurrentModule.CorLibTypes.GetTypeRef("System.Runtime.CompilerServices", "IndexerNameAttribute");
+				attribute.AddAnnotation(attributeType);
+				attribute.Type = ConvertType(attributeType, stringBuilder);
+				attribute.Arguments.Add(new PrimitiveExpression(context.DefaultMemberAttributeValue));
+
+				var section = new AttributeSection();
+				section.Attributes.Add(attribute);
+				astProp.AddChild(section, EntityDeclaration.AttributeRole);
+			}
 
 			EntityDeclaration member = astProp;
 			if(propDef.IsIndexer())
