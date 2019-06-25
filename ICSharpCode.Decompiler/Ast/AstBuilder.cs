@@ -343,21 +343,75 @@ namespace ICSharpCode.Decompiler.Ast {
 
 		public void AddAssembly(ModuleDef moduleDefinition, bool onlyAssemblyLevel, bool decompileAsm, bool decompileMod)
 		{
-			if (decompileAsm && moduleDefinition.Assembly != null && moduleDefinition.Assembly.Version != null) {
-				syntaxTree.AddChild(
-					new AttributeSection {
-						AttributeTarget = "assembly",
-						Attributes = {
-							new NRefactory.CSharp.Attribute {
-								Type = new SimpleType("AssemblyVersion")
-									.WithAnnotation(moduleDefinition.CorLibTypes.GetTypeRef(
-										"System.Reflection", "AssemblyVersionAttribute")),
-								Arguments = {
-									new PrimitiveExpression(moduleDefinition.Assembly.Version.ToString())
+			if (decompileAsm && moduleDefinition.Assembly is AssemblyDef asm) {
+				if (asm.Version != null) {
+					syntaxTree.AddChild(
+						new AttributeSection {
+							AttributeTarget = "assembly",
+							Attributes = {
+								new NRefactory.CSharp.Attribute {
+									Type = new SimpleType("AssemblyVersion")
+										.WithAnnotation(moduleDefinition.CorLibTypes.GetTypeRef(
+											"System.Reflection", "AssemblyVersionAttribute")),
+									Arguments = {
+										new PrimitiveExpression(asm.Version.ToString())
+									}
 								}
 							}
-						}
-					}, EntityDeclaration.AttributeRole);
+						}, EntityDeclaration.AttributeRole);
+				}
+				if (!UTF8String.IsNullOrEmpty(asm.Culture)) {
+					syntaxTree.AddChild(
+						new AttributeSection {
+							AttributeTarget = "assembly",
+							Attributes = {
+								new NRefactory.CSharp.Attribute {
+									Type = new SimpleType("AssemblyCulture")
+										.WithAnnotation(moduleDefinition.CorLibTypes.GetTypeRef(
+											"System.Reflection", "AssemblyCultureAttribute")),
+									Arguments = {
+										new PrimitiveExpression(asm.Culture.String)
+									}
+								}
+							}
+						}, EntityDeclaration.AttributeRole);
+				}
+				if (asm.Attributes != 0) {
+					syntaxTree.AddChild(
+						new AttributeSection {
+							AttributeTarget = "assembly",
+							Attributes = {
+								new NRefactory.CSharp.Attribute {
+									Type = new SimpleType("AssemblyFlags")
+										.WithAnnotation(moduleDefinition.CorLibTypes.GetTypeRef(
+											"System.Reflection", "AssemblyFlagsAttribute")),
+									Arguments = {
+										MakePrimitive((int)asm.Attributes,
+										moduleDefinition.UpdateRowId(new TypeRefUser(moduleDefinition, "System.Reflection", "AssemblyNameFlags", moduleDefinition.CorLibTypes.AssemblyRef)),
+										stringBuilder)
+									}
+								}
+							}
+						}, EntityDeclaration.AttributeRole);
+				}
+				if (asm.HashAlgorithm != AssemblyHashAlgorithm.SHA1) {
+					syntaxTree.AddChild(
+						new AttributeSection {
+							AttributeTarget = "assembly",
+							Attributes = {
+								new NRefactory.CSharp.Attribute {
+									Type = new SimpleType("AssemblyAlgorithmId")
+										.WithAnnotation(moduleDefinition.CorLibTypes.GetTypeRef(
+											"System.Reflection", "AssemblyAlgorithmIdAttribute")),
+									Arguments = {
+										MakePrimitive((int)asm.HashAlgorithm,
+										moduleDefinition.UpdateRowId(new TypeRefUser(moduleDefinition, "System.Configuration.Assemblies", "AssemblyHashAlgorithm", moduleDefinition.CorLibTypes.AssemblyRef)),
+										stringBuilder)
+									}
+								}
+							}
+						}, EntityDeclaration.AttributeRole);
+				}
 			}
 			
 			if (decompileAsm && moduleDefinition.Assembly != null) {
@@ -2007,6 +2061,8 @@ namespace ICSharpCode.Decompiler.Ast {
 						astParam.Attributes.Add(new AttributeSection(CreateNonCustomAttribute(typeof(InAttribute), module, GetSystemRuntimeInteropServicesAssemblyRef(module))));
 					if (paramDef.ParamDef.IsOut)
 						astParam.Attributes.Add(new AttributeSection(CreateNonCustomAttribute(typeof(OutAttribute), module, module.CorLibTypes.AssemblyRef)));
+					if (paramDef.ParamDef.IsOptional)
+						astParam.Attributes.Add(new AttributeSection(CreateNonCustomAttribute(typeof(OptionalAttribute), module, module.CorLibTypes.AssemblyRef)));
 				}
 				yield return astParam;
 			}

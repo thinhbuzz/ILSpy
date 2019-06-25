@@ -233,7 +233,7 @@ namespace ICSharpCode.Decompiler {
 
 		public static TypeDef Resolve(this IType type)
 		{
-			return type == null ? null : type.ScopeType.ResolveTypeDef();
+			return type == null ? null : type.GetScopeTypeDefOrRef().ResolveTypeDef();
 		}
 
 		public static bool IsCompilerGenerated(this IHasCustomAttribute provider)
