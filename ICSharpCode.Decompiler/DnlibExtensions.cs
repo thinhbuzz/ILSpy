@@ -315,7 +315,7 @@ namespace ICSharpCode.Decompiler {
 
 		public static string GetDefaultMemberName(this TypeDef type, out CustomAttribute defaultMemberAttribute)
 		{
-			if (type != null && type.HasCustomAttributes)
+			if (type != null)
 				foreach (CustomAttribute ca in type.CustomAttributes.FindAll("System.Reflection.DefaultMemberAttribute"))
 					if (ca.Constructor != null && ca.Constructor.FullName == @"System.Void System.Reflection.DefaultMemberAttribute::.ctor(System.String)" &&
 						ca.ConstructorArguments.Count == 1 &&

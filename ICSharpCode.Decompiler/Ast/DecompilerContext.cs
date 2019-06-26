@@ -39,8 +39,6 @@ namespace ICSharpCode.Decompiler {
 		public bool CalculateILSpans;
 		public bool AsyncMethodBodyDecompilation;
 		public readonly List<string> UsingNamespaces = new List<string>();
-		public string DefaultMemberAttributeValue;
-		public bool DefaultMemberAttributeValueInitialized;
 
 		internal FieldToVariableMap VariableMap {
 			get {
@@ -85,8 +83,6 @@ namespace ICSharpCode.Decompiler {
 			AsyncMethodBodyDecompilation = other.AsyncMethodBodyDecompilation;
 			UsingNamespaces.AddRange(other.UsingNamespaces);
 			ReservedVariableNames.AddRange(other.ReservedVariableNames);
-			DefaultMemberAttributeValue = other.DefaultMemberAttributeValue;
-			DefaultMemberAttributeValueInitialized = other.DefaultMemberAttributeValueInitialized;
 			// It's not cloned. It must be unique per base-enclosing method. I.e., it's shared
 			// by the method and all inlined method bodies, but not by other non-inlined methods
 			variableMap = null;
@@ -112,8 +108,6 @@ namespace ICSharpCode.Decompiler {
 			this.CurrentMethodIsYieldReturn = false;
 			this.UsingNamespaces.Clear();
 			this.Cache.Reset();
-			this.DefaultMemberAttributeValue = null;
-			this.DefaultMemberAttributeValueInitialized = false;
 			this.variableMap = null;
 		}
 	}

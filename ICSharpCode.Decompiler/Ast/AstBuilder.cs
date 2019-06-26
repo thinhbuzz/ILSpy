@@ -20,8 +20,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 using dnlib.DotNet;
@@ -343,85 +341,10 @@ namespace ICSharpCode.Decompiler.Ast {
 
 		public void AddAssembly(ModuleDef moduleDefinition, bool onlyAssemblyLevel, bool decompileAsm, bool decompileMod)
 		{
-			if (decompileAsm && moduleDefinition.Assembly is AssemblyDef asm) {
-				if (asm.Version != null) {
-					syntaxTree.AddChild(
-						new AttributeSection {
-							AttributeTarget = "assembly",
-							Attributes = {
-								new NRefactory.CSharp.Attribute {
-									Type = new SimpleType("AssemblyVersion")
-										.WithAnnotation(moduleDefinition.CorLibTypes.GetTypeRef(
-											"System.Reflection", "AssemblyVersionAttribute")),
-									Arguments = {
-										new PrimitiveExpression(asm.Version.ToString())
-									}
-								}
-							}
-						}, EntityDeclaration.AttributeRole);
-				}
-				if (!UTF8String.IsNullOrEmpty(asm.Culture)) {
-					syntaxTree.AddChild(
-						new AttributeSection {
-							AttributeTarget = "assembly",
-							Attributes = {
-								new NRefactory.CSharp.Attribute {
-									Type = new SimpleType("AssemblyCulture")
-										.WithAnnotation(moduleDefinition.CorLibTypes.GetTypeRef(
-											"System.Reflection", "AssemblyCultureAttribute")),
-									Arguments = {
-										new PrimitiveExpression(asm.Culture.String)
-									}
-								}
-							}
-						}, EntityDeclaration.AttributeRole);
-				}
-				if (asm.Attributes != 0) {
-					syntaxTree.AddChild(
-						new AttributeSection {
-							AttributeTarget = "assembly",
-							Attributes = {
-								new NRefactory.CSharp.Attribute {
-									Type = new SimpleType("AssemblyFlags")
-										.WithAnnotation(moduleDefinition.CorLibTypes.GetTypeRef(
-											"System.Reflection", "AssemblyFlagsAttribute")),
-									Arguments = {
-										MakePrimitive((int)asm.Attributes,
-										moduleDefinition.UpdateRowId(new TypeRefUser(moduleDefinition, "System.Reflection", "AssemblyNameFlags", moduleDefinition.CorLibTypes.AssemblyRef)),
-										stringBuilder)
-									}
-								}
-							}
-						}, EntityDeclaration.AttributeRole);
-				}
-				if (asm.HashAlgorithm != AssemblyHashAlgorithm.SHA1) {
-					syntaxTree.AddChild(
-						new AttributeSection {
-							AttributeTarget = "assembly",
-							Attributes = {
-								new NRefactory.CSharp.Attribute {
-									Type = new SimpleType("AssemblyAlgorithmId")
-										.WithAnnotation(moduleDefinition.CorLibTypes.GetTypeRef(
-											"System.Reflection", "AssemblyAlgorithmIdAttribute")),
-									Arguments = {
-										MakePrimitive((int)asm.HashAlgorithm,
-										moduleDefinition.UpdateRowId(new TypeRefUser(moduleDefinition, "System.Configuration.Assemblies", "AssemblyHashAlgorithm", moduleDefinition.CorLibTypes.AssemblyRef)),
-										stringBuilder)
-									}
-								}
-							}
-						}, EntityDeclaration.AttributeRole);
-				}
-			}
-			
-			if (decompileAsm && moduleDefinition.Assembly != null) {
+			if (decompileAsm && moduleDefinition.Assembly != null)
 				ConvertCustomAttributes(Context.MetadataTextColorProvider, syntaxTree, moduleDefinition.Assembly, context.Settings, stringBuilder, "assembly");
-				ConvertSecurityAttributes(Context.MetadataTextColorProvider, syntaxTree, moduleDefinition.Assembly, stringBuilder, "assembly");
-			}
-			if (decompileMod) {
+			if (decompileMod)
 				ConvertCustomAttributes(Context.MetadataTextColorProvider, syntaxTree, moduleDefinition, context.Settings, stringBuilder, "module");
-				AddTypeForwarderAttributes(syntaxTree, moduleDefinition, "assembly");
-			}
 			
 			if (decompileMod && !onlyAssemblyLevel) {
 				foreach (TypeDef typeDef in moduleDefinition.Types) {
@@ -434,65 +357,6 @@ namespace ICSharpCode.Decompiler.Ast {
 					AddType(typeDef);
 				}
 			}
-		}
-		
-		void AddTypeForwarderAttributes(SyntaxTree astCompileUnit, ModuleDef module, string target)
-		{
-			if (!module.HasExportedTypes)
-				return;
-			IAssembly lastAssembly = null;
-			var exportedTypes = module.ExportedTypes.ToArray();
-			Array.Sort(exportedTypes, SortExportedTypes);
-			foreach (ExportedType type in exportedTypes) {
-				if (type.MovedToAnotherAssembly) {
-					if (lastAssembly == null || !AssemblyNameComparer.CompareAll.Equals(type.DefinitionAssembly, lastAssembly)) {
-						lastAssembly = type.DefinitionAssembly;
-						var cmt = new Comment(" " + lastAssembly.FullNameToken);
-						astCompileUnit.AddChild(cmt, Roles.Comment);
-					}
-					var forwardedType = CreateTypeOfExpression(type.ToTypeRef(), stringBuilder);
-					astCompileUnit.AddChild(
-						new AttributeSection {
-							AttributeTarget = target,
-							Attributes = {
-								new NRefactory.CSharp.Attribute {
-									Type = new SimpleType("TypeForwardedTo")
-										.WithAnnotation(module.CorLibTypes.GetTypeRef(
-											"System.Runtime.CompilerServices", "TypeForwardedToAttribute")),
-									Arguments = { forwardedType }
-								}
-							}
-						}, EntityDeclaration.AttributeRole);
-				}
-			}
-		}
-
-		static int SortExportedTypes(ExportedType x, ExportedType y) {
-			var xasm = x.DefinitionAssembly;
-			var yasm = y.DefinitionAssembly;
-			int c = StringComparer.OrdinalIgnoreCase.Compare(xasm.FullNameToken, yasm.FullNameToken);
-			if (c != 0) return c;
-			return StringComparer.OrdinalIgnoreCase.Compare(GetName(x), GetName(y));
-		}
-
-		static string GetName(ExportedType type) {
-			if (!(type.DeclaringType is ExportedType declType))
-				return type.Name;
-			if (!(declType.DeclaringType is ExportedType declType2))
-				return declType.Name + "." + type.Name;
-			var declTypes = new List<ExportedType>();
-			var t = type;
-			while (!(t is null)) {
-				declTypes.Add(t);
-				t = t.DeclaringType;
-			}
-			var sb = new StringBuilder();
-			for (int i = declTypes.Count - 1; i >= 0; i--) {
-				if (i != declTypes.Count - 1)
-					sb.Append('.');
-				sb.Append(declTypes[i].Name.String);
-			}
-			return sb.ToString();
 		}
 
 		NamespaceDeclaration GetCodeNamespace(string name, IAssembly asm)
@@ -573,7 +437,7 @@ namespace ICSharpCode.Decompiler.Ast {
 				syntaxTree.Members.Add(astType);
 			}
 		}
-		
+
 		public void AddMethod(MethodDef method)
 		{
 			AstNode node = method.IsConstructor ? (AstNode)CreateConstructor(method) : CreateMethod(method);
@@ -1004,7 +868,7 @@ namespace ICSharpCode.Decompiler.Ast {
 		static readonly UTF8String dynamicAttributeString = new UTF8String("DynamicAttribute");
 		static bool HasDynamicAttribute(IHasCustomAttribute attributeProvider, int typeIndex)
 		{
-			if (attributeProvider == null || !attributeProvider.HasCustomAttributes)
+			if (attributeProvider == null)
 				return false;
 			foreach (CustomAttribute a in attributeProvider.CustomAttributes) {
 				if (a.AttributeType.Compare(systemRuntimeCompilerServicesString, dynamicAttributeString)) {
@@ -1338,7 +1202,7 @@ namespace ICSharpCode.Decompiler.Ast {
 				ClearCurrentMethodState();
 				ConvertAttributes(astMethod, methodDef);
 			}
-			if (methodDef.HasCustomAttributes && astMethod.Parameters.Count > 0) {
+			if (astMethod.Parameters.Count > 0) {
 				if (methodDef.IsDefined(systemRuntimeCompilerServicesString, extensionAttributeString))
 					astMethod.Parameters.First().ParameterModifier = ParameterModifier.This;
 			}
@@ -1495,9 +1359,6 @@ namespace ICSharpCode.Decompiler.Ast {
 				Parameter lastParam = propDef.SetMethod.Parameters.SkipNonNormal().LastOrDefault();
 				if (lastParam != null) {
 					ConvertCustomAttributes(Context.MetadataTextColorProvider, astProp.Setter, lastParam.ParamDef, context.Settings, stringBuilder, "param");
-					if (lastParam.HasParamDef && lastParam.ParamDef.HasMarshalType) {
-						astProp.Setter.Attributes.Add(new AttributeSection(ConvertMarshalInfo(lastParam.ParamDef, propDef.Module, stringBuilder)) { AttributeTarget = "param" });
-					}
 				}
 
 				if ((setterModifiers & Modifiers.VisibilityMask) != (astProp.Modifiers & Modifiers.VisibilityMask))
@@ -1518,29 +1379,6 @@ namespace ICSharpCode.Decompiler.Ast {
 				astProp.Modifiers |= Modifiers.ReadonlyMember;
 			}
 			ConvertCustomAttributes(Context.MetadataTextColorProvider, astProp, propDef, context.Settings, stringBuilder);
-			if (!context.DefaultMemberAttributeValueInitialized) {
-				var ca = context.CurrentType.CustomAttributes.Find("System.Reflection.DefaultMemberAttribute");
-				context.DefaultMemberAttributeValue = ca == null || ca.ConstructorArguments.Count != 1 ? null : ca.ConstructorArguments[0].Value as UTF8String;
-				context.DefaultMemberAttributeValueInitialized = true;
-			}
-			if (context.DefaultMemberAttributeValue != null && context.DefaultMemberAttributeValue != "Item" && propDef.Name == context.DefaultMemberAttributeValue) {
-				var attribute = new ICSharpCode.NRefactory.CSharp.Attribute();
-				var attributeType = context.CurrentModule.CorLibTypes.GetTypeRef("System.Runtime.CompilerServices", "IndexerNameAttribute");
-				attribute.AddAnnotation(attributeType);
-				attribute.Type = ConvertType(attributeType, stringBuilder);
-				attribute.Arguments.Add(new PrimitiveExpression(context.DefaultMemberAttributeValue));
-
-				SimpleType st = attribute.Type as SimpleType;
-				if (st != null && st.Identifier.EndsWith("Attribute", StringComparison.Ordinal)) {
-					var id = Identifier.Create(st.Identifier.Substring(0, st.Identifier.Length - "Attribute".Length));
-					id.AddAnnotationsFrom(st.IdentifierToken);
-					st.IdentifierToken = id;
-				}
-
-				var section = new AttributeSection();
-				section.Attributes.Add(attribute);
-				astProp.AddChild(section, EntityDeclaration.AttributeRole);
-			}
 
 			EntityDeclaration member = astProp;
 			if(propDef.IsIndexer())
@@ -2043,7 +1881,7 @@ namespace ICSharpCode.Decompiler.Ast {
 					UndoByRefToPointer(astParam.Type);
 				}
 				
-				if (paramDef.HasParamDef && paramDef.ParamDef.HasCustomAttributes) {
+				if (paramDef.HasParamDef) {
 					if (paramDef.ParamDef.IsDefined(systemString, paramArrayAttributeString))
 						astParam.ParameterModifier = ParameterModifier.Params;
 				}
@@ -2053,17 +1891,6 @@ namespace ICSharpCode.Decompiler.Ast {
 				
 				ConvertCustomAttributes(metadataTextColorProvider, astParam, paramDef.ParamDef, settings, sb);
 				ModuleDef module = paramDef.Method == null ? null : paramDef.Method.Module;
-				if (module != null && paramDef.HasParamDef && paramDef.ParamDef.HasMarshalType) {
-					astParam.Attributes.Add(new AttributeSection(ConvertMarshalInfo(paramDef.ParamDef, module, sb)));
-				}
-				if (module != null && paramDef.HasParamDef && astParam.ParameterModifier != ParameterModifier.Out && astParam.ParameterModifier != ParameterModifier.In) {
-					if (paramDef.ParamDef.IsIn)
-						astParam.Attributes.Add(new AttributeSection(CreateNonCustomAttribute(typeof(InAttribute), module, GetSystemRuntimeInteropServicesAssemblyRef(module))));
-					if (paramDef.ParamDef.IsOut)
-						astParam.Attributes.Add(new AttributeSection(CreateNonCustomAttribute(typeof(OutAttribute), module, module.CorLibTypes.AssemblyRef)));
-					if (paramDef.ParamDef.IsOptional)
-						astParam.Attributes.Add(new AttributeSection(CreateNonCustomAttribute(typeof(OptionalAttribute), module, module.CorLibTypes.AssemblyRef)));
-				}
 				yield return astParam;
 			}
 		}
@@ -2073,75 +1900,6 @@ namespace ICSharpCode.Decompiler.Ast {
 		void ConvertAttributes(EntityDeclaration attributedNode, TypeDef typeDef)
 		{
 			ConvertCustomAttributes(Context.MetadataTextColorProvider, attributedNode, typeDef, context.Settings, stringBuilder);
-			ConvertSecurityAttributes(Context.MetadataTextColorProvider, attributedNode, typeDef, stringBuilder);
-			
-			// Handle the non-custom attributes:
-			#region SerializableAttribute
-			if (typeDef.IsSerializable)
-				attributedNode.Attributes.Add(new AttributeSection(CreateNonCustomAttribute_SystemRuntimeSerializationFormatters(typeof(SerializableAttribute))));
-			#endregion
-			
-			#region ComImportAttribute
-			if (typeDef.IsImport)
-				attributedNode.Attributes.Add(new AttributeSection(CreateNonCustomAttribute_SystemRuntimeInteropServices(typeof(ComImportAttribute))));
-			#endregion
-			
-			#region StructLayoutAttribute
-			LayoutKind layoutKind = LayoutKind.Auto;
-			switch (typeDef.Attributes & TypeAttributes.LayoutMask) {
-				case TypeAttributes.SequentialLayout:
-					layoutKind = LayoutKind.Sequential;
-					break;
-				case TypeAttributes.ExplicitLayout:
-					layoutKind = LayoutKind.Explicit;
-					break;
-			}
-			CharSet charSet = CharSet.None;
-			switch (typeDef.Attributes & TypeAttributes.StringFormatMask) {
-				case TypeAttributes.AnsiClass:
-					charSet = CharSet.Ansi;
-					break;
-				case TypeAttributes.AutoClass:
-					charSet = CharSet.Auto;
-					break;
-				case TypeAttributes.UnicodeClass:
-					charSet = CharSet.Unicode;
-					break;
-			}
-			bool isValueType = DnlibExtensions.IsValueType(typeDef);
-			LayoutKind defaultLayoutKind = isValueType && !typeDef.IsEnum ? LayoutKind.Sequential : LayoutKind.Auto;
-			if (layoutKind != defaultLayoutKind || charSet != CharSet.Ansi || ShowClassLayout(typeDef, isValueType)) {
-				var attrType = typeof(StructLayoutAttribute);
-				var structLayout = CreateNonCustomAttribute_SystemRuntime(attrType);
-				structLayout.Arguments.Add(CreateEnumIdentifierExpression(typeof(LayoutKind), layoutKind.ToString(), GetSystemRuntimeInteropServicesAssemblyRef(typeDef.Module)));
-				var module = GetModule();
-				if (charSet != CharSet.Ansi) {
-					structLayout.AddNamedArgument(module, attrType, null, typeof(CharSet), null, "CharSet", CreateEnumIdentifierExpression(typeof(CharSet), charSet.ToString(), typeDef.Module.CorLibTypes.AssemblyRef));
-				}
-				if (typeDef.PackingSize != ushort.MaxValue && typeDef.PackingSize > 0) {
-					structLayout.AddNamedArgument(module, attrType, null, typeof(int), null, "Pack", new PrimitiveExpression((int)typeDef.PackingSize));
-				}
-				if (typeDef.ClassSize != uint.MaxValue && typeDef.ClassSize > 0) {
-					structLayout.AddNamedArgument(module, attrType, null, typeof(int), null, "Size", new PrimitiveExpression((int)typeDef.ClassSize));
-				}
-				attributedNode.Attributes.Add(new AttributeSection(structLayout));
-			}
-			#endregion
-		}
-
-		static bool ShowClassLayout(TypeDef td, bool isValueType)
-		{
-			if (!isValueType)
-				return td.HasClassLayout;
-			else {
-				if (td.HasClassLayout) {
-					foreach (var fd in td.Fields) {
-						if (!fd.IsStatic)
-							return true;
-					}
-				}
-				return false;
-			}
 		}
 
 		ModuleDef GetModule()
@@ -2154,27 +1912,6 @@ namespace ICSharpCode.Decompiler.Ast {
 				return context.CurrentModule;
 
 			return null;
-		}
-
-		MemberReferenceExpression CreateEnumIdentifierExpression(Type enumType, string fieldName, AssemblyRef enumTypeAssemblyRef)
-		{
-			var module = GetModule();
-			Expression ide;
-			TypeRef typeRef = null;
-			if (module != null) {
-				typeRef = module.UpdateRowId(new TypeRefUser(module, enumType.Namespace, enumType.Name, enumTypeAssemblyRef));
-				var type = ConvertType(typeRef, stringBuilder);
-				ide = new TypeReferenceExpression(type);
-			}
-			else
-				ide = new IdentifierExpression(enumType.Name);
-			var mre = ide.Member(fieldName, null);
-			if (module != null) {
-				MemberRef mr;
-				mre.AddAnnotation(mr = new MemberRefUser(module, fieldName, new FieldSig(new ValueTypeSig(typeRef)), typeRef));
-				mre.MemberNameToken.AddAnnotation(mr);
-			}
-			return mre;
 		}
 
 		void ConvertAttributes(EntityDeclaration attributedNode, MethodDef methodDef)
@@ -2190,247 +1927,81 @@ namespace ICSharpCode.Decompiler.Ast {
 			if (methodIsIterator)
 				options |= ConvertCustomAttributesFlags.IsYieldReturn;
 			ConvertCustomAttributes(Context.MetadataTextColorProvider, attributedNode, methodDef, context.Settings, stringBuilder, options: options);
-			ConvertSecurityAttributes(Context.MetadataTextColorProvider, attributedNode, methodDef, stringBuilder);
-			
-			MethodImplAttributes implAttributes = methodDef.ImplAttributes & ~MethodImplAttributes.CodeTypeMask;
-			
-			#region DllImportAttribute
-			if (methodDef.HasImplMap) {
-				ImplMap info = methodDef.ImplMap;
-				var attrType = typeof(DllImportAttribute);
-				var module = GetModule();
-				var interopAsmRef = GetSystemRuntimeInteropServicesAssemblyRef(methodDef.Module);
-				Ast.Attribute dllImport = CreateNonCustomAttribute_SystemRuntimeInteropServices(attrType);
-				dllImport.Arguments.Add(new PrimitiveExpression(info.Module == null ? string.Empty : info.Module.Name.String));
-				
-				if (info.IsBestFitDisabled)
-					dllImport.AddNamedArgument(module, attrType, interopAsmRef, typeof(bool), null, "BestFitMapping", new PrimitiveExpression(false));
-				if (info.IsBestFitEnabled)
-					dllImport.AddNamedArgument(module, attrType, interopAsmRef, typeof(bool), null, "BestFitMapping", new PrimitiveExpression(true));
-				
-				System.Runtime.InteropServices.CallingConvention callingConvention;
-				switch (info.Attributes & PInvokeAttributes.CallConvMask) {
-					case PInvokeAttributes.CallConvCdecl:
-						callingConvention = System.Runtime.InteropServices.CallingConvention.Cdecl;
-						break;
-					case PInvokeAttributes.CallConvFastcall:
-						callingConvention = System.Runtime.InteropServices.CallingConvention.FastCall;
-						break;
-					case PInvokeAttributes.CallConvStdCall:
-						callingConvention = System.Runtime.InteropServices.CallingConvention.StdCall;
-						break;
-					case PInvokeAttributes.CallConvThiscall:
-						callingConvention = System.Runtime.InteropServices.CallingConvention.ThisCall;
-						break;
-					case PInvokeAttributes.CallConvWinapi:
-						callingConvention = System.Runtime.InteropServices.CallingConvention.Winapi;
-						break;
-					default:
-						callingConvention = 0;
-						break;
-				}
-				if (callingConvention != System.Runtime.InteropServices.CallingConvention.Winapi)
-					dllImport.AddNamedArgument(module, attrType, interopAsmRef, typeof(System.Runtime.InteropServices.CallingConvention), GetSystemRuntimeInteropServicesAssemblyRef(module), "CallingConvention", CreateEnumIdentifierExpression(typeof(System.Runtime.InteropServices.CallingConvention), callingConvention.ToString(), GetSystemRuntimeInteropServicesAssemblyRef(methodDef.Module)));
-				
-				CharSet charSet = CharSet.None;
-				switch (info.Attributes & PInvokeAttributes.CharSetMask) {
-					case PInvokeAttributes.CharSetAnsi:
-						charSet = CharSet.Ansi;
-						break;
-					case PInvokeAttributes.CharSetAuto:
-						charSet = CharSet.Auto;
-						break;
-					case PInvokeAttributes.CharSetUnicode:
-						charSet = CharSet.Unicode;
-						break;
-				}
-				if (charSet != CharSet.None)
-					dllImport.AddNamedArgument(module, attrType, interopAsmRef, typeof(CharSet), null, "CharSet", CreateEnumIdentifierExpression(typeof(CharSet), charSet.ToString(), GetSystemRuntimeInteropServicesAssemblyRef(methodDef.Module)));
-				
-				if (!UTF8String.IsNullOrEmpty(info.Name) && info.Name != methodDef.Name)
-					dllImport.AddNamedArgument(module, attrType, interopAsmRef, typeof(string), null, "EntryPoint", new PrimitiveExpression(info.Name.String));
-				
-				if (info.IsNoMangle)
-					dllImport.AddNamedArgument(module, attrType, interopAsmRef, typeof(bool), null, "ExactSpelling", new PrimitiveExpression(true));
-				
-				if ((implAttributes & MethodImplAttributes.PreserveSig) == MethodImplAttributes.PreserveSig)
-					implAttributes &= ~MethodImplAttributes.PreserveSig;
-				else
-					dllImport.AddNamedArgument(module, attrType, interopAsmRef, typeof(bool), null, "PreserveSig", new PrimitiveExpression(false));
-				
-				if (info.SupportsLastError)
-					dllImport.AddNamedArgument(module, attrType, interopAsmRef, typeof(bool), null, "SetLastError", new PrimitiveExpression(true));
-				
-				if (info.IsThrowOnUnmappableCharDisabled)
-					dllImport.AddNamedArgument(module, attrType, interopAsmRef, typeof(bool), null, "ThrowOnUnmappableChar", new PrimitiveExpression(false));
-				if (info.IsThrowOnUnmappableCharEnabled)
-					dllImport.AddNamedArgument(module, attrType, interopAsmRef, typeof(bool), null, "ThrowOnUnmappableChar", new PrimitiveExpression(true));
-				
-				attributedNode.Attributes.Add(new AttributeSection(dllImport));
-			}
-			#endregion
-			
-			#region PreserveSigAttribute
-			if (implAttributes == MethodImplAttributes.PreserveSig) {
-				attributedNode.Attributes.Add(new AttributeSection(CreateNonCustomAttribute_SystemRuntimeInteropServices(typeof(PreserveSigAttribute))));
-				implAttributes = 0;
-			}
-			#endregion
-			
-			#region MethodImplAttribute
-			if (implAttributes != 0) {
-				Ast.Attribute methodImpl = CreateNonCustomAttribute_SystemRuntime(typeof(MethodImplAttribute));
-				TypeRef methodImplOptions = methodDef.Module.CorLibTypes.GetTypeRef(
-					"System.Runtime.CompilerServices", "MethodImplOptions");
-				methodImpl.Arguments.Add(MakePrimitive((long)implAttributes, methodImplOptions, stringBuilder));
-				attributedNode.Attributes.Add(new AttributeSection(methodImpl));
-			}
-			#endregion
-			
 			ConvertAttributes(attributedNode, methodDef.Parameters.ReturnParameter, methodDef.Module);
 		}
 		
 		void ConvertAttributes(EntityDeclaration attributedNode, Parameter methodReturnType, ModuleDef module)
 		{
 			ConvertCustomAttributes(Context.MetadataTextColorProvider, attributedNode, methodReturnType.ParamDef, context.Settings, stringBuilder, "return");
-			if (methodReturnType.HasParamDef && methodReturnType.ParamDef.HasMarshalType) {
-				var marshalInfo = ConvertMarshalInfo(methodReturnType.ParamDef, module, stringBuilder);
-				attributedNode.Attributes.Add(new AttributeSection(marshalInfo) { AttributeTarget = "return" });
-			}
 		}
 		
 		internal static void ConvertAttributes(MetadataTextColorProvider metadataTextColorProvider, EntityDeclaration attributedNode, FieldDef fieldDef, DecompilerSettings settings, StringBuilder sb, string attributeTarget = null)
 		{
 			ConvertCustomAttributes(metadataTextColorProvider, attributedNode, fieldDef, settings, sb);
-			
-			#region FieldOffsetAttribute
-			if (fieldDef.HasLayoutInfo && fieldDef.FieldOffset.HasValue) {
-				Ast.Attribute fieldOffset = CreateNonCustomAttribute(typeof(FieldOffsetAttribute), fieldDef.Module, GetSystemRuntimeInteropServicesAssemblyRef(fieldDef.Module));
-				fieldOffset.Arguments.Add(new PrimitiveExpression((int)fieldDef.FieldOffset));
-				attributedNode.Attributes.Add(new AttributeSection(fieldOffset) { AttributeTarget = attributeTarget });
-			}
-			#endregion
-			
-			#region NonSerializedAttribute
-			if (fieldDef.IsNotSerialized) {
-				Ast.Attribute nonSerialized = CreateNonCustomAttribute(typeof(NonSerializedAttribute), fieldDef.Module, GetSystemRuntimeSerializationFormattersAssemblyRef(fieldDef.Module));
-				attributedNode.Attributes.Add(new AttributeSection(nonSerialized) { AttributeTarget = attributeTarget });
-			}
-			#endregion
-			
-			if (fieldDef.HasMarshalType) {
-				attributedNode.Attributes.Add(new AttributeSection(ConvertMarshalInfo(fieldDef, fieldDef.Module, sb))  { AttributeTarget = attributeTarget });
-			}
-		}
-
-		static AssemblyRef GetSystemRuntimeInteropServicesAssemblyRef(ModuleDef module) {
-			if (module == null)
-				return null;
-			return module.GetAssemblyRefs().FirstOrDefault(a => a.Name == systemRuntimeInteropServicesName && contractsPublicKeyToken.Equals(a.PublicKeyOrToken.Token)) ??
-					module.CorLibTypes.AssemblyRef;
-		}
-		static AssemblyRef GetSystemRuntimeSerializationFormattersAssemblyRef(ModuleDef module) {
-			if (module == null)
-				return null;
-			return module.GetAssemblyRefs().FirstOrDefault(a => a.Name == systemRuntimeSerializationFormattersName && contractsPublicKeyToken.Equals(a.PublicKeyOrToken.Token)) ??
-					module.CorLibTypes.AssemblyRef;
-		}
-		static readonly UTF8String systemRuntimeInteropServicesName = new UTF8String("System.Runtime.InteropServices");
-		static readonly UTF8String systemRuntimeSerializationFormattersName = new UTF8String("System.Runtime.Serialization.Formatters");
-		static readonly PublicKeyToken contractsPublicKeyToken = new PublicKeyToken("b03f5f7f11d50a3a");
-
-		#region MarshalAsAttribute (ConvertMarshalInfo)
-		static Ast.Attribute ConvertMarshalInfo(IHasFieldMarshal marshalInfoProvider, ModuleDef module, StringBuilder sb)
-		{
-			MarshalType marshalInfo = marshalInfoProvider.MarshalType;
-			var attrType = typeof(MarshalAsAttribute);
-			var interopAsmRef = GetSystemRuntimeInteropServicesAssemblyRef(module);
-			Ast.Attribute attr = CreateNonCustomAttribute(attrType, module, interopAsmRef);
-			var unmanagedType = module.UpdateRowId(new TypeRefUser(module, systemRuntimeInteropServicesName, "UnmanagedType", interopAsmRef));
-			attr.Arguments.Add(MakePrimitive(unchecked((int)marshalInfo.NativeType), unmanagedType, sb));
-			
-			var fami = marshalInfo as FixedArrayMarshalType;
-			if (fami != null) {
-				if (fami.IsSizeValid)
-					attr.AddNamedArgument(module, attrType, interopAsmRef, typeof(int), null, "SizeConst", new PrimitiveExpression(fami.Size));
-				if (fami.IsElementTypeValid)
-					attr.AddNamedArgument(module, attrType, interopAsmRef, typeof(UnmanagedType), interopAsmRef, "ArraySubType", MakePrimitive((int)fami.ElementType, unmanagedType, sb));
-			}
-			var sami = marshalInfo as SafeArrayMarshalType;
-			if (sami != null) {
-				if (sami.IsVariantTypeValid) {
-					var varEnum = module.UpdateRowId(new TypeRefUser(module, systemRuntimeInteropServicesName, "VarEnum", interopAsmRef));
-#pragma warning disable CS0618 // 'VarEnum' is obsolete: 'Marshalling VARIANTs may be unavailable in future releases.'
-					attr.AddNamedArgument(module, attrType, interopAsmRef, typeof(VarEnum), interopAsmRef, "SafeArraySubType", MakePrimitive((int)sami.VariantType, varEnum, sb));
-#pragma warning restore CS0618 // 'VarEnum' is obsolete: 'Marshalling VARIANTs may be unavailable in future releases.'
-				}
-				if (sami.IsUserDefinedSubTypeValid)
-					attr.AddNamedArgument(module, attrType, interopAsmRef, typeof(Type), null, "SafeArrayUserDefinedSubType", CreateTypeOfExpression(sami.UserDefinedSubType, sb));
-			}
-			var ami = marshalInfo as ArrayMarshalType;
-			if (ami != null) {
-				if (ami.IsElementTypeValid && ami.ElementType != NativeType.Max)
-					attr.AddNamedArgument(module, attrType, interopAsmRef, typeof(UnmanagedType), interopAsmRef, "ArraySubType", MakePrimitive((int)ami.ElementType, unmanagedType, sb));
-				if (ami.IsSizeValid)
-					attr.AddNamedArgument(module, attrType, interopAsmRef, typeof(int), null, "SizeConst", new PrimitiveExpression(ami.Size));
-				if (ami.Flags != 0 && ami.ParamNumber >= 0)
-					attr.AddNamedArgument(module, attrType, interopAsmRef, typeof(short), null, "SizeParamIndex", new PrimitiveExpression(ami.ParamNumber));
-			}
-			var cmi = marshalInfo as CustomMarshalType;
-			if (cmi != null) {
-				if (cmi.CustomMarshaler != null)
-					attr.AddNamedArgument(module, attrType, interopAsmRef, typeof(Type), null, "MarshalTypeRef", CreateTypeOfExpression(cmi.CustomMarshaler, sb));
-				if (!UTF8String.IsNullOrEmpty(cmi.Cookie))
-					attr.AddNamedArgument(module, attrType, interopAsmRef, typeof(string), null, "MarshalCookie", new PrimitiveExpression(cmi.Cookie.String));
-			}
-			var fssmi = marshalInfo as FixedSysStringMarshalType;
-			if (fssmi != null) {
-				if (fssmi.IsSizeValid)
-					attr.AddNamedArgument(module, attrType, interopAsmRef, typeof(int), null, "SizeConst", new PrimitiveExpression(fssmi.Size));
-			}
-			var imti = marshalInfo as InterfaceMarshalType;
-			if (imti != null) {
-				if (imti.IsIidParamIndexValid)
-					attr.AddNamedArgument(module, attrType, interopAsmRef, typeof(int), null, "IidParameterIndex", new PrimitiveExpression(imti.IidParamIndex));
-			}
-			return attr;
-		}
-		#endregion
-
-		Ast.Attribute CreateNonCustomAttribute_SystemRuntimeInteropServices(Type attributeType)
-		{
-			var module = context.CurrentType?.Module;
-			return CreateNonCustomAttribute(attributeType, module, GetSystemRuntimeInteropServicesAssemblyRef(module));
-		}
-
-		Ast.Attribute CreateNonCustomAttribute_SystemRuntime(Type attributeType)
-		{
-			var module = context.CurrentType?.Module;
-			return CreateNonCustomAttribute(attributeType, module, module?.CorLibTypes?.AssemblyRef);
-		}
-
-		Ast.Attribute CreateNonCustomAttribute_SystemRuntimeSerializationFormatters(Type attributeType)
-		{
-			var module = context.CurrentType?.Module;
-			return CreateNonCustomAttribute(attributeType, module, GetSystemRuntimeSerializationFormattersAssemblyRef(module));
-		}
-		
-		static Ast.Attribute CreateNonCustomAttribute(Type attributeType, ModuleDef module, AssemblyRef attributeTypeAssemblyRef)
-		{
-			Debug.Assert(attributeType.Name.EndsWith("Attribute", StringComparison.Ordinal));
-			Ast.Attribute attr = new Ast.Attribute();
-			attr.Type = new SimpleType(attributeType.Name.Substring(0, attributeType.Name.Length - "Attribute".Length));
-			if (module != null && attributeTypeAssemblyRef != null) {
-				attr.Type.AddAnnotation(module.UpdateRowId(new TypeRefUser(module, attributeType.Namespace, attributeType.Name, attributeTypeAssemblyRef)));
-			}
-			return attr;
 		}
 
 		static IEnumerable<CustomAttribute> SortCustomAttributes(IHasCustomAttribute customAttributeProvider, bool sort, StringBuilder sb)
 		{
+			var cas = customAttributeProvider.GetCustomAttributes();
+			if (customAttributeProvider is AssemblyDef) {
+				// Always sort these pseudo custom attributes
+				if (cas.Any(IsTypeForwardedToAttribute)) {
+					var newCas = new List<CustomAttribute>(cas.Where(a => !IsTypeForwardedToAttribute(a)));
+					var tft = new List<CustomAttribute>(cas.Where(IsTypeForwardedToAttribute));
+					tft.Sort(CompareTypeForwardedToAttributes);
+					newCas.AddRange(tft);
+					cas = newCas;
+				}
+			}
 			if (!sort)
-				return customAttributeProvider.CustomAttributes;
-			return customAttributeProvider.CustomAttributes.OrderBy(a => { sb.Clear(); return FullNameFactory.FullName(a.AttributeType, false, null, sb); });
+				return cas;
+			return cas.OrderBy(a => { sb.Clear(); return FullNameFactory.FullName(a.AttributeType, false, null, sb); });
+		}
+
+		static bool IsTypeForwardedToAttribute(CustomAttribute ca) => IsTypeForwardedToAttribute(ca, out _);
+		static bool IsTypeForwardedToAttribute(CustomAttribute ca, out ITypeDefOrRef type) {
+			type = null;
+			if (ca.TypeFullName != "System.Runtime.CompilerServices.TypeForwardedToAttribute")
+				return false;
+			if (ca.ConstructorArguments.Count != 1)
+				return false;
+			return ca.ConstructorArguments[0].Value is TypeDefOrRefSig tdrs && !((type = tdrs.TypeDefOrRef) is null);
+		}
+
+		static int CompareTypeForwardedToAttributes(CustomAttribute x, CustomAttribute y) {
+			Debug.Assert(IsTypeForwardedToAttribute(x));
+			Debug.Assert(IsTypeForwardedToAttribute(y));
+			return CompareExportedTypes(((TypeDefOrRefSig)x.ConstructorArguments[0].Value).TypeDefOrRef, ((TypeDefOrRefSig)y.ConstructorArguments[0].Value).TypeDefOrRef);
+		}
+
+		static int CompareExportedTypes(ITypeDefOrRef x, ITypeDefOrRef y) {
+			var xasm = x.DefinitionAssembly;
+			var yasm = y.DefinitionAssembly;
+			int c = StringComparer.OrdinalIgnoreCase.Compare(xasm.FullNameToken, yasm.FullNameToken);
+			if (c != 0) return c;
+			c = StringComparer.OrdinalIgnoreCase.Compare(GetName(x), GetName(y));
+			if (c != 0) return c;
+			return x.MDToken.CompareTo(y.MDToken);
+		}
+
+		static string GetName(ITypeDefOrRef type) {
+			if (!(type.DeclaringType is ExportedType declType))
+				return type.Name;
+			if (!(declType.DeclaringType is ExportedType declType2))
+				return declType.Name + "." + type.Name;
+			var declTypes = new List<ITypeDefOrRef>();
+			var t = type;
+			while (!(t is null)) {
+				declTypes.Add(t);
+				t = t.DeclaringType;
+			}
+			var sb = new StringBuilder();
+			for (int i = declTypes.Count - 1; i >= 0; i--) {
+				if (i != declTypes.Count - 1)
+					sb.Append('.');
+				sb.Append(declTypes[i].Name.String);
+			}
+			return sb.ToString();
 		}
 
 		[Flags]
@@ -2450,14 +2021,14 @@ namespace ICSharpCode.Decompiler.Ast {
 		static readonly UTF8String obsoleteAttributeString = new UTF8String("ObsoleteAttribute");
 		static void ConvertCustomAttributes(MetadataTextColorProvider metadataTextColorProvider, AstNode attributedNode, IHasCustomAttribute customAttributeProvider, DecompilerSettings settings, StringBuilder sb, string attributeTarget = null, ConvertCustomAttributesFlags options = ConvertCustomAttributesFlags.None)
 		{
-			if (customAttributeProvider != null && customAttributeProvider.HasCustomAttributes) {
+			if (customAttributeProvider != null) {
 				EntityDeclaration entityDecl = attributedNode as EntityDeclaration;
 				var attributes = new List<ICSharpCode.NRefactory.CSharp.Attribute>();
 				bool isType = attributedNode is TypeDeclaration;
 				bool isParameter = attributedNode is ParameterDeclaration;
 				bool isMethod = attributedNode is MethodDeclaration || attributedNode is Accessor;
 				bool isProperty = attributedNode is PropertyDeclaration;
-				bool onePerLine = attributeTarget == "module" || attributeTarget == "assembly" ||
+				bool onePerLine = attributeTarget == "module" || attributeTarget == "assembly" || isParameter ||
 					// Params ignore the option
 					(settings.OneCustomAttributePerLine && entityDecl != null);
 				bool isAsync = (options & ConvertCustomAttributesFlags.IsAsync) != 0;
@@ -2538,8 +2109,19 @@ namespace ICSharpCode.Decompiler.Ast {
 				}
 
 				if (onePerLine) {
+					bool isAssembly = attributeTarget == "assembly";
+					IAssembly lastAssembly = null;
+
 					// use separate section for each attribute
 					foreach (var attribute in attributes) {
+						if (isAssembly && attribute.Annotation<CustomAttribute>() is CustomAttribute ca && IsTypeForwardedToAttribute(ca, out var exportedType)) {
+							if (lastAssembly == null || !AssemblyNameComparer.CompareAll.Equals(exportedType.DefinitionAssembly, lastAssembly)) {
+								lastAssembly = exportedType.DefinitionAssembly;
+								var cmt = new Comment(" " + lastAssembly.FullNameToken);
+								attributedNode.AddChild(cmt, Roles.Comment);
+							}
+						}
+
 						var section = new AttributeSection();
 						section.AttributeTarget = attributeTarget;
 						section.Attributes.Add(attribute);
@@ -2577,66 +2159,6 @@ namespace ICSharpCode.Decompiler.Ast {
 				type = type.BaseType.ResolveTypeDef();
 			}
 			return null;
-		}
-
-		static void ConvertSecurityAttributes(MetadataTextColorProvider metadataTextColorProvider, AstNode attributedNode, IHasDeclSecurity secDeclProvider, StringBuilder sb, string attributeTarget = null)
-		{
-			if (secDeclProvider == null || !secDeclProvider.HasDeclSecurities)
-				return;
-			var attributes = new List<ICSharpCode.NRefactory.CSharp.Attribute>();
-			foreach (var secDecl in secDeclProvider.DeclSecurities.OrderBy(d => d.Action)) {
-				foreach (var secAttribute in secDecl.SecurityAttributes.OrderBy(a => { sb.Clear(); return FullNameFactory.FullName(a.AttributeType, false, null, sb); })) {
-					if (secAttribute.AttributeType == null)
-						continue;
-					var attribute = new ICSharpCode.NRefactory.CSharp.Attribute();
-					attribute.AddAnnotation(secAttribute);
-					attribute.Type = ConvertType(secAttribute.AttributeType, sb);
-					attributes.Add(attribute);
-					
-					SimpleType st = attribute.Type as SimpleType;
-					if (st != null && st.Identifier.EndsWith("Attribute", StringComparison.Ordinal)) {
-						var id = Identifier.Create(st.Identifier.Substring(0, st.Identifier.Length - "Attribute".Length));
-						id.AddAnnotationsFrom(st.IdentifierToken);
-						st.IdentifierToken = id;
-					}
-					
-					var module = secAttribute.AttributeType.Module;
-					var securityActionType = module.CorLibTypes.GetTypeRef("System.Security.Permissions", "SecurityAction");
-					attribute.Arguments.Add(MakePrimitive((int)secDecl.Action, securityActionType, sb));
-					
-					if (secAttribute.HasNamedArguments) {
-						TypeDef resolvedAttributeType = secAttribute.AttributeType.ResolveTypeDef();
-						foreach (var propertyNamedArg in secAttribute.Properties) {
-							var propertyReference = resolvedAttributeType != null ? resolvedAttributeType.Properties.FirstOrDefault(pr => pr.Name == propertyNamedArg.Name) : null;
-							var propertyName = IdentifierExpression.Create(propertyNamedArg.Name, metadataTextColorProvider.GetColor((object)propertyReference ?? BoxedTextColor.InstanceProperty), true).WithAnnotation(propertyReference);
-							var argumentValue = ConvertArgumentValue(propertyNamedArg.Argument, sb);
-							attribute.Arguments.Add(new AssignmentExpression(propertyName, argumentValue));
-						}
-
-						foreach (var fieldNamedArg in secAttribute.Fields) {
-							var fieldReference = resolvedAttributeType != null ? resolvedAttributeType.Fields.FirstOrDefault(f => f.Name == fieldNamedArg.Name) : null;
-							var fieldName = IdentifierExpression.Create(fieldNamedArg.Name, metadataTextColorProvider.GetColor((object)fieldReference ?? BoxedTextColor.InstanceField), true).WithAnnotation(fieldReference);
-							var argumentValue = ConvertArgumentValue(fieldNamedArg.Argument, sb);
-							attribute.Arguments.Add(new AssignmentExpression(fieldName, argumentValue));
-						}
-					}
-				}
-			}
-			if (attributeTarget == "module" || attributeTarget == "assembly") {
-				// use separate section for each attribute
-				foreach (var attribute in attributes) {
-					var section = new AttributeSection();
-					section.AttributeTarget = attributeTarget;
-					section.Attributes.Add(attribute);
-					attributedNode.AddChild(section, EntityDeclaration.AttributeRole);
-				}
-			} else if (attributes.Count > 0) {
-				// use single section for all attributes
-				var section = new AttributeSection();
-				section.AttributeTarget = attributeTarget;
-				section.Attributes.AddRange(attributes);
-				attributedNode.AddChild(section, EntityDeclaration.AttributeRole);
-			}
 		}
 		
 		private static Expression ConvertArgumentValue(CAArgument argument, StringBuilder sb)
@@ -2805,7 +2327,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			if (methodDefinition != null) {
 				addNewModifier = HidesByName(memberDefinition, includeBaseMethods: false);
 				if (!addNewModifier)
-					addNewModifier = TypesHierarchyHelpers.FindBaseMethods(methodDefinition).Any();
+					addNewModifier = TypesHierarchyHelpers.FindBaseMethods(methodDefinition, compareReturnType: false).Any();
 			} else
 				addNewModifier = HidesByName(memberDefinition, includeBaseMethods: true);
 			return addNewModifier;

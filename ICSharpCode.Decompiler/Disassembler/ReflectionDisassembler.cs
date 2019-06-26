@@ -1022,7 +1022,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 		
 		bool HasParameterAttributes(Parameter p)
 		{
-			return p.ParamDef != null && (p.ParamDef.HasConstant || p.ParamDef.HasCustomAttributes);
+			return p.ParamDef != null && (p.ParamDef.HasConstant || p.ParamDef.CustomAttributes.Count > 0);
 		}
 		
 		void WriteParameterAttributes(int index, Parameter p)
@@ -1132,9 +1132,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			if (addLineSep)
 				output.AddLineSeparator(output.NextPosition);
 			output.WriteLine();
-			if (field.HasCustomAttributes) {
-				WriteAttributes(field.CustomAttributes);
-			}
+			WriteAttributes(field.CustomAttributes);
 		}
 		#endregion
 		
