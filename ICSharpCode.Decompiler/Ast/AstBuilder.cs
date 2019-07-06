@@ -1182,6 +1182,8 @@ namespace ICSharpCode.Decompiler.Ast {
 				// decompile static method in interface
 				astMethod.Modifiers = ConvertModifiers(methodDef, true);
 				createMethodBody = true;
+			} else {
+				createMethodBody = true;
 			}
 
 			OperatorDeclaration op = null;
