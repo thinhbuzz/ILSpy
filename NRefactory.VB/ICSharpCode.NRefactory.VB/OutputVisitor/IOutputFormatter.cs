@@ -28,7 +28,7 @@ namespace ICSharpCode.NRefactory.VB {
 		/// <summary>
 		/// Writes a token to the output.
 		/// </summary>
-		void WriteToken(string token, object data);
+		void WriteToken(string token, object data, object reference = null);
 		void Space();
 		
 		void Indent();

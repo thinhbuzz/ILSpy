@@ -695,7 +695,8 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				sig.WriteTo(writer);
 				return;
 			}
-			
+
+			const DecompilerReferenceFlags numberFlags = DecompilerReferenceFlags.Local | DecompilerReferenceFlags.Hidden | DecompilerReferenceFlags.NoFollow;
 			string s = operand as string;
 			if (s != null) {
 				int start = writer.NextPosition;
@@ -709,10 +710,10 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				if (val == 0) {
 					if (1 / val == float.NegativeInfinity) {
 						// negative zero is a special case
-						writer.Write("-0.0", BoxedTextColor.Number);
+						writer.Write("-0.0", operand, numberFlags, BoxedTextColor.Number);
 					}
 					else
-						writer.Write("0.0", BoxedTextColor.Number);
+						writer.Write("0.0", operand, numberFlags, BoxedTextColor.Number);
 				} else if (float.IsInfinity(val) || float.IsNaN(val)) {
 					byte[] data = BitConverter.GetBytes(val);
 					var bh1 = BracePairHelper.Create(writer, "(", CodeBracesRangeFlags.Parentheses);
@@ -723,17 +724,17 @@ namespace ICSharpCode.Decompiler.Disassembler {
 					}
 					bh1.Write(")");
 				} else {
-					writer.Write(val.ToString("R", System.Globalization.CultureInfo.InvariantCulture), BoxedTextColor.Number);
+					writer.Write(val.ToString("R", System.Globalization.CultureInfo.InvariantCulture), operand, numberFlags, BoxedTextColor.Number);
 				}
 			} else if (operand is double) {
 				double val = (double)operand;
 				if (val == 0) {
 					if (1 / val == double.NegativeInfinity) {
 						// negative zero is a special case
-						writer.Write("-0.0", BoxedTextColor.Number);
+						writer.Write("-0.0", operand, numberFlags, BoxedTextColor.Number);
 					}
 					else
-						writer.Write("0.0", BoxedTextColor.Number);
+						writer.Write("0.0", operand, numberFlags, BoxedTextColor.Number);
 				} else if (double.IsInfinity(val) || double.IsNaN(val)) {
 					byte[] data = BitConverter.GetBytes(val);
 					var bh1 = BracePairHelper.Create(writer, "(", CodeBracesRangeFlags.Parentheses);
@@ -744,7 +745,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 					}
 					bh1.Write(")");
 				} else {
-					writer.Write(val.ToString("R", System.Globalization.CultureInfo.InvariantCulture), BoxedTextColor.Number);
+					writer.Write(val.ToString("R", System.Globalization.CultureInfo.InvariantCulture), operand, numberFlags, BoxedTextColor.Number);
 				}
 			} else if (operand is bool) {
 				writer.Write((bool)operand ? "true" : "false", BoxedTextColor.Keyword);
@@ -753,7 +754,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 					writer.Write("<null>", BoxedTextColor.Error);
 				else {
 					s = ToInvariantCultureString(operand);
-					writer.Write(s, CSharpMetadataTextColorProvider.Instance.GetColor(operand));
+					writer.Write(s, operand, numberFlags, CSharpMetadataTextColorProvider.Instance.GetColor(operand));
 				}
 			}
 		}

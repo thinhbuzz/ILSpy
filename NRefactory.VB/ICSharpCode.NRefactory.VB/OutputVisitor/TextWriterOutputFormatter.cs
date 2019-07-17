@@ -36,7 +36,7 @@ namespace ICSharpCode.NRefactory.VB {
 			textWriter.Write(keyword);
 		}
 		
-		public void WriteToken(string token, object data)
+		public void WriteToken(string token, object data, object reference)
 		{
 			WriteIndentation();
 			textWriter.Write(token);

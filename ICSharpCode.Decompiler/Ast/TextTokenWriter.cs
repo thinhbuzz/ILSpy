@@ -337,7 +337,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			TextWriterTokenWriter.WritePrimitiveValue(value, data, literalValue, context.Settings.MaxStringLength, ref column, WritePrimitiveValueCore, WriteToken);
 		}
 
-		void WritePrimitiveValueCore(string text, object color)
+		void WritePrimitiveValueCore(string text, object reference, object color)
 		{
 			if (color == BoxedTextColor.String || color == BoxedTextColor.Char) {
 				int start = output.NextPosition;
@@ -345,6 +345,8 @@ namespace ICSharpCode.Decompiler.Ast {
 				int end = output.NextPosition;
 				output.AddBracePair(new TextSpan(start, 1), new TextSpan(end - 1, 1), CodeBracesRangeFlags.SingleQuotes);
 			}
+			else if (reference != null)
+				output.Write(text, reference, DecompilerReferenceFlags.Local | DecompilerReferenceFlags.Hidden | DecompilerReferenceFlags.NoFollow, color);
 			else
 				output.Write(text, color);
 		}

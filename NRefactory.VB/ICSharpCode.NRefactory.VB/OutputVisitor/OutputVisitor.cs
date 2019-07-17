@@ -1525,7 +1525,7 @@ namespace ICSharpCode.NRefactory.VB {
 						WriteIdentifier("NaN", BoxedTextColor.LiteralField);
 					return;
 				}
-				formatter.WriteToken(f.ToString("R", NumberFormatInfo.InvariantInfo) + "F", BoxedTextColor.Number);
+				formatter.WriteToken(f.ToString("R", NumberFormatInfo.InvariantInfo) + "F", BoxedTextColor.Number, val);
 				lastWritten = LastWritten.Other;
 			} else if (val is double) {
 				double f = (double)val;
@@ -1545,7 +1545,7 @@ namespace ICSharpCode.NRefactory.VB {
 				string number = f.ToString("R", NumberFormatInfo.InvariantInfo);
 				if (number.IndexOf('.') < 0 && number.IndexOf('E') < 0)
 					number += ".0";
-				formatter.WriteToken(number, BoxedTextColor.Number);
+				formatter.WriteToken(number, BoxedTextColor.Number, val);
 				// needs space if identifier follows number; this avoids mistaking the following identifier as type suffix
 				lastWritten = LastWritten.KeywordOrIdentifier;
 			} else if (val is IFormattable) {
@@ -1561,7 +1561,7 @@ namespace ICSharpCode.NRefactory.VB {
 				} else if (val is long || val is ulong) {
 					b.Append("L");
 				}
-				formatter.WriteToken(b.ToString(), VisualBasicMetadataTextColorProvider.Instance.GetColor(val));
+				formatter.WriteToken(b.ToString(), VisualBasicMetadataTextColorProvider.Instance.GetColor(val), val);
 				// needs space if identifier follows number; this avoids mistaking the following identifier as type suffix
 				lastWritten = LastWritten.KeywordOrIdentifier;
 			} else {
