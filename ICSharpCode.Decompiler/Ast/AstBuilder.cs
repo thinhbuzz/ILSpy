@@ -192,8 +192,9 @@ namespace ICSharpCode.Decompiler.Ast {
 					if (method.Name.StartsWith("_Lambda$__") && method.IsCompilerGenerated())
 						return true;
 					if (method.HasGeneratedName() && method.IsCompilerGenerated())
-						return true;
+						return !method.Name.Contains(">g__");
 				}
+				return false;
 			}
 
 			TypeDef type = member as TypeDef;
@@ -215,6 +216,7 @@ namespace ICSharpCode.Decompiler.Ast {
 					if (type.IsAnonymousType())
 						return true;
 				}
+				return false;
 			}
 			
 			FieldDef field = member as FieldDef;
@@ -237,6 +239,7 @@ namespace ICSharpCode.Decompiler.Ast {
 							return true;
 					}
 				}
+				return false;
 			}
 
 			return false;
