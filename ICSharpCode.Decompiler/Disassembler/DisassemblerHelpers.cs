@@ -510,7 +510,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				writer.Write(" ", BoxedTextColor.Text);
 				writer.Write("modopt", BoxedTextColor.Keyword);
 				var bh1 = BracePairHelper.Create(writer, "(", CodeBracesRangeFlags.Parentheses);
-				((ModifierSig)type).Modifier.WriteTo(writer, ILNameSyntax.TypeName, depth);
+				((ModifierSig)type).Modifier.WriteTo(writer, ILNameSyntax.TypeName, ThreeState.Unknown, depth);
 				bh1.Write(")");
 				writer.Write(" ", BoxedTextColor.Text);
 			}
@@ -519,24 +519,31 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				writer.Write(" ", BoxedTextColor.Text);
 				writer.Write("modreq", BoxedTextColor.Keyword);
 				var bh1 = BracePairHelper.Create(writer, "(", CodeBracesRangeFlags.Parentheses);
-				((ModifierSig)type).Modifier.WriteTo(writer, ILNameSyntax.TypeName, depth);
+				((ModifierSig)type).Modifier.WriteTo(writer, ILNameSyntax.TypeName, ThreeState.Unknown, depth);
 				bh1.Write(")");
 				writer.Write(" ", BoxedTextColor.Text);
 			}
-			else if (type is TypeDefOrRefSig) {
-				WriteTo(((TypeDefOrRefSig)type).TypeDefOrRef, writer, syntax, depth);
+			else if (type is TypeDefOrRefSig tdrs) {
+				ThreeState isVT;
+				if (tdrs is ClassSig)
+					isVT = ThreeState.No;
+				else if (tdrs is ValueTypeSig)
+					isVT = ThreeState.Yes;
+				else
+					isVT = ThreeState.Unknown;
+				WriteTo(tdrs.TypeDefOrRef, writer, syntax, isVT, depth);
 			} else if (type is FnPtrSig) {
-				WriteTo(type.ToTypeDefOrRef(), writer, syntax, depth);
+				WriteTo(type.ToTypeDefOrRef(), writer, syntax, ThreeState.Unknown, depth);
 			}
 			//TODO: SentinelSig
 		}
 
 		public static void WriteTo(this ITypeDefOrRef type, IDecompilerOutput writer, ILNameSyntax syntax = ILNameSyntax.Signature)
 		{
-			type.WriteTo(writer, syntax, 0);
+			type.WriteTo(writer, syntax, ThreeState.Unknown, 0);
 		}
 
-		public static void WriteTo(this ITypeDefOrRef type, IDecompilerOutput writer, ILNameSyntax syntax, int depth)
+		internal static void WriteTo(this ITypeDefOrRef type, IDecompilerOutput writer, ILNameSyntax syntax, ThreeState isValueType, int depth)
 		{
 			if (depth++ > MAX_CONVERTTYPE_DEPTH || type == null)
 				return;
@@ -563,12 +570,17 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				WriteKeyword(writer, name, typeSig.ToTypeDefOrRef());
 			} else {
 				if (syntax == ILNameSyntax.Signature || syntax == ILNameSyntax.SignatureNoNamedTypeParameters) {
-					writer.Write(DnlibExtensions.IsValueType(type) ? "valuetype" : "class", BoxedTextColor.Keyword);
+					bool isVT;
+					if (isValueType != ThreeState.Unknown)
+						isVT = isValueType == ThreeState.Yes;
+					else
+						isVT = DnlibExtensions.IsValueType(type);
+					writer.Write(isVT ? "valuetype" : "class", BoxedTextColor.Keyword);
 					writer.Write(" ", BoxedTextColor.Text);
 				}
 
 				if (type.DeclaringType != null) {
-					type.DeclaringType.WriteTo(writer, ILNameSyntax.TypeName, depth);
+					type.DeclaringType.WriteTo(writer, ILNameSyntax.TypeName, ThreeState.Unknown, depth);
 					writer.Write("/", BoxedTextColor.Operator);
 					writer.Write(Escape(typeName), type, DecompilerReferenceFlags.None, CSharpMetadataTextColorProvider.Instance.GetColor(type));
 				} else {
@@ -840,5 +852,11 @@ namespace ICSharpCode.Decompiler.Disassembler {
 					return null;
 			}
 		}
+	}
+
+	enum ThreeState {
+		Unknown,
+		No,
+		Yes,
 	}
 }
