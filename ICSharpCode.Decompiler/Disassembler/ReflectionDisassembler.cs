@@ -178,7 +178,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			{ MethodAttributes.Final, "final" },
 			{ MethodAttributes.HideBySig, "hidebysig" },
 			{ MethodAttributes.SpecialName, "specialname" },
-			{ MethodAttributes.PInvokeImpl, null }, // handled separately
+			{ MethodAttributes.PinvokeImpl, null }, // handled separately
 			{ MethodAttributes.UnmanagedExport, "export" },
 			{ MethodAttributes.RTSpecialName, "rtspecialname" },
 			{ MethodAttributes.RequireSecObject, "reqsecobj" },
