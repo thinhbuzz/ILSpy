@@ -24,6 +24,7 @@ using dnlib.DotNet.Emit;
 using dnlib.DotNet.Pdb;
 using dnSpy.Contracts.Decompiler;
 using dnSpy.Contracts.Text;
+using ICSharpCode.NRefactory;
 
 namespace ICSharpCode.Decompiler.Disassembler {
 	/// <summary>
@@ -34,6 +35,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 		readonly IDecompilerOutput output;
 		readonly bool detectControlStructure;
 		readonly DisassemblerOptions options;
+		readonly NumberFormatter numberFormatter;
 		
 		public MethodBodyDisassembler(IDecompilerOutput output, bool detectControlStructure, DisassemblerOptions options)
 		{
@@ -42,6 +44,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			this.output = output;
 			this.detectControlStructure = detectControlStructure;
 			this.options = options;
+			numberFormatter = NumberFormatter.GetCSharpInstance(hex: options.HexadecimalNumbers, upper: true);
 		}
 		
 		public void Disassemble(MethodDef method, MethodDebugInfoBuilder builder, InstructionOperandConverter instructionOperandConverter)
@@ -63,7 +66,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			}
 			output.Write(".maxstack", BoxedTextColor.ILDirective);
 			output.Write(" ", BoxedTextColor.Text);
-			output.WriteLine(string.Format("{0}", body.MaxStack), BoxedTextColor.Number);
+			output.WriteLine(numberFormatter.Format(body.MaxStack), BoxedTextColor.Number);
             if (method.DeclaringType.Module.EntryPoint == method)
                 output.WriteLine (".entrypoint", BoxedTextColor.ILDirective);
 			
@@ -82,9 +85,9 @@ namespace ICSharpCode.Decompiler.Disassembler {
 					var bh2 = BracePairHelper.Create(output, "[", CodeBracesRangeFlags.SquareBrackets);
 					bool hasName = !string.IsNullOrEmpty(local.Local.Name);
 					if (hasName)
-						output.Write(local.Local.Index.ToString(), BoxedTextColor.Number);
+						output.Write(numberFormatter.Format(local.Local.Index), BoxedTextColor.Number);
 					else
-						output.Write(local.Local.Index.ToString(), local, DecompilerReferenceFlags.Local | DecompilerReferenceFlags.Definition, BoxedTextColor.Number);
+						output.Write(numberFormatter.Format(local.Local.Index), local, DecompilerReferenceFlags.Local | DecompilerReferenceFlags.Definition, BoxedTextColor.Number);
 					bh2.Write("]");
 					output.Write(" ", BoxedTextColor.Text);
 					local.Type.WriteTo(output);

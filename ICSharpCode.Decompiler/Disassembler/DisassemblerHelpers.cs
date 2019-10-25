@@ -25,6 +25,7 @@ using dnlib.DotNet.Emit;
 using dnlib.DotNet.Pdb;
 using dnSpy.Contracts.Decompiler;
 using dnSpy.Contracts.Text;
+using ICSharpCode.NRefactory;
 
 namespace ICSharpCode.Decompiler.Disassembler {
 	public enum ILNameSyntax
@@ -46,7 +47,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 		/// </summary>
 		ShortTypeName
 	}
-	
+
 	public static class DisassemblerHelpers
 	{
 		const int OPERAND_ALIGNMENT = 10;
@@ -95,6 +96,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 		
 		internal static void WriteTo(this Instruction instruction, IDecompilerOutput writer, DisassemblerOptions options, uint baseRva, long baseOffs, IInstructionBytesReader byteReader, MethodDef method, InstructionOperandConverter instructionOperandConverter, PdbAsyncMethodCustomDebugInfo pdbAsyncInfo, out int startLocation)
 		{
+			var numberFormatter = NumberFormatter.GetCSharpInstance(hex: options.HexadecimalNumbers, upper: true);
 			if (options.ShowPdbInfo) {
 				var seqPoint = instruction.SequencePoint;
 				if (seqPoint != null) {
@@ -196,7 +198,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 						writer.Write(" ", BoxedTextColor.Text);
 					}
 				}
-				WriteOperand(writer, instructionOperandConverter?.Convert(instruction.Operand) ?? instruction.Operand, options.MaxStringLength, method);
+				WriteOperand(writer, instructionOperandConverter?.Convert(instruction.Operand) ?? instruction.Operand, options.MaxStringLength, numberFormatter, method);
 			}
 			if (options != null && options.GetOpCodeDocumentation != null) {
 				var doc = options.GetOpCodeDocumentation(instruction.OpCode);
@@ -636,7 +638,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			}
 		}
 		
-		public static void WriteOperand(IDecompilerOutput writer, object operand, int maxStringLength, MethodDef method = null)
+		public static void WriteOperand(IDecompilerOutput writer, object operand, int maxStringLength, NumberFormatter numberFormatter, MethodDef method = null)
 		{
 			Instruction targetInstruction = operand as Instruction;
 			if (targetInstruction != null) {
@@ -716,7 +718,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				int end = writer.NextPosition;
 				writer.AddBracePair(new TextSpan(start, 1), new TextSpan(end - 1, 1), CodeBracesRangeFlags.DoubleQuotes);
 			} else if (operand is char) {
-				writer.Write(((int)(char)operand).ToString(), BoxedTextColor.Number);
+				writer.Write(numberFormatter.Format((int)(char)operand), BoxedTextColor.Number);
 			} else if (operand is float) {
 				float val = (float)operand;
 				if (val == 0) {
@@ -765,7 +767,35 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				if (operand == null)
 					writer.Write("<null>", BoxedTextColor.Error);
 				else {
-					s = ToInvariantCultureString(operand);
+					switch (operand) {
+					case int v:
+						s = numberFormatter.Format(v);
+						break;
+					case uint v:
+						s = numberFormatter.Format(v);
+						break;
+					case long v:
+						s = numberFormatter.Format(v);
+						break;
+					case ulong v:
+						s = numberFormatter.Format(v);
+						break;
+					case byte v:
+						s = numberFormatter.Format(v);
+						break;
+					case ushort v:
+						s = numberFormatter.Format(v);
+						break;
+					case short v:
+						s = numberFormatter.Format(v);
+						break;
+					case sbyte v:
+						s = numberFormatter.Format(v);
+						break;
+					default:
+						s = ToInvariantCultureString(operand);
+						break;
+					}
 					writer.Write(s, operand, numberFlags, CSharpMetadataTextColorProvider.Instance.GetColor(operand));
 				}
 			}

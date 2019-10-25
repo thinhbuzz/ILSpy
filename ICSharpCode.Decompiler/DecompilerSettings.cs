@@ -546,6 +546,17 @@ namespace ICSharpCode.Decompiler {
 		}
 		bool removeNewDelegateClass = true;
 
+		public bool HexadecimalNumbers {
+			get { return hexadecimalNumbers; }
+			set {
+				if (hexadecimalNumbers != value) {
+					hexadecimalNumbers = value;
+					OnPropertyChanged(nameof(HexadecimalNumbers));
+				}
+			}
+		}
+		bool hexadecimalNumbers = false;
+
 		CSharpFormattingOptions csharpFormattingOptions;
 
 		public CSharpFormattingOptions CSharpFormattingOptions {
@@ -629,6 +640,7 @@ namespace ICSharpCode.Decompiler {
 			if (TypeAddInternalModifier != other.TypeAddInternalModifier) return false;
 			if (MemberAddPrivateModifier != other.MemberAddPrivateModifier) return false;
 			if (RemoveNewDelegateClass != other.RemoveNewDelegateClass) return false;
+			if (HexadecimalNumbers != other.HexadecimalNumbers) return false;
 
 			//TODO: CSharpFormattingOptions. This isn't currently used but it has a ton of properties
 
@@ -675,6 +687,7 @@ namespace ICSharpCode.Decompiler {
 				h ^= TypeAddInternalModifier		? 0 : 0x00000004U;
 				h ^= MemberAddPrivateModifier		? 0 : 0x00000002U;
 				h ^= RemoveNewDelegateClass			? 0 : 0x00000001U;
+				h ^= HexadecimalNumbers				? 0 : 0x00000002U;
 
 				for (int i = 0; i < decompilationObjects.Length; i++)
 					h ^= (uint)decompilationObjects[i] << (i * 8);
@@ -728,6 +741,7 @@ namespace ICSharpCode.Decompiler {
 			other.TypeAddInternalModifier = this.TypeAddInternalModifier;
 			other.MemberAddPrivateModifier = this.MemberAddPrivateModifier;
 			other.RemoveNewDelegateClass = this.RemoveNewDelegateClass;
+			other.HexadecimalNumbers = this.HexadecimalNumbers;
 			//TODO: CSharpFormattingOptions
 			return other;
 		}

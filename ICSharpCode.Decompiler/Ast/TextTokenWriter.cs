@@ -334,7 +334,8 @@ namespace ICSharpCode.Decompiler.Ast {
 		public override void WritePrimitiveValue(object value, object data = null, string literalValue = null)
 		{
 			int column = 0;
-			TextWriterTokenWriter.WritePrimitiveValue(value, data, literalValue, context.Settings.MaxStringLength, ref column, WritePrimitiveValueCore, WriteToken);
+			var numberFormatter = NumberFormatter.GetCSharpInstance(context.Settings.HexadecimalNumbers, upper: true);
+			TextWriterTokenWriter.WritePrimitiveValue(value, data, literalValue, context.Settings.MaxStringLength, ref column, numberFormatter, WritePrimitiveValueCore, WriteToken);
 		}
 
 		void WritePrimitiveValueCore(string text, object reference, object color)

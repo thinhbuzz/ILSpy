@@ -8,8 +8,11 @@ namespace ICSharpCode.NRefactory.VB {
 	/// </summary>
 	public class VBFormattingOptions
 	{
+		public NumberFormatter NumberFormatter;
+
 		public VBFormattingOptions()
 		{
+			NumberFormatter = NumberFormatter.GetVBInstance(hex: false, upper: true);
 		}
 	}
 }

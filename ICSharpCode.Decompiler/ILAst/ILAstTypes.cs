@@ -27,6 +27,7 @@ using dnlib.DotNet.Emit;
 using dnSpy.Contracts.Decompiler;
 using dnSpy.Contracts.Text;
 using ICSharpCode.Decompiler.Disassembler;
+using ICSharpCode.NRefactory;
 
 namespace ICSharpCode.Decompiler.ILAst {
 	public abstract class ILNode : IEnumerable<ILNode>
@@ -789,7 +790,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					var op = v.GetTextReferenceObject();
 					output.Write(v.Name, op, DecompilerReferenceFlags.Local, v.IsParameter ? BoxedTextColor.Parameter : BoxedTextColor.Local);
 				} else {
-					DisassemblerHelpers.WriteOperand(output, Operand, DecompilerSettings.ConstMaxStringLength);
+					DisassemblerHelpers.WriteOperand(output, Operand, DecompilerSettings.ConstMaxStringLength, NumberFormatter.GetCSharpInstance(hex: false, upper: true));
 				}
 				first = false;
 			}

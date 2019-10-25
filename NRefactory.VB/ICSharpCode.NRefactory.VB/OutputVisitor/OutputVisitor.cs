@@ -22,6 +22,7 @@ namespace ICSharpCode.NRefactory.VB {
 	{
 		readonly IOutputFormatter formatter;
 		readonly VBFormattingOptions policy;
+		readonly NumberFormatter numberFormatter;
 		
 		readonly Stack<AstNode> containerStack = new Stack<AstNode>();
 		readonly Stack<AstNode> positionStack = new Stack<AstNode>();
@@ -62,6 +63,7 @@ namespace ICSharpCode.NRefactory.VB {
 				throw new ArgumentNullException("formattingPolicy");
 			this.formatter = new TextWriterOutputFormatter(textWriter);
 			this.policy = formattingPolicy;
+			numberFormatter = formattingPolicy.NumberFormatter;
 		}
 		
 		public OutputVisitor(IOutputFormatter formatter, VBFormattingOptions formattingPolicy)
@@ -72,6 +74,7 @@ namespace ICSharpCode.NRefactory.VB {
 				throw new ArgumentNullException("formattingPolicy");
 			this.formatter = formatter;
 			this.policy = formattingPolicy;
+			numberFormatter = formattingPolicy.NumberFormatter;
 		}
 		
 		struct BraceHelper {
@@ -1549,19 +1552,38 @@ namespace ICSharpCode.NRefactory.VB {
 				// needs space if identifier follows number; this avoids mistaking the following identifier as type suffix
 				lastWritten = LastWritten.KeywordOrIdentifier;
 			} else if (val is IFormattable) {
-				StringBuilder b = new StringBuilder();
-				b.Append(((IFormattable)val).ToString(null, NumberFormatInfo.InvariantInfo));
-				if (val is ushort || val is ulong) {
-					b.Append("U");
+				string valueStr;
+				switch (val) {
+				case int v:
+					valueStr = numberFormatter.Format(v);
+					break;
+				case uint v:
+					valueStr = numberFormatter.Format(v) + "UI";
+					break;
+				case long v:
+					valueStr = numberFormatter.Format(v) + "L";
+					break;
+				case ulong v:
+					valueStr = numberFormatter.Format(v) + "UL";
+					break;
+				case byte v:
+					valueStr = numberFormatter.Format(v);
+					break;
+				case ushort v:
+					valueStr = numberFormatter.Format(v) + "US";
+					break;
+				case short v:
+					valueStr = numberFormatter.Format(v) + "S";
+					break;
+				case sbyte v:
+					valueStr = numberFormatter.Format(v);
+					break;
+				default:
+					valueStr = ((IFormattable)val).ToString(null, NumberFormatInfo.InvariantInfo);
+					break;
 				}
-				if (val is short || val is ushort) {
-					b.Append("S");
-				} else if (val is uint) {
-					b.Append("UI");
-				} else if (val is long || val is ulong) {
-					b.Append("L");
-				}
-				formatter.WriteToken(b.ToString(), VisualBasicMetadataTextColorProvider.Instance.GetColor(val), val);
+
+				formatter.WriteToken(valueStr, VisualBasicMetadataTextColorProvider.Instance.GetColor(val), val);
 				// needs space if identifier follows number; this avoids mistaking the following identifier as type suffix
 				lastWritten = LastWritten.KeywordOrIdentifier;
 			} else {
