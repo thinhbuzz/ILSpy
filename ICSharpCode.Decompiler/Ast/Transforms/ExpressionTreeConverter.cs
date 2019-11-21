@@ -273,9 +273,22 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				return NotSupported(invocation);
 			
 			Expression fieldInfoExpr = invocation.Arguments.ElementAt(1);
+			
 			Match m = getFieldFromHandlePattern.Match(fieldInfoExpr);
-			if (!m.Success)
-				return NotSupported(invocation);
+			if (!m.Success) {
+
+				if (fieldInfoExpr is CastExpression c) {
+					fieldInfoExpr = c.Expression;
+					m = getFieldFromHandlePattern.Match(fieldInfoExpr);
+
+					if (!m.Success) {
+						return NotSupported(invocation);
+					}
+				} else {
+					return NotSupported(invocation);
+				}
+
+			}
 			
 			IField fr = m.Get<AstNode>("field").Single().Annotation<IField>();
 			if (fr == null)
@@ -312,9 +325,24 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			if (invocation.Arguments.Count != 2)
 				return NotSupported(invocation);
 			
+			Expression methodExpr = invocation.Arguments.ElementAt(1);
+			
 			Match m = getMethodFromHandlePattern.Match(invocation.Arguments.ElementAt(1));
-			if (!m.Success)
-				return NotSupported(invocation);
+			
+			if (!m.Success) {
+				if (methodExpr is CastExpression c) { 
+					methodExpr = c.Expression;
+
+					m = getMethodFromHandlePattern.Match(invocation.Arguments.ElementAt(1));
+
+					if(!m.Success) {
+						return NotSupported(invocation);
+					}
+
+				} else {
+					return NotSupported(invocation);
+				}
+			}
 			
 			IMethod mr = m.Get<AstNode>("method").Single().Annotation<IMethod>();
 			if (mr == null)
@@ -398,10 +426,22 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			if (arguments == null) {
 				arguments = new List<Expression>();
 				foreach (Expression argument in invocation.Arguments.Skip(firstArgumentPosition)) {
-					Expression convertedArgument = Convert(argument);
-					if (convertedArgument == null)
-						return null;
-					arguments.Add(convertedArgument);
+					if (argument is NullReferenceExpression) {
+						
+						if (m.Has("declaringType"))
+							convertedTarget = new TypeReferenceExpression(m.Get<AstType>("declaringType").Single().Clone());
+						else
+							convertedTarget = new TypeReferenceExpression(AstBuilder.ConvertType(mr.DeclaringType, stringBuilder));
+
+						arguments.Add(convertedTarget);
+					} else {
+						Expression convertedArgument = Convert(argument);
+
+						if (convertedArgument == null)
+							return null;
+						
+						arguments.Add(convertedArgument);
+					}
 				}
 			}
 			MethodDef methodDef = mr.Resolve();
@@ -468,6 +508,8 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 					m = getMethodFromHandlePattern.Match(invocation.Arguments.ElementAt(3));
 					if (m.Success)
 						return boe.WithAnnotation(m.Get<AstNode>("method").Single().Annotation<IMethod>());
+					else if(invocation.Arguments.ElementAt(3).ToString() == "null") 
+						return boe;
 					else
 						return null;
 				default:
