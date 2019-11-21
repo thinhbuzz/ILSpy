@@ -327,13 +327,13 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			
 			Expression methodExpr = invocation.Arguments.ElementAt(1);
 			
-			Match m = getMethodFromHandlePattern.Match(invocation.Arguments.ElementAt(1));
+			Match m = getMethodFromHandlePattern.Match(methodExpr);
 			
 			if (!m.Success) {
 				if (methodExpr is CastExpression c) { 
 					methodExpr = c.Expression;
 
-					m = getMethodFromHandlePattern.Match(invocation.Arguments.ElementAt(1));
+					m = getMethodFromHandlePattern.Match(methodExpr);
 
 					if(!m.Success) {
 						return NotSupported(invocation);
