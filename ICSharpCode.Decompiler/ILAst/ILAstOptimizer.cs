@@ -1786,7 +1786,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 						if (!(childAsBB.Body.FirstOrDefault() is ILLabel))
 							throw new Exception("Basic block has to start with a label. \n" + childAsBB.ToString());
 						if (childAsBB.Body.LastOrDefault() is ILExpression && !childAsBB.Body.LastOrDefault().IsUnconditionalControlFlow())
-							throw new Exception("Basci block has to end with unconditional control flow. \n" + childAsBB.ToString());
+							throw new Exception("Basic block has to end with unconditional control flow. \n" + childAsBB.ToString());
 						if (context.CalculateILSpans) {
 							if (flatBody.Count > 0)
 								flatBody[flatBody.Count - 1].EndILSpans.AddRange(childAsBB.ILSpans);
