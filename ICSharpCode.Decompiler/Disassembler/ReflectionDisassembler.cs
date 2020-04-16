@@ -233,7 +233,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			{ MethodImplAttributes.ForwardRef, "forwardref" },
 			{ MethodImplAttributes.AggressiveInlining, "aggressiveinlining" },
 			{ MethodImplAttributes.AggressiveOptimization, "aggressiveoptimization" },
-			{ (MethodImplAttributes)0x0400, "securitymitigations" },
+			{ MethodImplAttributes.SecurityMitigations, "securitymitigations" },
 		};
 
 		void WriteXmlDocComment(IMemberDef mr) {
