@@ -1,14 +1,14 @@
 ﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
-// 
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -22,6 +22,7 @@ using System.Linq;
 using System.Text;
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
+using dnlib.PE;
 using dnSpy.Contracts.Decompiler;
 
 namespace ICSharpCode.Decompiler {
@@ -105,7 +106,7 @@ namespace ICSharpCode.Decompiler {
 			instruction.CalculateStackUsage(methodDef.HasReturnType, out pushes, out pops);
 			return pushes;
 		}
-		
+
 		public static int GetPopDelta(this Instruction instruction, MethodDef methodDef)
 		{
 			int pushes, pops;
@@ -173,12 +174,12 @@ namespace ICSharpCode.Decompiler {
 				return 0;
 			return (int)inst.Offset + inst.GetSize();
 		}
-		
+
 		public static string OffsetToString(uint offset)
 		{
 			return string.Format("IL_{0:X4}", offset);
 		}
-		
+
 		public static TypeDef ResolveWithinSameModule(this ITypeDefOrRef type)
 		{
 			if (type != null && type.Scope == type.Module)
@@ -186,7 +187,7 @@ namespace ICSharpCode.Decompiler {
 			else
 				return null;
 		}
-		
+
 		public static FieldDef ResolveFieldWithinSameModule(this MemberRef field)
 		{
 			if (field != null && field.DeclaringType != null && field.DeclaringType.Scope == field.Module)
@@ -194,7 +195,7 @@ namespace ICSharpCode.Decompiler {
 			else
 				return null;
 		}
-		
+
 		public static FieldDef ResolveFieldWithinSameModule(this IField field)
 		{
 			if (field != null && field.DeclaringType != null && field.DeclaringType.Scope == field.Module)
@@ -202,7 +203,7 @@ namespace ICSharpCode.Decompiler {
 			else
 				return null;
 		}
-		
+
 		public static MethodDef ResolveMethodWithinSameModule(this IMethod method)
 		{
 			if (method is MethodSpec)
@@ -242,7 +243,7 @@ namespace ICSharpCode.Decompiler {
 		}
 		static readonly UTF8String systemRuntimeCompilerServicesString = new UTF8String("System.Runtime.CompilerServices");
 		static readonly UTF8String compilerGeneratedAttributeString = new UTF8String("CompilerGeneratedAttribute");
-	
+
 		public static bool IsCompilerGeneratedOrIsInCompilerGeneratedClass(this IMemberDef member)
 		{
 			for (int i = 0; i < 50; i++) {
@@ -288,7 +289,7 @@ namespace ICSharpCode.Decompiler {
 			var name = method.Name.String;
 			return name.StartsWith("<") && name.Contains(">g__");
 		}
-		
+
 		public static bool ContainsAnonymousType(this TypeSig type)
 		{
 			return type.ContainsAnonymousType(0);
@@ -647,5 +648,28 @@ namespace ICSharpCode.Decompiler {
 			return false;
 		}
 		static readonly UTF8String isByRefLikeAttributeString = new UTF8String("IsByRefLikeAttribute");
+
+		public static ImageSectionHeader GetContainingSection(this ModuleDef mod, RVA rva) {
+			if (mod is not ModuleDefMD mdMod)
+				return null;
+			var image = mdMod.Metadata.PEImage;
+			foreach (var section in image.ImageSectionHeaders) {
+				if (rva >= section.VirtualAddress && rva < section.VirtualAddress + Math.Max(section.VirtualSize, section.SizeOfRawData))
+					return section;
+			}
+			return null;
+		}
+
+		public static int IndexOf<T>(this IReadOnlyList<T> collection, T value) {
+			var comparer = EqualityComparer<T>.Default;
+			int index = 0;
+			foreach (var item in collection) {
+				if (comparer.Equals(item, value)) {
+					return index;
+				}
+				index++;
+			}
+			return -1;
+		}
 	}
 }

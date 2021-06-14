@@ -1,14 +1,14 @@
 ﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
-// 
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using dnlib.DotNet;
@@ -50,6 +51,8 @@ namespace ICSharpCode.Decompiler.Disassembler {
 
 	public static class DisassemblerHelpers
 	{
+		static readonly char[] _validNonLetterIdentifierCharacter = new char[] { '_', '$', '@', '?', '`', '.' };
+
 		const int OPERAND_ALIGNMENT = 10;
 
 		static DisassemblerHelpers()
@@ -67,10 +70,10 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			var r = instruction == null ? null : method == null ? (object)instruction : new InstructionReference(method, instruction);
 			writer.Write(DnlibExtensions.OffsetToString(instruction.GetOffset()), r, DecompilerReferenceFlags.None, data);
 		}
-		
+
 		public static void WriteTo(this ExceptionHandler exceptionHandler, IDecompilerOutput writer, MethodDef method)
 		{
-			writer.Write("Try", BoxedTextColor.Keyword);
+			writer.Write(".try", BoxedTextColor.Keyword);
 			writer.Write(" ", BoxedTextColor.Text);
 			WriteOffsetReference(writer, exceptionHandler.TryStart, method);
 			writer.Write("-", BoxedTextColor.Operator);
@@ -93,7 +96,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			writer.Write("-", BoxedTextColor.Operator);
 			WriteOffsetReference(writer, exceptionHandler.HandlerEnd, method);
 		}
-		
+
 		internal static void WriteTo(this Instruction instruction, IDecompilerOutput writer, DisassemblerOptions options, uint baseRva, long baseOffs, IInstructionBytesReader byteReader, MethodDef method, InstructionOperandConverter instructionOperandConverter, PdbAsyncMethodCustomDebugInfo pdbAsyncInfo, out int startLocation)
 		{
 			var numberFormatter = NumberFormatter.GetCSharpInstance(hex: options.HexadecimalNumbers, upper: true);
@@ -235,7 +238,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				return false;
 			}
 		}
-		
+
 		static void WriteLabelList(IDecompilerOutput writer, IList<Instruction> instructions, MethodDef method)
 		{
 			var bh1 = BracePairHelper.Create(writer, "(", CodeBracesRangeFlags.Parentheses);
@@ -248,7 +251,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			}
 			bh1.Write(")");
 		}
-		
+
 		static string ToInvariantCultureString(object value)
 		{
 			if (value == null)
@@ -258,7 +261,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				? convertible.ToString(System.Globalization.CultureInfo.InvariantCulture)
 				: value.ToString();
 		}
-		
+
 		public static void WriteMethodTo(this IMethod method, IDecompilerOutput writer)
 		{
 			writer.Write((MethodSig)null, method);
@@ -278,6 +281,10 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			}
 			else if (sig.HasThis) {
 				writer.Write("instance", BoxedTextColor.Keyword);
+				writer.Write(" ", BoxedTextColor.Text);
+			}
+			if (sig.CallingConvention == CallingConvention.VarArg) {
+				writer.Write("vararg", BoxedTextColor.Keyword);
 				writer.Write(" ", BoxedTextColor.Text);
 			}
 			sig.RetType.WriteTo(writer, ILNameSyntax.SignatureNoNamedTypeParameters);
@@ -344,7 +351,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			}
 			bh1.Write(")");
 		}
-		
+
 		public static void WriteFieldTo(this IField field, IDecompilerOutput writer)
 		{
 			if (field == null || field.FieldSig == null)
@@ -355,27 +362,31 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			writer.Write("::", BoxedTextColor.Operator);
 			writer.Write(Escape(field.Name), field, DecompilerReferenceFlags.None, CSharpMetadataTextColorProvider.Instance.GetColor(field));
 		}
-		
+
 		static bool IsValidIdentifierCharacter(char c)
-		{
-			return c == '_' || c == '$' || c == '@' || c == '?' || c == '`';
-		}
-		
+			=> char.IsLetterOrDigit(c) || _validNonLetterIdentifierCharacter.IndexOf(c) >= 0;
+
 		static bool IsValidIdentifier(string identifier)
 		{
 			if (string.IsNullOrEmpty(identifier))
 				return false;
-			if (!(char.IsLetter(identifier[0]) || IsValidIdentifierCharacter(identifier[0]))) {
-				// As a special case, .ctor and .cctor are valid despite starting with a dot
+
+			if (char.IsDigit(identifier[0]))
+				return false;
+
+			// As a special case, .ctor and .cctor are valid despite starting with a dot
+			if (identifier[0] == '.')
 				return identifier == ".ctor" || identifier == ".cctor";
-			}
-			for (int i = 1; i < identifier.Length; i++) {
-				if (!(char.IsLetterOrDigit(identifier[i]) || IsValidIdentifierCharacter(identifier[i]) || identifier[i] == '.'))
-					return false;
-			}
-			return true;
+
+			if (identifier.Contains(".."))
+				return false;
+
+			if (ilKeywords.Contains(identifier))
+				return false;
+
+			return identifier.All(IsValidIdentifierCharacter);
 		}
-		
+
 		static readonly HashSet<string> ilKeywords = BuildKeywordList(
 			"abstract", "algorithm", "alignment", "ansi", "any", "arglist",
 			"array", "as", "assembly", "assert", "at", "auto", "autochar", "beforefieldinit",
@@ -401,11 +412,11 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			"synchronized", "syschar", "sysstring", "tbstr", "thiscall", "tls", "to", "true", "typedref",
 			"unicode", "unmanaged", "unmanagedexp", "unsigned", "unused", "userdefined", "value", "valuetype",
 			"vararg", "variant", "vector", "virtual", "void", "wchar", "winapi", "with", "wrapper",
-			
+
 			// These are not listed as keywords in spec, but ILAsm treats them as such
 			"property", "type", "flags", "callconv", "strict"
 		);
-		
+
 		static HashSet<string> BuildKeywordList(params string[] keywords)
 		{
 			HashSet<string> s = new HashSet<string>(keywords);
@@ -419,22 +430,22 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			return s;
 		}
 
-		internal static bool MustEscape(string identifier) 
-		{
-			return !IsValidIdentifier(identifier) || ilKeywords.Contains(identifier);
+		internal static bool MustEscape(string identifier) {
+			return !IsValidIdentifier(identifier);
 		}
-		
-		public static string Escape(string identifier)
-		{
-			if (!MustEscape(identifier)) {
-				return IdentifierEscaper.Truncate(identifier);
-			} else {
+
+		public static string Escape(string identifier) {
+			if (MustEscape(identifier)) {
 				// The ECMA specification says that ' inside SQString should be ecaped using an octal escape sequence,
 				// but we follow Microsoft's ILDasm and use \'.
-				return "'" + IdentifierEscaper.Truncate(NRefactory.CSharp.TextWriterTokenWriter.ConvertString(identifier).Replace("'", "\\'")) + "'";
+				return "'" + IdentifierEscaper.Truncate(NRefactory.CSharp.TextWriterTokenWriter.ConvertString(identifier)
+																  .Replace("'", "\\'")) + "'";
+			}
+			else {
+				return IdentifierEscaper.Truncate(identifier);
 			}
 		}
-		
+
 		public static void WriteTo(this TypeSig type, IDecompilerOutput writer, ILNameSyntax syntax = ILNameSyntax.Signature)
 		{
 			type.WriteTo(writer, syntax, 0);
@@ -525,6 +536,27 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				bh1.Write(")");
 				writer.Write(" ", BoxedTextColor.Text);
 			}
+			else if (type is SentinelSig) {
+				writer.Write("...", BoxedTextColor.Text);
+				((SentinelSig)type).Next.WriteTo(writer, syntax, depth);
+			}
+			else if (type is FnPtrSig fnPtrSig) {
+				writer.Write("method", BoxedTextColor.Keyword);
+				writer.Write(" ", BoxedTextColor.Text);
+				fnPtrSig.MethodSig.RetType.WriteTo(writer, syntax, depth);
+				writer.Write(" ", BoxedTextColor.Text);
+				writer.Write("*", BoxedTextColor.Punctuation);
+				var bh1 = BracePairHelper.Create(writer, "(", CodeBracesRangeFlags.Parentheses);
+				var parameters = fnPtrSig.MethodSig.GetParameters();
+				for (int i = 0; i < parameters.Count; ++i) {
+					if (i > 0) {
+						writer.Write(",", BoxedTextColor.Punctuation);
+						writer.Write(" ", BoxedTextColor.Text);
+					}
+					parameters[i].WriteTo(writer, ILNameSyntax.SignatureNoNamedTypeParameters);
+				}
+				bh1.Write(")");
+			}
 			else if (type is TypeDefOrRefSig tdrs) {
 				ThreeState isVT;
 				if (tdrs is ClassSig)
@@ -534,10 +566,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				else
 					isVT = ThreeState.Unknown;
 				WriteTo(tdrs.TypeDefOrRef, writer, syntax, isVT, depth);
-			} else if (type is FnPtrSig) {
-				WriteTo(type.ToTypeDefOrRef(), writer, syntax, ThreeState.Unknown, depth);
 			}
-			//TODO: SentinelSig
 		}
 
 		public static void WriteTo(this ITypeDefOrRef type, IDecompilerOutput writer, ILNameSyntax syntax = ILNameSyntax.Signature)
@@ -550,17 +579,12 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			if (depth++ > MAX_CONVERTTYPE_DEPTH || type == null)
 				return;
 			var ts = type as TypeSpec;
-			if (ts != null && !(ts.TypeSig is FnPtrSig)) {
+			if (ts != null) {
 				WriteTo(((TypeSpec)type).TypeSig, writer, syntax, depth);
 				return;
 			}
 			string typeFullName = type.FullName;
 			string typeName = type.Name.String;
-			if (ts != null) {
-				var fnPtrSig = ts.TypeSig as FnPtrSig;
-				typeFullName = DnlibExtensions.GetFnPtrFullName(fnPtrSig);
-				typeName = DnlibExtensions.GetFnPtrName(fnPtrSig);
-			}
 			TypeSig typeSig = null;
 			string name = type.DefinitionAssembly.IsCorLib() ? PrimitiveTypeName(typeFullName, type.Module, out typeSig) : null;
 			if (syntax == ILNameSyntax.ShortTypeName) {
@@ -637,7 +661,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 					writer.Write(parts[i], BoxedTextColor.Keyword);
 			}
 		}
-		
+
 		public static void WriteOperand(IDecompilerOutput writer, object operand, int maxStringLength, NumberFormatter numberFormatter, MethodDef method = null)
 		{
 			Instruction targetInstruction = operand as Instruction;
@@ -645,7 +669,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				WriteOffsetReference(writer, targetInstruction, method);
 				return;
 			}
-			
+
 			IList<Instruction> targetInstructions = operand as IList<Instruction>;
 			if (targetInstructions != null) {
 				WriteLabelList(writer, targetInstructions, method);
@@ -657,7 +681,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				writer.Write(Escape(variable.Name), variable, DecompilerReferenceFlags.None, BoxedTextColor.Local);
 				return;
 			}
-			
+
 			Parameter paramRef = operand as Parameter;
 			if (paramRef != null) {
 				if (string.IsNullOrEmpty(paramRef.Name)) {
@@ -670,7 +694,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 					writer.Write(Escape(paramRef.Name), paramRef, DecompilerReferenceFlags.None, BoxedTextColor.Parameter);
 				return;
 			}
-			
+
 			MemberRef memberRef = operand as MemberRef;
 			if (memberRef != null) {
 				if (memberRef.IsMethodRef)
@@ -679,25 +703,25 @@ namespace ICSharpCode.Decompiler.Disassembler {
 					memberRef.WriteFieldTo(writer);
 				return;
 			}
-			
+
 			MethodDef methodDef = operand as MethodDef;
 			if (methodDef != null) {
 				methodDef.WriteMethodTo(writer);
 				return;
 			}
-			
+
 			FieldDef fieldDef = operand as FieldDef;
 			if (fieldDef != null) {
 				fieldDef.WriteFieldTo(writer);
 				return;
 			}
-			
+
 			ITypeDefOrRef typeRef = operand as ITypeDefOrRef;
 			if (typeRef != null) {
 				typeRef.WriteTo(writer, ILNameSyntax.TypeName);
 				return;
 			}
-			
+
 			IMethod m = operand as IMethod;
 			if (m != null) {
 				m.WriteMethodTo(writer);
@@ -800,7 +824,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				}
 			}
 		}
-		
+
 		public static string PrimitiveTypeName(string fullName, ModuleDef module, out TypeSig typeSig)
 		{
 			var corLibTypes = module == null ? null : module.CorLibTypes;
