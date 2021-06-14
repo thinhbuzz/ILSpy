@@ -69,23 +69,22 @@ namespace ICSharpCode.Decompiler.ILAst {
 			// C#
 
 			int pos = body.Count - 2;
-			ILVariable stateMachineVar, builderVar;
-			if (MatchStartCall(body[pos], out stateMachineVar, out builderVar) && builderVar != null) {
-				ILExpression loadBuilderExpr;
-				if (!body[pos - 1].MatchStloc(builderVar, out loadBuilderExpr))
+			ILExpression loadBuilderExpr;
+			if (MatchStartCall(body[pos], out var stateMachineVar, out var builderVar) && builderVar != null) {
+				pos--;
+				if (!body[pos].MatchStloc(builderVar, out loadBuilderExpr))
 					return false;
-				if (!MatchBuilderField(stateMachineVar, loadBuilderExpr))
-					return false;
+				pos--;
 			}
 			else if (MatchStartCall(body[pos], out stateMachineVar)) {
-				IMethod startMethod;
-				ILExpression loadStartTarget, loadStartArgument;
-				if (!body[pos++].Match(ILCode.Call, out startMethod, out loadStartTarget, out loadStartArgument))
-					return false;
-				if (!MatchBuilderField(stateMachineVar, loadStartTarget))
+				pos--;
+				if (!body[pos + 1].Match(ILCode.Call, out IMethod _, out loadBuilderExpr, out _))
 					return false;
 			}
 			else
+				return false;
+
+			if (!MatchBuilderField(stateMachineVar, loadBuilderExpr))
 				return false;
 
 			if (!MatchReturnTask(body[body.Count - 1], stateMachineVar))
@@ -93,21 +92,49 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 			// Check the last field assignment - this should be the state field
 			ILExpression initialStateExpr;
-			if (!MatchStFld(body[pos - 2], stateMachineVar, stateMachineTypeIsValueType, out stateField, out initialStateExpr))
+			if (!MatchStFld(body[pos], stateMachineVar, stateMachineTypeIsValueType, out stateField, out initialStateExpr))
 				return false;
 			if (!initialStateExpr.Match(ILCode.Ldc_I4, out initialState))
 				return false;
 			if (initialState != -1)
 				return false;
 
-			if (pos - 3 < 0)
-				return false;
-			if (!MatchCallCreate(body[pos - 3], stateMachineVar))
-				return false;
-			if (!InitializeFieldToParameterMap(body, pos - 3, stateMachineVar))
-				return false;
+			int stopPos = pos;
+			pos = 0;
+			if (!stateMachineTypeIsValueType) {
+				if (!body[pos].MatchStloc(stateMachineVar, out var init))
+					return false;
+				if (!init.Match(ILCode.Newobj, out IMethod constructor))
+					return false;
+				if (init.Arguments.Count != 0)
+					return false;
+				if (constructor.DeclaringType != stateMachineType)
+					return false;
+				pos++;
+			}
 
-			return true;
+			bool builderFieldIsInitialized = false;
+			for (; pos < stopPos; pos++) {
+				// stfld StateMachine.field(ldloca stateMachine, ldvar(param))
+				if (!MatchStFld(body[pos], stateMachineVar, stateMachineTypeIsValueType, out var field, out var fieldInit))
+					return false;
+				if (field == builderField && fieldInit.Match(ILCode.Call, out IMethod createMethodRef) && createMethodRef.Name == nameCreate) {
+					// stfld StateMachine.builder(ldloca stateMachine, call Create())
+					builderFieldIsInitialized = true;
+				}
+				else if (fieldInit.Match(ILCode.Ldloc, out ILVariable v) && v.IsParameter) {
+					// OK, copies parameter into state machine
+					variableMap.SetParameter(field, v);
+				}
+				else if (fieldInit.Match(ILCode.Ldobj, out ITypeDefOrRef _, out ILExpression ldloc) && ldloc.MatchThis()) {
+					variableMap.SetParameter(field, (ILVariable)ldloc.Operand);
+				}
+				else {
+					return false;
+				}
+			}
+
+			return builderFieldIsInitialized;
 		}
 
 		bool VisualBasicMatchTaskCreationPattern(List<ILNode> body, ILVariable vbStateMachineVar) {
