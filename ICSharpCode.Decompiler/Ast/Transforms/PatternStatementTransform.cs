@@ -1,14 +1,14 @@
 ﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
-// 
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -47,7 +47,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 		{
 			this.context = context;
 		}
-		
+
 		#region Visitor Overrides
 		protected override AstNode VisitChildren(AstNode node, object data)
 		{
@@ -64,7 +64,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			}
 			return node;
 		}
-		
+
 		public override AstNode VisitExpressionStatement(ExpressionStatement expressionStatement, object data)
 		{
 			AstNode result;
@@ -90,7 +90,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			}
 			return base.VisitExpressionStatement(expressionStatement, data);
 		}
-		
+
 		public override AstNode VisitUsingStatement(UsingStatement usingStatement, object data)
 		{
 			if (context.Settings.ForEachStatement) {
@@ -100,14 +100,14 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			}
 			return base.VisitUsingStatement(usingStatement, data);
 		}
-		
+
 		public override AstNode VisitWhileStatement(WhileStatement whileStatement, object data)
 		{
 			return TransformDoWhile(whileStatement) ??
 				TransformWhileTrueToForLoop(whileStatement) ??
 				base.VisitWhileStatement(whileStatement, data);
 		}
-		
+
 		public override AstNode VisitIfElseStatement(IfElseStatement ifElseStatement, object data)
 		{
 			if (context.Settings.SwitchStatementOnString) {
@@ -120,7 +120,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				return simplifiedIfElse;
 			return base.VisitIfElseStatement(ifElseStatement, data);
 		}
-		
+
 		public override AstNode VisitPropertyDeclaration(PropertyDeclaration propertyDeclaration, object data)
 		{
 			if (context.Settings.AutomaticProperties && !context.Settings.ForceShowAllMembers) {
@@ -130,7 +130,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			}
 			return base.VisitPropertyDeclaration(propertyDeclaration, data);
 		}
-		
+
 		public override AstNode VisitCustomEventDeclaration(CustomEventDeclaration eventDeclaration, object data)
 		{
 			// first apply transforms to the accessor bodies
@@ -142,18 +142,18 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			}
 			return eventDeclaration;
 		}
-		
+
 		public override AstNode VisitMethodDeclaration(MethodDeclaration methodDeclaration, object data)
 		{
 			return TransformDestructor(methodDeclaration) ?? base.VisitMethodDeclaration(methodDeclaration, data);
 		}
-		
+
 		public override AstNode VisitTryCatchStatement(TryCatchStatement tryCatchStatement, object data)
 		{
 			return TransformTryCatchFinally(tryCatchStatement) ?? base.VisitTryCatchStatement(tryCatchStatement, data);
 		}
 		#endregion
-		
+
 		/// <summary>
 		/// $variable = $initializer;
 		/// </summary>
@@ -162,7 +162,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				new NamedNode("variable", new IdentifierExpression(Pattern.AnyString)),
 				new AnyNode("initializer")
 			));
-		
+
 		#region using
 		static Expression InvokeDispose(Expression identifier)
 		{
@@ -171,7 +171,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				identifier.Clone().CastTo(new TypePattern(typeof(IDisposable))).Invoke("Dispose")
 			};
 		}
-		
+
 		static readonly AstNode usingTryCatchPattern = new Choice {
 			{ "c#/vb",
 			new TryCatchStatement {
@@ -223,7 +223,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				}
 			}
 		};
-		
+
 		public UsingStatement TransformUsings(ExpressionStatement node)
 		{
 			Match m1 = variableAssignPattern.Match(node);
@@ -240,21 +240,21 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				if (v == null || v.Type == null || !DnlibExtensions.IsValueType(v.Type))
 					return null;
 			}
-			
+
 			// There are two variants of the using statement:
 			// "using (var a = init)" and "using (expr)".
 			// The former declares a read-only variable 'a', and the latter declares an unnamed read-only variable
 			// to store the original value of 'expr'.
 			// This means that in order to introduce a using statement, in both cases we need to detect a read-only
 			// variable that is used only within that block.
-			
+
 			if (HasAssignment(tryCatch, variableName))
 				return null;
-			
+
 			VariableDeclarationStatement varDecl = FindVariableDeclaration(node, variableName);
 			if (varDecl == null || !(varDecl.Parent is BlockStatement))
 				return null;
-			
+
 			// Validate that the variable is not used after the using statement:
 			if (!IsVariableValueUnused(varDecl, tryCatch))
 				return null;
@@ -277,7 +277,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			usingStatement.EmbeddedStatement = tryCatch.TryBlock.Detach();
 			tryCatch.ReplaceWith(usingStatement);
 			tryCatch.AddAllRecursiveILSpansTo(usingStatement);
-			
+
 			// If possible, we'll eliminate the variable completely:
 			if (usingStatement.EmbeddedStatement.Descendants.OfType<IdentifierExpression>().Any(ident => ident.Identifier == variableName)) {
 				// variable is used, so we'll create a variable declaration
@@ -298,7 +298,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			}
 			return usingStatement;
 		}
-		
+
 		internal static VariableDeclarationStatement FindVariableDeclaration(AstNode node, string identifier)
 		{
 			while (node != null) {
@@ -343,7 +343,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			daa.Analyze(varDecl.Variables.Single().Name, context.CancellationToken);
 			return daa.UnassignedVariableUses.Count == 0;
 		}
-		
+
 		// I used this in the first implementation of the using-statement transform, but now no longer
 		// because there were problems when multiple using statements were using the same variable
 		// - no single using statement could be transformed without making the C# code invalid,
@@ -351,7 +351,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 		// We now use 'IsVariableValueUnused' which will perform the transform
 		// even if it results in two variables with the same name and overlapping scopes.
 		// (this issue could be fixed later by renaming one of the variables)
-		
+
 		// I'm not sure whether the other consumers of 'CanMoveVariableDeclarationIntoStatement' should be changed the same way.
 		bool CanMoveVariableDeclarationIntoStatement(VariableDeclarationStatement varDecl, Statement targetStatement, out Statement declarationPoint)
 		{
@@ -369,7 +369,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			}
 			return true;
 		}
-		
+
 		/// <summary>
 		/// Gets whether there is an assignment to 'variableName' anywhere within the given node.
 		/// </summary>
@@ -388,7 +388,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			return false;
 		}
 		#endregion
-		
+
 		#region foreach (generic)
 		static readonly UsingStatement genericForeachPattern = new UsingStatement {
 			ResourceAcquisition = new VariableDeclarationStatement {
@@ -411,8 +411,8 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 					Condition = new IdentifierExpressionBackreference("enumeratorVariable").ToExpression().Invoke("MoveNext"),
 					EmbeddedStatement = new BlockStatement {
 						new Repeat(
-							new VariableDeclarationStatement { 
-								Type = new AnyNode(), 
+							new VariableDeclarationStatement {
+								Type = new AnyNode(),
 								Variables = { new VariableInitializer(null, Pattern.AnyString) }
 							}.WithName("variablesInsideLoop")
 						).ToStatement(),
@@ -425,7 +425,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 					}
 				}.WithName("loop")
 			}};
-		
+
 		public ForeachStatement TransformForeach(UsingStatement node)
 		{
 			Match m = genericForeachPattern.Match(node);
@@ -437,13 +437,13 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			}
 			IdentifierExpression itemVar = m.Get<IdentifierExpression>("itemVariable").Single();
 			WhileStatement loop = m.Get<WhileStatement>("loop").Single();
-			
+
 			// Find the declaration of the item variable:
 			// Because we look only outside the loop, we won't make the mistake of moving a captured variable across the loop boundary
 			VariableDeclarationStatement itemVarDecl = FindVariableDeclaration(loop, itemVar.Identifier);
 			if (itemVarDecl == null || !(itemVarDecl.Parent is BlockStatement))
 				return null;
-			
+
 			// Now verify that we can move the variable declaration in front of the loop:
 			Statement declarationPoint;
 			CanMoveVariableDeclarationIntoStatement(itemVarDecl, loop, out declarationPoint);
@@ -452,7 +452,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			// We just care that we can move it in front of the loop:
 			if (declarationPoint != loop)
 				return null;
-			
+
 			BlockStatement newBody = new BlockStatement();
 			foreach (Statement stmt in m.Get<Statement>("variablesInsideLoop"))
 				newBody.Add(stmt.Detach());
@@ -464,7 +464,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				newBody.HiddenStart = oldBody.HiddenStart;
 				newBody.HiddenEnd = oldBody.HiddenEnd;
 			}
-			
+
 			ForeachStatement foreachStatement = new ForeachStatement {
 				VariableType = (AstType)itemVarDecl.Type.Clone(),
 				VariableNameToken = (Identifier)itemVar.IdentifierToken.Clone(),
@@ -484,14 +484,14 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			return foreachStatement;
 		}
 		#endregion
-		
+
 		#region foreach (non-generic)
 		static readonly ExpressionStatement getEnumeratorPattern = new ExpressionStatement(
 			new AssignmentExpression(
 				new NamedNode("left", new IdentifierExpression(Pattern.AnyString)),
 				new AnyNode("collection").ToExpression().Invoke("GetEnumerator")
 			).WithName("getEnumeratorAssignment"));
-		
+
 		static readonly TryCatchStatement nonGenericForeachPattern = new TryCatchStatement {
 			TryBlock = new BlockStatement {
 				new WhileStatement {
@@ -544,7 +544,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				new Repeat(new AnyNode("stmt")).ToStatement()
 			}
 		}.WithName("loop");
-		
+
 		public ForeachStatement TransformNonGenericForEach(ExpressionStatement node)
 		{
 			Match m1 = getEnumeratorPattern.Match(node);
@@ -554,25 +554,25 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			if (!m2.Success)
 				m2 = nonGenericForeachPatternNoFinallyBlock.Match(tryCatch);
 			if (!m2.Success) return null;
-			
+
 			IdentifierExpression enumeratorVar = m2.Get<IdentifierExpression>("enumerator").Single();
 			IdentifierExpression itemVar = m2.Get<IdentifierExpression>("itemVar").Single();
 			WhileStatement loop = m2.Get<WhileStatement>("loop").Single();
-			
+
 			// verify that the getEnumeratorPattern assigns to the same variable as the nonGenericForeachPattern is reading from
 			if (!enumeratorVar.IsMatch(m1.Get("left").Single()))
 				return null;
-			
+
 			VariableDeclarationStatement enumeratorVarDecl = FindVariableDeclaration(loop, enumeratorVar.Identifier);
 			if (enumeratorVarDecl == null || !(enumeratorVarDecl.Parent is BlockStatement))
 				return null;
-			
+
 			// Find the declaration of the item variable:
 			// Because we look only outside the loop, we won't make the mistake of moving a captured variable across the loop boundary
 			VariableDeclarationStatement itemVarDecl = FindVariableDeclaration(loop, itemVar.Identifier);
 			if (itemVarDecl == null || !(itemVarDecl.Parent is BlockStatement))
 				return null;
-			
+
 			// Now verify that we can move the variable declaration in front of the loop:
 			Statement declarationPoint;
 			CanMoveVariableDeclarationIntoStatement(itemVarDecl, loop, out declarationPoint);
@@ -590,7 +590,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			BlockStatement body = new BlockStatement();
 			foreachStatement.EmbeddedStatement = body;
 			((BlockStatement)node.Parent).Statements.InsertBefore(node, foreachStatement);
-			
+
 			body.Add(node.Detach());
 			body.Add((Statement)tryCatch.Detach());
 
@@ -618,7 +618,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			}
 			if (context.CalculateILSpans && tc != null)
 				body.HiddenEnd = NRefactoryExtensions.CreateHidden(body.HiddenEnd, tc.TryBlock.HiddenEnd, tc.FinallyBlock);
-			
+
 			// Now create the correct body for the foreach statement:
 			foreachStatement.InExpression = m1.Get<Expression>("collection").Single().Detach();
 			if (foreachStatement.InExpression is BaseReferenceExpression) {
@@ -626,7 +626,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			}
 			body.Statements.Clear();
 			body.Statements.AddRange(m2.Get<Statement>("stmt").Select(stmt => stmt.Detach()));
-			
+
 			return foreachStatement;
 		}
 		#endregion
@@ -842,7 +842,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 							}))
 				}
 			}};
-		
+
 		public ForStatement TransformFor(ExpressionStatement node)
 		{
 			Match m1 = variableAssignPattern.Match(node);
@@ -872,7 +872,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			return forStatement;
 		}
 		#endregion
-		
+
 		static readonly WhileStatement whileTrueLoopPattern = new WhileStatement {
 				Condition = new PrimitiveExpression(true),
 				EmbeddedStatement = new BlockStatement {
@@ -915,7 +915,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 					}
 				}
 			}};
-		
+
 		public DoWhileStatement TransformDoWhile(WhileStatement whileLoop)
 		{
 			Match m = doWhilePattern.Match(whileLoop);
@@ -930,7 +930,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				doLoop.EmbeddedStatement = block.Detach();
 				whileLoop.ReplaceWith(doLoop);
 				block.HiddenStart = NRefactoryExtensions.CreateHidden(!context.CalculateILSpans ? null : ILSpan.OrderAndCompactList(whileLoop.Condition.GetAllRecursiveILSpans()), block.HiddenStart);
-				
+
 				// we may have to extract variable definitions out of the loop if they were used in the condition:
 				foreach (var varDecl in block.Statements.OfType<VariableDeclarationStatement>()) {
 					VariableInitializer v = varDecl.Variables.Single();
@@ -949,7 +949,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 						// remove varDecl with assignment; and move annotations from varDecl to the ExpressionStatement:
 						varDecl.ReplaceWith(new ExpressionStatement(assign).CopyAnnotationsFrom(varDecl).WithAnnotation(varDecl.GetAllRecursiveILSpans()));
 						varDecl.RemoveAnnotations<object>();
-						
+
 						// insert the varDecl above the do-while loop:
 						doLoop.Parent.InsertChildBefore(doLoop, varDecl, BlockStatement.StatementRole);
 					}
@@ -959,14 +959,14 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			return null;
 		}
 		#endregion
-		
+
 		#region lock
 		static readonly AstNode lockFlagInitPattern = new ExpressionStatement(
 			new AssignmentExpression(
 				new NamedNode("variable", new IdentifierExpression(Pattern.AnyString)),
 				new PrimitiveExpression(false)
 			));
-		
+
 		static readonly AstNode lockTryCatchPattern = new TryCatchStatement {
 			TryBlock = new BlockStatement {
 				new OptionalNode(new VariableDeclarationStatement()).ToStatement(),
@@ -1027,7 +1027,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			exit = m2.Get<Expression>("exit").Single();
 			return m1.Get<IdentifierExpression>("variable").Single().Identifier == m2.Get<IdentifierExpression>("flag").Single().Identifier;
 		}
-		
+
 		public LockStatement TransformLock(ExpressionStatement node)
 		{
 			Expression enter, exit;
@@ -1069,7 +1069,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			return null;
 		}
 		#endregion
-		
+
 		#region switch on strings
 		static readonly IfElseStatement switchOnStringPattern = new IfElseStatement {
 			Condition = new BinaryOperatorExpression {
@@ -1108,7 +1108,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			},
 			FalseStatement = new OptionalNode("nullStmt", new BlockStatement { Statements = { new Repeat(new AnyNode()) } })
 		};
-		
+
 		public SwitchStatement TransformSwitchOnString(IfElseStatement node)
 		{
 			Match m = switchOnStringPattern.Match(node);
@@ -1170,7 +1170,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			node.AddAllRecursiveILSpansTo(sw.Expression);
 			return sw;
 		}
-		
+
 		List<KeyValuePair<string, int>> BuildDictionary(List<Statement> dictCreation)
 		{
 			if (context.Settings.ObjectOrCollectionInitializers && dictCreation.Count == 1)
@@ -1240,7 +1240,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 		}
 
 		#endregion
-		
+
 		#region Automatic Properties
 		static readonly PropertyDeclaration automaticPropertyPattern = new PropertyDeclaration {
 			Attributes = { new Repeat(new AnyNode()) },
@@ -1459,7 +1459,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 					},
 				},
 			}};
-		
+
 		bool CheckAutomaticEventV4Match(Match m, CustomEventDeclaration ev, bool isAddAccessor, bool hasType)
 		{
 			if (!m.Success)
@@ -1473,7 +1473,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				return false;
 			return combineMethod.DeclaringType != null && combineMethod.DeclaringType.FullName == "System.Delegate";
 		}
-		
+
 		EventDeclaration TransformAutomaticEvents(CustomEventDeclaration ev)
 		{
 			var pat = automaticEventPatternV4;
@@ -1519,7 +1519,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 					continue;
 				}
 			}
-			
+
 			EventDef eventDef = ev.Annotation<EventDef>();
 			if (eventDef != null) {
 				FieldDef field = eventDef.DeclaringType.Fields.FirstOrDefault(f => f.Name == ev.Name);
@@ -1535,7 +1535,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			return ed;
 		}
 		#endregion
-		
+
 		#region Destructor
 		static readonly MethodDeclaration destructorPattern = new MethodDeclaration {
 			Attributes = { new Repeat(new AnyNode()) },
@@ -1551,7 +1551,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				}
 			}
 		};
-		
+
 		DestructorDeclaration TransformDestructor(MethodDeclaration methodDef)
 		{
 			Match m = destructorPattern.Match(methodDef);
@@ -1581,7 +1581,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			return null;
 		}
 		#endregion
-		
+
 		#region Try-Catch-Finally
 		static readonly TryCatchStatement tryCatchFinallyPattern = new TryCatchStatement {
 			TryBlock = new BlockStatement {
@@ -1592,7 +1592,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			},
 			FinallyBlock = new AnyNode()
 		};
-		
+
 		/// <summary>
 		/// Simplify nested 'try { try {} catch {} } finally {}'.
 		/// This transformation must run after the using/lock tranformations.
@@ -1651,7 +1651,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 						block.HiddenEnd.AddAllRecursiveILSpansTo(stmt);
 				}
 			}
-			
+
 			return null;
 		}
 		#endregion

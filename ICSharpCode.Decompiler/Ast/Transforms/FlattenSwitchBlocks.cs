@@ -16,7 +16,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 					continue;
 
 				var blockStatement = switchSection.Statements.First() as BlockStatement;
-				if (blockStatement == null || blockStatement.Statements.Any(st => st is VariableDeclarationStatement))
+				if (blockStatement == null || blockStatement.Statements.Any(ContainsLocalDeclaration))
 					continue;
 				if (blockStatement.HiddenStart != null || blockStatement.HiddenEnd != null)
 					continue;
@@ -26,6 +26,19 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				blockStatement.Remove();
 				blockStatement.Statements.MoveTo(switchSection.Statements);
 			}
+		}
+
+		bool ContainsLocalDeclaration(AstNode node)
+		{
+			if (node is VariableDeclarationStatement)
+				return true;
+			if (node is BlockStatement)
+				return false;
+			foreach (var child in node.Children) {
+				if (ContainsLocalDeclaration(child))
+					return true;
+			}
+			return false;
 		}
 	}
 }

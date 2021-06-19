@@ -1,14 +1,14 @@
 ﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
-// 
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -39,7 +39,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			},
 			MemberName = "TypeHandle"
 		};
-		
+
 		DecompilerContext context;
 		readonly StringBuilder stringBuilder;
 
@@ -74,6 +74,8 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 		}
 		static readonly UTF8String systemString = new UTF8String("System");
 		static readonly UTF8String typeString = new UTF8String("Type");
+		static readonly UTF8String decimalString = new UTF8String("Decimal");
+		static readonly UTF8String activatortring = new UTF8String("Activator");
 		static readonly UTF8String systemReflectionString = new UTF8String("System.Reflection");
 		static readonly UTF8String fieldInfoString = new UTF8String("FieldInfo");
 
@@ -84,7 +86,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				return;
 			var builder = invocationExpression.Annotation<MethodDebugInfoBuilder>();
 			var arguments = invocationExpression.Arguments.ToArray();
-			
+
 			// Reduce "String.Concat(a, b)" to "a + b"
 			if (methodRef.Name == "Concat" && methodRef.DeclaringType != null && arguments.Length >= 2 && methodRef.DeclaringType.FullName == "System.String")
 			{
@@ -93,14 +95,24 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				for (int i = 1; i < arguments.Length; i++) {
 					expr = new BinaryOperatorExpression(expr, BinaryOperatorType.Add, arguments[i]);
 				}
+				expr.CopyAnnotationsFrom(invocationExpression);
 				invocationExpression.ReplaceWith(expr);
 				expr.AddAnnotation(invocationExpression.GetAllRecursiveILSpans());
 				expr.AddAnnotation(builder);
 				return;
 			}
 
+			if (methodRef.Name == "CreateInstance" && CheckType(methodRef.DeclaringType, systemString, activatortring) &&
+				arguments.Length == 0 && methodRef is MethodSpec spec && methodRef.NumberOfGenericParameters > 0 &&
+				spec.GenericInstMethodSig.GenericArguments[0] is GenericSig genSig &&
+				genSig.GenericParam.HasDefaultConstructorConstraint) {
+				invocationExpression.ReplaceWith(
+					new ObjectCreateExpression(AstBuilder.ConvertType(spec.GenericInstMethodSig.GenericArguments[0], sb)).WithAnnotation(invocationExpression
+						.GetAllRecursiveILSpans()));
+			}
+
 			bool isSupportedType = CheckType(methodRef.DeclaringType, systemString, typeString) ||
-									CheckType(methodRef.DeclaringType, systemReflectionString, fieldInfoString);
+									   CheckType(methodRef.DeclaringType, systemReflectionString, fieldInfoString);
 			switch (isSupportedType ? methodRef.Name.String : string.Empty) {
 				case "GetTypeFromHandle":
 					if (arguments.Length == 1 && methodRef.FullName == "System.Type System.Type::GetTypeFromHandle(System.RuntimeTypeHandle)") {
@@ -137,9 +149,10 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 							}
 						}
 					}
+
 					break;
 			}
-			
+
 			BinaryOperatorType? bop = GetBinaryOperatorTypeFromMetadataName(methodRef.Name);
 			if (bop != null && arguments.Length == 2) {
 				invocationExpression.Arguments.Clear(); // detach arguments from invocationExpression
@@ -151,6 +164,22 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			}
 			UnaryOperatorType? uop = GetUnaryOperatorTypeFromMetadataName(methodRef.Name);
 			if (uop != null && arguments.Length == 1) {
+				if (uop == UnaryOperatorType.Increment || uop == UnaryOperatorType.Decrement) {
+					// `op_Increment(a)` is not equivalent to `++a`,
+					// because it doesn't assign the incremented value to a.
+					if (CheckType(methodRef.DeclaringType, systemString, decimalString)) {
+						// Legacy csc optimizes "d + 1m" to "op_Increment(d)",
+						// so reverse that optimization here:
+						invocationExpression.ReplaceWith(
+							new BinaryOperatorExpression(
+								arguments[0].Detach(),
+								(uop == UnaryOperatorType.Increment ? BinaryOperatorType.Add : BinaryOperatorType.Subtract),
+								new PrimitiveExpression(1m)
+							).CopyAnnotationsFrom(invocationExpression)
+						);
+					}
+					return;
+				}
 				arguments[0].Remove(); // detach argument
 				invocationExpression.ReplaceWith(
 					new UnaryOperatorExpression(uop.Value, arguments[0]).WithAnnotation(methodRef)
@@ -176,10 +205,10 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				invocationExpression.ReplaceWith(arguments[0].WithAnnotation(invocationExpression.GetAllRecursiveILSpans()).WithAnnotation(builder));
 				return;
 			}
-			
+
 			return;
 		}
-		
+
 		static BinaryOperatorType? GetBinaryOperatorTypeFromMetadataName(string name)
 		{
 			switch (name) {
@@ -219,7 +248,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 					return null;
 			}
 		}
-		
+
 		static UnaryOperatorType? GetUnaryOperatorTypeFromMetadataName(string name)
 		{
 			switch (name) {
@@ -239,7 +268,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 					return null;
 			}
 		}
-		
+
 		/// <summary>
 		/// This annotation is used to convert a compound assignment "a += 2;" or increment operator "a++;"
 		/// back to the original "a = a + 2;". This is sometimes necessary when the checked/unchecked semantics
@@ -248,12 +277,12 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 		public class RestoreOriginalAssignOperatorAnnotation
 		{
 			readonly BinaryOperatorExpression binaryOperatorExpression;
-			
+
 			public RestoreOriginalAssignOperatorAnnotation(BinaryOperatorExpression binaryOperatorExpression)
 			{
 				this.binaryOperatorExpression = binaryOperatorExpression;
 			}
-			
+
 			public AssignmentExpression Restore(Expression expression)
 			{
 				var ilSpans = expression.GetAllRecursiveILSpans();
@@ -271,7 +300,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				return assign;
 			}
 		}
-		
+
 		public override object VisitAssignmentExpression(AssignmentExpression assignment, object data)
 		{
 			base.VisitAssignmentExpression(assignment, data);
@@ -306,7 +335,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			}
 			return null;
 		}
-		
+
 		public static AssignmentOperatorType GetAssignmentOperatorForBinaryOperator(BinaryOperatorType bop)
 		{
 			switch (bop) {
@@ -334,7 +363,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 					return AssignmentOperatorType.Assign;
 			}
 		}
-		
+
 		static bool CanConvertToCompoundAssignment(Expression left)
 		{
 			MemberReferenceExpression mre = left as MemberReferenceExpression;
@@ -348,12 +377,12 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				return IsWithoutSideEffects(uoe.Expression);
 			return IsWithoutSideEffects(left);
 		}
-		
+
 		static bool IsWithoutSideEffects(Expression left)
 		{
 			return left is ThisReferenceExpression || left is IdentifierExpression || left is TypeReferenceExpression || left is BaseReferenceExpression;
 		}
-		
+
 		static readonly Expression getMethodOrConstructorFromHandlePattern =
 			new TypePattern(typeof(MethodBase)).ToType().Invoke2(
 				BoxedTextColor.StaticMethod,
@@ -364,7 +393,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 		         	new TypePattern(typeof(MethodInfo)),
 		         	new TypePattern(typeof(ConstructorInfo))
 		         });
-		
+
 		public override object VisitCastExpression(CastExpression castExpression, object data)
 		{
 			base.VisitCastExpression(castExpression, data);
@@ -383,7 +412,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			}
 			return null;
 		}
-		
+
 		void IAstTransform.Run(AstNode node)
 		{
 			node.AcceptVisitor(this, null);

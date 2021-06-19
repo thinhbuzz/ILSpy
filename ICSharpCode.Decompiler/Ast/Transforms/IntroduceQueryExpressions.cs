@@ -1,14 +1,14 @@
 ﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
-// 
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -16,6 +16,7 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using System;
 using System.Linq;
 using dnSpy.Contracts.Text;
 using ICSharpCode.NRefactory.CSharp;
@@ -30,7 +31,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 	public class IntroduceQueryExpressions : IAstTransformPoolObject
 	{
 		DecompilerContext context;
-		
+
 		public IntroduceQueryExpressions(DecompilerContext context)
 		{
 			Reset(context);
@@ -40,7 +41,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 		{
 			this.context = context;
 		}
-		
+
 		public void Run(AstNode compilationUnit)
 		{
 			if (!context.Settings.QueryExpressions)
@@ -72,7 +73,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				}
 			}
 		}
-		
+
 		bool IsDegenerateQuery(QueryExpression query)
 		{
 			if (query == null)
@@ -80,17 +81,20 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			var lastClause = query.Clauses.LastOrDefault();
 			return !(lastClause is QuerySelectClause || lastClause is QueryGroupClause);
 		}
-		
+
 		void DecompileQueries(AstNode node)
 		{
 			QueryExpression query = DecompileQuery(node as InvocationExpression);
 			if (query != null)
 				node.ReplaceWith(query);
-			for (AstNode child = (query ?? node).FirstChild; child != null; child = child.NextSibling) {
+			AstNode next;
+			for (AstNode child = (query ?? node).FirstChild; child != null; child = next) {
+				// store referece to next child before transformation
+				next = child.NextSibling;
 				DecompileQueries(child);
 			}
 		}
-		
+
 		QueryExpression DecompileQuery(InvocationExpression invocation)
 		{
 			if (invocation == null)
@@ -103,12 +107,14 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 					{
 						if (invocation.Arguments.Count != 1)
 							return null;
+						if (!IsComplexQuery(mre))
+							return null;
 						string parameterName;
 						Expression body;
 						if (MatchSimpleLambda(invocation.Arguments.Single(), out parameterName, out body)) {
 							QueryExpression query = new QueryExpression();
 							query.Clauses.Add(new QueryFromClause { IdentifierToken = Identifier.Create(parameterName).WithAnnotation(BoxedTextColor.Parameter), Expression = mre.Target.Detach() });
-							query.Clauses.Add(new QuerySelectClause { Expression = body.Detach() });
+							query.Clauses.Add(new QuerySelectClause { Expression = WrapExpressionInParenthesesIfNecessary(body.Detach(), parameterName) });
 							return query;
 						}
 						return null;
@@ -155,7 +161,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 								QueryExpression query = new QueryExpression();
 								query.Clauses.Add(new QueryFromClause { IdentifierToken = Identifier.Create(p1.Name).WithAnnotation(BoxedTextColor.Parameter), Expression = mre.Target.Detach() });
 								query.Clauses.Add(new QueryFromClause { IdentifierToken = Identifier.Create(p2.Name).WithAnnotation(BoxedTextColor.Parameter), Expression = collectionSelector.Detach() });
-								query.Clauses.Add(new QuerySelectClause { Expression = ((Expression)lambda.Body).Detach() });
+								query.Clauses.Add(new QuerySelectClause { Expression = WrapExpressionInParenthesesIfNecessary(((Expression)lambda.Body).Detach(), parameterName) });
 								return query;
 							}
 						}
@@ -164,6 +170,8 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				case "Where":
 					{
 						if (invocation.Arguments.Count != 1)
+							return null;
+						if (!IsComplexQuery(mre))
 							return null;
 						string parameterName;
 						Expression body;
@@ -182,6 +190,8 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 					{
 						if (invocation.Arguments.Count != 1)
 							return null;
+						if (!IsComplexQuery(mre))
+							return null;
 						string parameterName;
 						Expression orderExpression;
 						if (MatchSimpleLambda(invocation.Arguments.Single(), out parameterName, out orderExpression)) {
@@ -195,7 +205,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 											Expression = orderExpression.Detach(),
 											Direction = (mre.MemberName == "ThenBy" ? QueryOrderingDirection.None : QueryOrderingDirection.Descending)
 										});
-									
+
 									tmp = (InvocationExpression)mre.Target;
 									mre = (MemberReferenceExpression)tmp.Target;
 									MatchSimpleLambda(tmp.Arguments.Single(), out parameterName, out orderExpression);
@@ -206,7 +216,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 										Expression = orderExpression.Detach(),
 										Direction = (mre.MemberName == "OrderBy" ? QueryOrderingDirection.None : QueryOrderingDirection.Descending)
 									});
-								
+
 								QueryExpression query = new QueryExpression();
 								query.Clauses.Add(new QueryFromClause { IdentifierToken = Identifier.Create(parameterName).WithAnnotation(BoxedTextColor.Parameter), Expression = mre.Target.Detach() });
 								query.Clauses.Add(orderClause);
@@ -254,7 +264,25 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 					return null;
 			}
 		}
-		
+
+		static bool IsComplexQuery(MemberReferenceExpression mre)
+		{
+			return mre.Target is InvocationExpression && mre.Parent is InvocationExpression || mre.Parent?.Parent is QueryClause;
+		}
+
+		/// <summary>
+		/// This fixes #437: Decompilation of query expression loses material parentheses
+		/// We wrap the expression in parentheses if:
+		/// - the Select-call is explicit (see caller(s))
+		/// - the expression is a plain identifier matching the parameter name
+		/// </summary>
+		Expression WrapExpressionInParenthesesIfNecessary(Expression expression, string parameterName)
+		{
+			if (expression is IdentifierExpression ident && parameterName.Equals(ident.Identifier, StringComparison.Ordinal))
+				return new ParenthesizedExpression(expression);
+			return expression;
+		}
+
 		/// <summary>
 		/// Ensure that all ThenBy's are correct, and that the list of ThenBy's is terminated by an 'OrderBy' invocation.
 		/// </summary>
@@ -271,7 +299,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				return false;
 			if (parameterName != expectedParameterName)
 				return false;
-			
+
 			if (mre.MemberName == "OrderBy" || mre.MemberName == "OrderByDescending")
 				return true;
 			else if (mre.MemberName == "ThenBy" || mre.MemberName == "ThenByDescending")
@@ -279,7 +307,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			else
 				return false;
 		}
-		
+
 		/// <summary>Matches simple lambdas of the form "a => b"</summary>
 		bool MatchSimpleLambda(Expression expr, out string parameterName, out Expression body)
 		{

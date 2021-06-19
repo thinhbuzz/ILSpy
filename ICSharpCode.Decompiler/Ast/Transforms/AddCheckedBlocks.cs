@@ -1,14 +1,14 @@
 ﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
-// 
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -32,19 +32,19 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			/// </summary>
 			public bool IsChecked;
 		}
-		
+
 		public static readonly object CheckedAnnotation = new CheckedUncheckedAnnotation { IsChecked = true };
 		public static readonly object UncheckedAnnotation = new CheckedUncheckedAnnotation { IsChecked = false };
 		#endregion
-		
-		/* 
+
+		/*
 			We treat placing checked/unchecked blocks as an optimization problem, with the following goals:
 				1. Use minimum number of checked blocks+expressions
 				2. Prefer checked expressions over checked blocks
 				3. Make the scope of checked expressions as small as possible
 				4. Open checked blocks as late as possible, and close checked blocks as late as possible
 				(where goal 1 has the highest priority)
-				
+
 				Goal 4a (open checked blocks as late as possible) is necessary so that we don't move variable declarations
 				into checked blocks, as the variable might still be used after the checked block.
 				 (this could cause DeclareVariables to omit the variable declaration, producing incorrect code)
@@ -57,58 +57,58 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				If the checked block was closed as early as possible, the variable r would have to be declared outside
 				 (this would work, but look badly)
 		 */
-		
+
 		#region struct Cost
 		struct Cost
 		{
 			// highest possible cost so that the Blocks+Expressions addition doesn't overflow
 			public static readonly Cost Infinite = new Cost(0x3fffffff, 0x3fffffff);
-			
+
 			public readonly int Blocks;
 			public readonly int Expressions;
-			
+
 			public Cost(int blocks, int expressions)
 			{
 				this.Blocks = blocks;
 				this.Expressions = expressions;
 			}
-			
+
 			public static bool operator <(Cost a, Cost b)
 			{
 				return a.Blocks + a.Expressions < b.Blocks + b.Expressions
 					|| a.Blocks + a.Expressions == b.Blocks + b.Expressions && a.Blocks < b.Blocks;
 			}
-			
+
 			public static bool operator >(Cost a, Cost b)
 			{
 				return a.Blocks + a.Expressions > b.Blocks + b.Expressions
 					|| a.Blocks + a.Expressions == b.Blocks + b.Expressions && a.Blocks > b.Blocks;
 			}
-			
+
 			public static bool operator <=(Cost a, Cost b)
 			{
 				return a.Blocks + a.Expressions < b.Blocks + b.Expressions
 					|| a.Blocks + a.Expressions == b.Blocks + b.Expressions && a.Blocks <= b.Blocks;
 			}
-			
+
 			public static bool operator >=(Cost a, Cost b)
 			{
 				return a.Blocks + a.Expressions > b.Blocks + b.Expressions
 					|| a.Blocks + a.Expressions == b.Blocks + b.Expressions && a.Blocks >= b.Blocks;
 			}
-			
+
 			public static Cost operator +(Cost a, Cost b)
 			{
 				return new Cost(a.Blocks + b.Blocks, a.Expressions + b.Expressions);
 			}
-			
+
 			public override string ToString()
 			{
 				return string.Format("[{0} + {1}]", Blocks, Expressions);
 			}
 		}
 		#endregion
-		
+
 		#region class InsertedNode
 		/// <summary>
 		/// Holds the blocks and expressions that should be inserted
@@ -123,38 +123,38 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 					return a;
 				return new InsertedNodeList(a, b);
 			}
-			
+
 			public abstract void Insert();
 		}
-		
+
 		class InsertedNodeList : InsertedNode
 		{
 			readonly InsertedNode child1, child2;
-			
+
 			public InsertedNodeList(AddCheckedBlocks.InsertedNode child1, AddCheckedBlocks.InsertedNode child2)
 			{
 				this.child1 = child1;
 				this.child2 = child2;
 			}
-			
+
 			public override void Insert()
 			{
 				child1.Insert();
 				child2.Insert();
 			}
 		}
-		
+
 		class InsertedExpression : InsertedNode
 		{
 			readonly Expression expression;
 			readonly bool isChecked;
-			
+
 			public InsertedExpression(Expression expression, bool isChecked)
 			{
 				this.expression = expression;
 				this.isChecked = isChecked;
 			}
-			
+
 			public override void Insert()
 			{
 				if (isChecked)
@@ -163,18 +163,18 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 					expression.ReplaceWith(e => new UncheckedExpression { Expression = e });
 			}
 		}
-		
+
 		class ConvertCompoundAssignment : InsertedNode
 		{
 			readonly Expression expression;
 			readonly bool isChecked;
-			
+
 			public ConvertCompoundAssignment(Expression expression, bool isChecked)
 			{
 				this.expression = expression;
 				this.isChecked = isChecked;
 			}
-			
+
 			public override void Insert()
 			{
 				AssignmentExpression assign = expression.Annotation<ReplaceMethodCallsWithOperators.RestoreOriginalAssignOperatorAnnotation>().Restore(expression);
@@ -185,20 +185,20 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 					assign.Right = new UncheckedExpression { Expression = assign.Right.Detach() };
 			}
 		}
-		
+
 		class InsertedBlock : InsertedNode
 		{
 			readonly Statement firstStatement; // inclusive
 			readonly Statement lastStatement; // exclusive
 			readonly bool isChecked;
-			
+
 			public InsertedBlock(Statement firstStatement, Statement lastStatement, bool isChecked)
 			{
 				this.firstStatement = firstStatement;
 				this.lastStatement = lastStatement;
 				this.isChecked = isChecked;
 			}
-			
+
 			public override void Insert()
 			{
 				BlockStatement newBlock = new BlockStatement();
@@ -218,7 +218,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			}
 		}
 		#endregion
-		
+
 		#region class Result
 		/// <summary>
 		/// Holds the result of an insertion operation.
@@ -231,7 +231,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			public InsertedNode NodesToInsertInUncheckedContext;
 		}
 		#endregion
-		
+
 		public void Run(AstNode node)
 		{
 			BlockStatement block = node as BlockStatement;
@@ -249,7 +249,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 		public void Reset(DecompilerContext context)
 		{
 		}
-		
+
 		Result GetResultFromBlock(BlockStatement block)
 		{
 			// For a block, we are tracking 4 possibilities:
@@ -267,7 +267,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			Cost costUncheckedContextCheckedBlockOpen = Cost.Infinite;
 			InsertedNode nodesUncheckedContextCheckedBlockOpen = null;
 			Statement checkedBlockStart = null;
-			
+
 			Statement statement = block.Statements.FirstOrDefault();
 			while (true) {
 				// Blocks can be closed 'for free'. We use '<=' so that blocks are closed as late as possible (goal 4b)
@@ -294,7 +294,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				}
 				// Now handle the statement
 				Result stmtResult = GetResult(statement);
-				
+
 				costCheckedContext += stmtResult.CostInCheckedContext;
 				nodesCheckedContext += stmtResult.NodesToInsertInCheckedContext;
 				costCheckedContextUncheckedBlockOpen += stmtResult.CostInUncheckedContext;
@@ -303,16 +303,23 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				nodesUncheckedContext += stmtResult.NodesToInsertInUncheckedContext;
 				costUncheckedContextCheckedBlockOpen += stmtResult.CostInCheckedContext;
 				nodesUncheckedContextCheckedBlockOpen += stmtResult.NodesToInsertInCheckedContext;
-				
+
+				if (statement is LabelStatement) {
+					// We can't move labels into blocks because that might cause goto-statements
+					// to be unable to just to the labels.
+					costCheckedContextUncheckedBlockOpen = Cost.Infinite;
+					costUncheckedContextCheckedBlockOpen = Cost.Infinite;
+				}
+
 				statement = statement.GetNextStatement();
 			}
-			
+
 			return new Result {
 				CostInCheckedContext = costCheckedContext, NodesToInsertInCheckedContext = nodesCheckedContext,
 				CostInUncheckedContext = costUncheckedContext, NodesToInsertInUncheckedContext = nodesUncheckedContext
 			};
 		}
-		
+
 		Result GetResult(AstNode node)
 		{
 			if (node is BlockStatement)
