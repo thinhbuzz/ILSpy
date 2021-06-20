@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -564,14 +564,13 @@ namespace ICSharpCode.Decompiler {
 				if (csharpFormattingOptions == null) {
 					csharpFormattingOptions = FormattingOptionsFactory.CreateAllman();
 					csharpFormattingOptions.IndentSwitchBody = false;
-					csharpFormattingOptions.ArrayInitializerWrapping = Wrapping.WrapIfTooLong;
 				}
 				return csharpFormattingOptions;
 			}
 			set {
 				if (value == null)
 					throw new ArgumentNullException();
-				if (csharpFormattingOptions != value) {
+				if (!csharpFormattingOptions.Equals(value)) {
 					csharpFormattingOptions = value;
 					OnPropertyChanged(nameof(CSharpFormattingOptions));
 				}
@@ -641,8 +640,7 @@ namespace ICSharpCode.Decompiler {
 			if (MemberAddPrivateModifier != other.MemberAddPrivateModifier) return false;
 			if (RemoveNewDelegateClass != other.RemoveNewDelegateClass) return false;
 			if (HexadecimalNumbers != other.HexadecimalNumbers) return false;
-
-			//TODO: CSharpFormattingOptions. This isn't currently used but it has a ton of properties
+			if (!CSharpFormattingOptions.Equals(other.CSharpFormattingOptions)) return false;
 
 			return true;
 		}
@@ -742,7 +740,13 @@ namespace ICSharpCode.Decompiler {
 			other.MemberAddPrivateModifier = this.MemberAddPrivateModifier;
 			other.RemoveNewDelegateClass = this.RemoveNewDelegateClass;
 			other.HexadecimalNumbers = this.HexadecimalNumbers;
-			//TODO: CSharpFormattingOptions
+			if (!this.CSharpFormattingOptions.Equals(other.CSharpFormattingOptions)) {
+				this.CSharpFormattingOptions.CopyTo(other.CSharpFormattingOptions);
+				other.OnPropertyChanged(nameof(other.CSharpFormattingOptions));
+			}
+			else {
+				this.CSharpFormattingOptions.CopyTo(other.CSharpFormattingOptions);
+			}
 			return other;
 		}
 	}
