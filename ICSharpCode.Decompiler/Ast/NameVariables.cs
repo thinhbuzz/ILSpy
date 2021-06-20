@@ -1,14 +1,14 @@
 ﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
-// 
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -46,7 +46,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			{ "System.Object", "obj" },
 			{ "System.Char", "c" }
 		};
-		
+
 		public NameVariables(StringBuilder sb) {
 			this.stringBuilder = sb;
 		}
@@ -163,11 +163,11 @@ namespace ICSharpCode.Decompiler.Ast {
 			}
 			return true;
 		}
-		
+
 		DecompilerContext context;
 		List<string> fieldNamesInCurrentType;
 		Dictionary<string, int> typeNames = new Dictionary<string, int>();
-		
+
 		public void AddExistingName(string name)
 		{
 			if (string.IsNullOrEmpty(name))
@@ -181,7 +181,7 @@ namespace ICSharpCode.Decompiler.Ast {
 				typeNames.Add(nameWithoutDigits, number);
 			}
 		}
-		
+
 		string SplitName(string name, out int number)
 		{
 			// First, identify whether the name already ends with a number:
@@ -196,9 +196,9 @@ namespace ICSharpCode.Decompiler.Ast {
 			number = 1;
 			return name;
 		}
-		
+
 		const char maxLoopVariableName = 'n';
-		
+
 		public string GetAlternativeName(string oldVariableName)
 		{
 			if (oldVariableName.Length == 1 && oldVariableName[0] >= 'i' && oldVariableName[0] <= maxLoopVariableName) {
@@ -209,10 +209,10 @@ namespace ICSharpCode.Decompiler.Ast {
 					}
 				}
 			}
-			
+
 			int number;
 			string nameWithoutDigits = SplitName(oldVariableName, out number);
-			
+
 			if (!typeNames.ContainsKey(nameWithoutDigits)) {
 				typeNames.Add(nameWithoutDigits, number - 1);
 			}
@@ -319,11 +319,11 @@ namespace ICSharpCode.Decompiler.Ast {
 			if (string.IsNullOrEmpty(proposedName)) {
 				proposedName = GetNameByType(variable.GetVariableType());
 			}
-			
+
 			// remove any numbers from the proposed name
 			int number;
 			proposedName = SplitName(proposedName, out number);
-			
+
 			if (!typeNames.ContainsKey(proposedName)) {
 				typeNames.Add(proposedName, 0);
 			}
@@ -334,7 +334,7 @@ namespace ICSharpCode.Decompiler.Ast {
 				return proposedName;
 			}
 		}
-		
+
 		string GetNameFromExpression(ILExpression expr)
 		{
 			switch (expr.Code) {
@@ -358,7 +358,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			return null;
 		}
 		static readonly UTF8String nameGetCurrent = new UTF8String("get_Current");
-		
+
 		string GetNameForArgument(ILExpression parent, int i)
 		{
 			switch (parent.Code) {
@@ -406,12 +406,12 @@ namespace ICSharpCode.Decompiler.Ast {
 		string GetNameByType(TypeSig type)
 		{
 			type = type.RemoveModifiers();
-			
+
 			GenericInstSig git = type as GenericInstSig;
 			if (git != null && git.GenericType != null && git.GenericArguments.Count == 1 && git.GenericType.TypeDefOrRef.Compare(systemString, nullableString)) {
 				type = ((GenericInstSig)type).GenericArguments[0];
 			}
-			
+
 			string name;
 			if (type == null)
 				return string.Empty;
@@ -438,7 +438,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			}
 			return name;
 		}
-		
+
 		string CleanUpVariableName(string name)
 		{
 			var sb = stringBuilder;
@@ -460,7 +460,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			// remove field prefix:
 			if (sb.Length > 2 && sb[0] == 'm' && sb[1] == '_')
 				sb.Remove(0, 2);
-			else if (sb.Length > 1 && sb[0] == '_')
+			else if (sb.Length > 1 && sb[0] == '_' && (char.IsLetter(sb[1]) || sb[1] == '_'))
 				sb.Remove(0, 1);
 
 			if (sb.Length == 0)

@@ -2187,9 +2187,19 @@ namespace ICSharpCode.Decompiler.Ast {
 			var type = argument.Type.Resolve();
 			if (type != null && type.IsEnum && argument.Value != null) {
 				try {
-					if (argument.Value is UTF8String)
-						return MakePrimitive(Convert.ToInt64(((UTF8String)argument.Value).String), type, sb);
-					return MakePrimitive(Convert.ToInt64(argument.Value), type, sb);
+					object argVal;
+					if (argument.Value is UTF8String utf8String) {
+						try {
+							argVal = Convert.ToInt64(utf8String.String);
+						}
+						catch (OverflowException) {
+							argVal = Convert.ToUInt64(utf8String.String);
+						}
+					}
+					else
+						argVal = argument.Value;
+					long val = (long)CSharpPrimitiveCast.Cast(TypeCode.Int64, argVal, false);
+					return MakePrimitive(val, type, sb);
 				} catch (SystemException) {
 				}
 			}

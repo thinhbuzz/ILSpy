@@ -988,27 +988,29 @@ namespace ICSharpCode.Decompiler.Ast {
 								return ace;
 							}
 						}
-						if (declaringType.IsAnonymousType()) {
-							MethodDef ctor = ((IMethod)operand).Resolve();
-							if (ctor != null) {
-								AnonymousTypeCreateExpression atce = new AnonymousTypeCreateExpression();
-								if (CanInferAnonymousTypePropertyNamesFromArguments(args, ctor.Parameters)) {
-									atce.Initializers.AddRange(args);
-								} else {
-									int skip = ctor.Parameters.GetParametersSkip();
-									for (int i = 0; i < args.Count; i++) {
-										atce.Initializers.Add(
-											new NamedExpression {
-												NameToken = Identifier.Create(ctor.Parameters[i + skip].Name).WithAnnotation(ctor.Parameters[i + skip]),
-												Expression = args[i]
-											});
-									}
+						MethodDef ctor = ((IMethod)operand).Resolve();
+						if (declaringType.IsAnonymousType() && ctor != null) {
+							AnonymousTypeCreateExpression atce = new AnonymousTypeCreateExpression();
+							if (CanInferAnonymousTypePropertyNamesFromArguments(args, ctor.Parameters)) {
+								atce.Initializers.AddRange(args);
+							} else {
+								int skip = ctor.Parameters.GetParametersSkip();
+								for (int i = 0; i < args.Count; i++) {
+									atce.Initializers.Add(
+										new NamedExpression {
+											NameToken = Identifier.Create(ctor.Parameters[i + skip].Name).WithAnnotation(ctor.Parameters[i + skip]),
+											Expression = args[i]
+										});
 								}
-								return atce;
 							}
+							return atce;
 						}
 						var oce = new Ast.ObjectCreateExpression();
 						oce.Type = AstBuilder.ConvertType(declaringType, stringBuilder);
+						// seems like IsIn/IsOut information for parameters is only correct on the ctor's MethodDefinition
+						if (ctor != null) {
+							AdjustArgumentsForMethodCall(ctor, args);
+						}
 						oce.Arguments.AddRange(args);
 						return oce.WithAnnotation(operand);
 					}

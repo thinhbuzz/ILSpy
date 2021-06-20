@@ -435,6 +435,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				// if there are variables outside the loop, we need to put those into the parent block, and that won't work if the direct parent isn't a block
 				return null;
 			}
+			VariableInitializer enumeratorVar = m.Get<VariableInitializer>("enumeratorVariable").Single();
 			IdentifierExpression itemVar = m.Get<IdentifierExpression>("itemVariable").Single();
 			WhileStatement loop = m.Get<WhileStatement>("loop").Single();
 
@@ -452,6 +453,13 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			// We just care that we can move it in front of the loop:
 			if (declarationPoint != loop)
 				return null;
+
+			// Make sure that the enumerator variable is not used inside the body
+			var enumeratorId = Identifier.Create(enumeratorVar.Name);
+			foreach (Statement stmt in m.Get<Statement>("statement")) {
+				if (stmt.Descendants.OfType<Identifier>().Any(id => enumeratorId.IsMatch(id)))
+					return null;
+			}
 
 			BlockStatement newBody = new BlockStatement();
 			foreach (Statement stmt in m.Get<Statement>("variablesInsideLoop"))
@@ -474,7 +482,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			if (foreachStatement.InExpression is BaseReferenceExpression) {
 				foreachStatement.InExpression = new ThisReferenceExpression().CopyAnnotationsFrom(foreachStatement.InExpression);
 			}
-			foreachStatement.HiddenGetEnumeratorNode = m.Get<VariableInitializer>("enumeratorVariable").Single();
+			foreachStatement.HiddenGetEnumeratorNode = enumeratorVar;
 			foreachStatement.HiddenGetCurrentNode = m.Get<AstNode>("getCurrent").Single();
 			foreachStatement.HiddenMoveNextNode = loop.Condition;
 			node.ReplaceWith(foreachStatement);
