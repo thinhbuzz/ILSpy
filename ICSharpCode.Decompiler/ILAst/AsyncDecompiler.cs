@@ -425,7 +425,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 			if (methodType == AsyncMethodType.TaskOfT) {
 				if (!expr.Match(ILCode.Call, out setResultMethod, out builderExpr, out resultExpr))
 					return false;
-				resultExpr.Match(ILCode.Ldloc, out resultVariable);
+				if (!resultExpr.Match(ILCode.Ldloc, out resultVariable))
+					return false;
 			}
 			else {
 				if (!expr.Match(ILCode.Call, out setResultMethod, out builderExpr))
@@ -462,20 +463,20 @@ namespace ICSharpCode.Decompiler.ILAst {
 			var body = catchBlock.Body;
 			int pos = 0;
 			ILVariable exLoc;
-			if (body.Count == 3)
-				exLoc = catchBlock.ExceptionVariable;
-			else if (body.Count == 4) {
-				ILExpression ldloc;
-				if (!body[pos++].Match(ILCode.Stloc, out exLoc, out ldloc) || !ldloc.MatchLdloc(catchBlock.ExceptionVariable))
-					return false;
+
+			if (body[pos].Match(ILCode.Stloc, out ILVariable tempExloc, out ILExpression ldloc) && ldloc.MatchLdloc(catchBlock.ExceptionVariable)) {
+				exLoc = tempExloc;
+				pos++;
 			}
-			else
-				return false;
+			else {
+				exLoc = catchBlock.ExceptionVariable;
+			}
 
 			// C# (csc, mcs)
 			int stateID;
 			if (!(MatchStateAssignment(body[pos++], stateField, out stateID) && stateID == finalState))
 				return false;
+			MatchHoistedLocalCleanup(body, ref pos);
 
 			IMethod setExceptionMethod;
 			ILExpression builderExpr, exceptionExpr;
@@ -518,6 +519,17 @@ namespace ICSharpCode.Decompiler.ILAst {
 					&& val.Match(ILCode.Ldc_I4, out stateID);
 			}
 			return false;
+		}
+
+		protected static void MatchHoistedLocalCleanup(List<ILNode> block, ref int pos) {
+			while (block[pos].Match(ILCode.Stfld, out IField _, out var target, out var value)) {
+				// https://github.com/dotnet/roslyn/pull/39735 hoisted local cleanup
+				if (!target.MatchThis())
+					throw new SymbolicAnalysisFailedException();
+				if (!(value.Match(ILCode.Ldnull) || value.Match(ILCode.DefaultValue)))
+					throw new SymbolicAnalysisFailedException();
+				pos++;
+			}
 		}
 
 		#region MarkGeneratedVariables
