@@ -57,6 +57,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		protected bool stateMachineTypeIsValueType;
 		protected MethodDef moveNextMethod;
 		protected FieldDef builderField;
+		protected TypeDef builderType;
 		protected FieldDef stateField;
 		protected FieldToVariableMap variableMap;
 
@@ -275,6 +276,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			}
 
 			stateMachineType = stateMachineVar.Type.GetTypeDefOrRef().ResolveWithinSameModule();
+			builderType = startMethod.DeclaringType.ResolveTypeDef();
 			if (stateMachineType == null)
 				return false;
 			// It's a class if EnC is enabled (see Microsoft.CodeAnalysis.CSharp.AsyncRewriter.Rewrite())
@@ -304,7 +306,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				ILExpression loadStateMachineForBuilderExpr2;
 				IField builderField2;
 
-				if (stateMachineTypeIsValueType) {
+				if (builderType.IsValueType) {
 					if (!builderExpr.Match(ILCode.Ldflda, out builderField2, out loadStateMachineForBuilderExpr2))
 						return false;
 				}
@@ -315,7 +317,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 				if (builderField2.ResolveFieldWithinSameModule() != builderField)
 					return false;
-				if (stateMachineTypeIsValueType ? !loadStateMachineForBuilderExpr2.MatchLdloca(stateMachineVar) : !loadStateMachineForBuilderExpr2.MatchLdloc(stateMachineVar))
+				if (!(loadStateMachineForBuilderExpr2.MatchLdloc(stateMachineVar) || loadStateMachineForBuilderExpr2.MatchLdloca(stateMachineVar)))
 					return false;
 			}
 			return true;
@@ -453,11 +455,11 @@ namespace ICSharpCode.Decompiler.ILAst {
 		static readonly UTF8String nameAwaitOnCompleted = new UTF8String("AwaitOnCompleted");
 
 		void ValidateCatchBlock(ILTryCatchBlock.CatchBlock catchBlock, int finalState, ILLabel exitLabel) {
-			if (!CheckCatchBlock(catchBlock, stateField, builderField, finalState, exitLabel))
+			if (!CheckCatchBlock(catchBlock, stateField, builderField, builderType, finalState, exitLabel))
 				throw new SymbolicAnalysisFailedException();
 		}
 
-		static bool CheckCatchBlock(ILTryCatchBlock.CatchBlock catchBlock, FieldDef stateField, FieldDef builderField, int finalState, ILLabel exitLabel) {
+		static bool CheckCatchBlock(ILTryCatchBlock.CatchBlock catchBlock, FieldDef stateField, FieldDef builderField, TypeDef builderType, int finalState, ILLabel exitLabel) {
 			if (catchBlock.ExceptionType == null || catchBlock.ExceptionType.TypeName != "Exception")
 				return false;
 			var body = catchBlock.Body;
@@ -482,7 +484,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			ILExpression builderExpr, exceptionExpr;
 			if (!body[pos++].Match(ILCode.Call, out setExceptionMethod, out builderExpr, out exceptionExpr))
 				return false;
-			if (!(setExceptionMethod.Name == nameSetException && IsBuilderFieldOnThis(builderExpr, builderField) && exceptionExpr.MatchLdloc(exLoc)))
+			if (!(setExceptionMethod.Name == nameSetException && IsBuilderFieldOnThis(builderExpr, builderField, builderType) && exceptionExpr.MatchLdloc(exLoc)))
 				return false;
 
 			ILLabel label;
@@ -494,15 +496,24 @@ namespace ICSharpCode.Decompiler.ILAst {
 		static readonly UTF8String nameSetException = new UTF8String("SetException");
 
 		bool IsBuilderFieldOnThis(ILExpression builderExpr) =>
-			IsBuilderFieldOnThis(builderExpr, builderField);
+			IsBuilderFieldOnThis(builderExpr, builderField, builderType);
 
-		static bool IsBuilderFieldOnThis(ILExpression builderExpr, FieldDef builderField) {
+		static bool IsBuilderFieldOnThis(ILExpression builderExpr, FieldDef builderField, TypeDef builderType) {
 			// ldflda(StateMachine::<>t__builder, ldloc(this))
 			IField fieldRef;
 			ILExpression target;
-			return builderExpr.Match(ILCode.Ldflda, out fieldRef, out target)
-				&& fieldRef.ResolveFieldWithinSameModule() == builderField
-				&& target.MatchThis();
+
+			if (builderType.IsValueType) {
+				if (!builderExpr.Match(ILCode.Ldflda, out fieldRef, out target))
+					return false;
+			}
+			else {
+				if (!builderExpr.Match(ILCode.Ldfld, out fieldRef, out target))
+					return false;
+			}
+
+			return fieldRef.ResolveFieldWithinSameModule() == builderField
+				   && target.MatchThis();
 		}
 
 		protected bool MatchStateAssignment(ILNode stfld, out int stateID) =>
