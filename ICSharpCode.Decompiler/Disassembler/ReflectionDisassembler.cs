@@ -401,6 +401,11 @@ namespace ICSharpCode.Decompiler.Disassembler {
 					output.WriteLine();
 				}
 			}
+
+			foreach (var p in method.GenericParameters) {
+				WriteGenericParameterAttributes(p);
+			}
+
 			WriteParameterAttributes(0, method.Parameters.ReturnParameter);
 			foreach (var p in method.Parameters) {
 				if (p.IsHiddenThisParameter)
@@ -1048,6 +1053,36 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			return p.ParamDef != null && (p.ParamDef.HasConstant || p.ParamDef.CustomAttributes.Count > 0);
 		}
 
+		void WriteGenericParameterAttributes(GenericParam p)
+		{
+			if (p.HasCustomAttributes) {
+				output.Write(".param", BoxedTextColor.ILDirective);
+				output.Write(" ", BoxedTextColor.Text);
+				output.Write("type", BoxedTextColor.Keyword);
+				output.Write(" ", BoxedTextColor.Text);
+				output.Write(DisassemblerHelpers.Escape(p.Name), CSharpMetadataTextColorProvider.Instance.GetColor(p));
+				output.WriteLine();
+				output.IncreaseIndent();
+				WriteAttributes(p.CustomAttributes);
+				output.DecreaseIndent();
+			}
+			foreach (var constraint in p.GenericParamConstraints) {
+				if (constraint.HasCustomAttributes) {
+					output.Write(".param", BoxedTextColor.ILDirective);
+					output.Write(" ", BoxedTextColor.Text);
+					output.Write("constraint", BoxedTextColor.Keyword);
+					output.Write(" ", BoxedTextColor.Text);
+					output.Write(DisassemblerHelpers.Escape(p.Name), CSharpMetadataTextColorProvider.Instance.GetColor(p));
+					output.Write(", ", BoxedTextColor.Text);
+					constraint.Constraint.WriteTo(output, ILNameSyntax.TypeName);
+					output.WriteLine();
+					output.IncreaseIndent();
+					WriteAttributes(constraint.CustomAttributes);
+					output.DecreaseIndent();
+				}
+			}
+		}
+
 		void WriteParameterAttributes(int index, Parameter p)
 		{
 			if (!HasParameterAttributes(p))
@@ -1064,8 +1099,10 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				WriteConstant(p.ParamDef.Constant.Value);
 			}
 			output.WriteLine();
+			output.IncreaseIndent();
 			if (p.HasParamDef)
 				WriteAttributes(p.ParamDef.CustomAttributes);
+			output.DecreaseIndent();
 		}
 
 		void WriteConstant(object constant)
@@ -1493,6 +1530,11 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			isInType = true;
 			WriteAttributes(type.CustomAttributes);
 			WriteSecurityDeclarations(type);
+
+			foreach (var tp in type.GenericParameters) {
+				WriteGenericParameterAttributes(tp);
+			}
+
 			if (type.HasClassLayout) {
 				output.Write(".pack", BoxedTextColor.ILDirective);
 				output.Write(" ", BoxedTextColor.Text);
@@ -1849,7 +1891,24 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			output.WriteLine(module.Name, BoxedTextColor.Text);
 			if (module.Mvid.HasValue)
 				output.WriteLine(string.Format("// MVID: {0}", module.Mvid.Value.ToString("B").ToUpperInvariant()), BoxedTextColor.Comment);
-			// TODO: imagebase, file alignment, stackreserve, subsystem
+
+			if (module is ModuleDefMD moduleDefMd) {
+				output.Write(".imagebase", BoxedTextColor.ILDirective);
+				output.Write(" ", BoxedTextColor.Text);
+				output.WriteLine(numberFormatter.Format(moduleDefMd.Metadata.PEImage.ImageNTHeaders.OptionalHeader.ImageBase), BoxedTextColor.Number);
+				output.Write(".file alignment", BoxedTextColor.ILDirective);
+				output.Write(" ", BoxedTextColor.Text);
+				output.WriteLine(numberFormatter.Format(moduleDefMd.Metadata.PEImage.ImageNTHeaders.OptionalHeader.FileAlignment), BoxedTextColor.Number);
+				output.Write(".stackreserve", BoxedTextColor.ILDirective);
+				output.Write(" ", BoxedTextColor.Text);
+				output.WriteLine(numberFormatter.Format(moduleDefMd.Metadata.PEImage.ImageNTHeaders.OptionalHeader.SizeOfStackReserve), BoxedTextColor.Number);
+				output.Write(".subsystem", BoxedTextColor.ILDirective);
+				output.Write(" ", BoxedTextColor.Text);
+				output.Write(numberFormatter.Format((ushort)moduleDefMd.Metadata.PEImage.ImageNTHeaders.OptionalHeader.Subsystem), BoxedTextColor.Number);
+				output.Write(" ", BoxedTextColor.Text);
+				output.WriteLine(string.Format("// {0}", moduleDefMd.Metadata.PEImage.ImageNTHeaders.OptionalHeader.Subsystem.ToString()), BoxedTextColor.Comment);
+			}
+
 			output.Write(".corflags", BoxedTextColor.ILDirective);
 			output.Write(" ", BoxedTextColor.Text);
 			output.Write(numberFormatter.Format((uint)module.Cor20HeaderFlags), BoxedTextColor.Number);

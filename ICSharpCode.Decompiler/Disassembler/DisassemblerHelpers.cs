@@ -414,7 +414,9 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			"vararg", "variant", "vector", "virtual", "void", "wchar", "winapi", "with", "wrapper",
 
 			// These are not listed as keywords in spec, but ILAsm treats them as such
-			"property", "type", "flags", "callconv", "strict"
+			"property", "type", "flags", "callconv", "strict",
+			// ILDasm uses these keywords for unsigned integers
+			"uint8", "uint16", "uint32", "uint64"
 		);
 
 		static HashSet<string> BuildKeywordList(params string[] keywords)
@@ -908,7 +910,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 		}
 	}
 
-	enum ThreeState {
+	enum ThreeState : byte {
 		Unknown,
 		No,
 		Yes,
