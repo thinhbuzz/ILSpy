@@ -17,7 +17,9 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using ICSharpCode.Decompiler.ILAst;
 using ICSharpCode.NRefactory.CSharp;
 using ICSharpCode.NRefactory.PatternMatching;
 
@@ -46,7 +48,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 		{
 			if (!context.Settings.QueryExpressions)
 				return;
-			CombineQueries(compilationUnit);
+			CombineQueries(compilationUnit, new Dictionary<string, object>());
 		}
 
 		static readonly InvocationExpression castPattern = new InvocationExpression {
@@ -56,25 +58,26 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 				TypeArguments = { new AnyNode("targetType") }
 			}};
 
-		void CombineQueries(AstNode node)
+		void CombineQueries(AstNode node, Dictionary<string, object> fromOrLetIdentifiers)
 		{
 			AstNode next;
 			for (AstNode child = node.FirstChild; child != null; child = next) {
 				// store referece to next child before transformation
 				next = child.NextSibling;
-				CombineQueries(child);
+				CombineQueries(child, fromOrLetIdentifiers);
 			}
 			QueryExpression query = node as QueryExpression;
 			if (query != null) {
 				QueryFromClause fromClause = (QueryFromClause)query.Clauses.First();
 				QueryExpression innerQuery = fromClause.Expression as QueryExpression;
 				if (innerQuery != null) {
-					if (TryRemoveTransparentIdentifier(query, fromClause, innerQuery)) {
-						RemoveTransparentIdentifierReferences(query);
+					if (TryRemoveTransparentIdentifier(query, fromClause, innerQuery, fromOrLetIdentifiers)) {
+						RemoveTransparentIdentifierReferences(query, fromOrLetIdentifiers);
 					} else {
 						QueryContinuationClause continuation = new QueryContinuationClause();
 						continuation.PrecedingQuery = innerQuery.Detach();
 						continuation.IdentifierToken = (Identifier)fromClause.IdentifierToken.Clone();
+						continuation.CopyAnnotationsFrom(fromClause);
 						fromClause.ReplaceWith(continuation);
 					}
 				} else {
@@ -108,7 +111,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 			return identifier.StartsWith("<>", StringComparison.Ordinal) && (identifier.Contains("TransparentIdentifier") || identifier.Contains("TranspIdent"));
 		}
 
-		bool TryRemoveTransparentIdentifier(QueryExpression query, QueryFromClause fromClause, QueryExpression innerQuery)
+		bool TryRemoveTransparentIdentifier(QueryExpression query, QueryFromClause fromClause, QueryExpression innerQuery, Dictionary<string, object> letClauses)
 		{
 			if (!IsTransparentIdentifier(fromClause.Identifier))
 				return false;
@@ -131,11 +134,16 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 			foreach (var expr in match.Get<Expression>("expr")) {
 				switch (expr) {
 				case IdentifierExpression identifier:
-					// nothing to add
+					letClauses[identifier.Identifier] = identifier.Annotation<ILVariable>();
 					continue;
+				case MemberReferenceExpression member:
+					query.Clauses.InsertAfter(insertionPos, new QueryLetClause { Identifier = member.MemberName, Expression = member.Detach() });
+					break;
 				case NamedExpression namedExpression:
-					if (namedExpression.Expression is IdentifierExpression identifierExpression && namedExpression.Name == identifierExpression.Identifier)
+					if (namedExpression.Expression is IdentifierExpression identifierExpression && namedExpression.Name == identifierExpression.Identifier) {
+						letClauses[namedExpression.Name] = identifierExpression.Annotation<ILVariable>();
 						continue;
+					}
 					query.Clauses.InsertAfter(insertionPos, new QueryLetClause { Identifier = namedExpression.Name, Expression = namedExpression.Expression.Detach() });
 					break;
 				}
@@ -146,10 +154,10 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 		/// <summary>
 		/// Removes all occurrences of transparent identifiers
 		/// </summary>
-		void RemoveTransparentIdentifierReferences(AstNode node)
+		void RemoveTransparentIdentifierReferences(AstNode node, Dictionary<string, object> fromOrLetIdentifiers)
 		{
 			foreach (AstNode child in node.Children) {
-				RemoveTransparentIdentifierReferences(child);
+				RemoveTransparentIdentifierReferences(child, fromOrLetIdentifiers);
 			}
 			MemberReferenceExpression mre = node as MemberReferenceExpression;
 			if (mre != null) {
@@ -159,6 +167,8 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 					mre.TypeArguments.MoveTo(newIdent.TypeArguments);
 					newIdent.CopyAnnotationsFrom(mre);
 					newIdent.RemoveAnnotations<PropertyDeclaration>(); // remove the reference to the property of the anonymous type
+					if (fromOrLetIdentifiers.TryGetValue(mre.MemberName, out var annotation))
+						newIdent.AddAnnotation(annotation);
 					mre.ReplaceWith(newIdent);
 					return;
 				}

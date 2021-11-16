@@ -1,14 +1,14 @@
 ﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
-// 
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -34,9 +34,9 @@ namespace ICSharpCode.Decompiler.Ast {
 		readonly DecompilerContext context;
 		readonly Stack<AstNode> nodeStack = new Stack<AstNode>();
 		int braceLevelWithinType = -1;
-		
+
 		public bool FoldBraces = false;
-		
+
 		public TextTokenWriter(IDecompilerOutput output, DecompilerContext context)
 		{
 			if (output == null)
@@ -46,7 +46,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			this.output = output;
 			this.context = context;
 		}
-		
+
 		public override void WriteIdentifier(Identifier identifier, object data)
 		{
 			if (BoxedTextColor.Text.Equals(data))
@@ -56,13 +56,13 @@ namespace ICSharpCode.Decompiler.Ast {
 			if (!BoxedTextColor.Keyword.Equals(data) && (identifier.IsVerbatim || CSharpOutputVisitor.IsKeyword(identifier.Name, identifier))) {
 				escapedName = "@" + escapedName;
 			}
-			
+
 			var definition = GetCurrentDefinition(identifier);
 			if (definition != null) {
 				output.Write(escapedName, definition, DecompilerReferenceFlags.Definition, data);
 				return;
 			}
-			
+
 			object memberRef = GetCurrentMemberReference() ?? (object)identifier.Annotation<NamespaceReference>();
 			if (memberRef != null) {
 				output.Write(escapedName, memberRef, DecompilerReferenceFlags.None, data);
@@ -144,7 +144,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			AstNode node = nodeStack.Peek();
 			if (node is Identifier && node.Parent != null)
 				node = node.Parent;
-			
+
 			var parameterDef = node.Annotation<Parameter>();
 			if (parameterDef != null)
 				return parameterDef;
@@ -164,7 +164,7 @@ namespace ICSharpCode.Decompiler.Ast {
 
 			return null;
 		}
-		
+
 		object GetCurrentDefinition(Identifier identifier)
 		{
 			if (nodeStack != null && nodeStack.Count != 0) {
@@ -184,10 +184,10 @@ namespace ICSharpCode.Decompiler.Ast {
 			}
 			if (IsDefinition(node))
 				return node.Annotation<IMemberRef>();
-			
+
 			return null;
 		}
-		
+
 		public override void WriteKeyword(Role role, string keyword)
 		{
 			WriteKeyword(keyword);
@@ -206,7 +206,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			else
 				output.Write(keyword, BoxedTextColor.Keyword);
 		}
-		
+
 		public override void WriteToken(Role role, string token, object data)
 		{
 			IMemberRef memberRef = GetCurrentMemberReference();
@@ -230,12 +230,12 @@ namespace ICSharpCode.Decompiler.Ast {
 			else
 				output.Write(token, data);
 		}
-		
+
 		public override void Space()
 		{
 			output.Write(" ", BoxedTextColor.Text);
 		}
-		
+
 		public void OpenBrace(BraceStyle style, out int? start, out int? end)
 		{
 			if (braceLevelWithinType >= 0 || nodeStack.Peek() is TypeDeclaration)
@@ -247,7 +247,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			output.WriteLine();
 			output.IncreaseIndent();
 		}
-		
+
 		public void CloseBrace(BraceStyle style, out int? start, out int? end)
 		{
 			output.DecreaseIndent();
@@ -257,22 +257,22 @@ namespace ICSharpCode.Decompiler.Ast {
 			if (braceLevelWithinType >= 0)
 				braceLevelWithinType--;
 		}
-		
+
 		public override void Indent()
 		{
 			output.IncreaseIndent();
 		}
-		
+
 		public override void Unindent()
 		{
 			output.DecreaseIndent();
 		}
-		
+
 		public override void NewLine()
 		{
 			output.WriteLine();
 		}
-		
+
 		public override void WriteComment(CommentType commentType, string content, CommentReference[] refs)
 		{
 			switch (commentType) {
@@ -287,7 +287,6 @@ namespace ICSharpCode.Decompiler.Ast {
 					output.Write("*/", BoxedTextColor.Comment);
 					break;
 				case CommentType.Documentation:
-					bool isLastLine = !(nodeStack.Peek().NextSibling is Comment);
 					output.Write("///", BoxedTextColor.XmlDocCommentDelimiter);
 					Debug.Assert(refs == null);
 					output.WriteXmlDoc(content);
@@ -318,7 +317,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			}
 			Debug.Assert(offs == content.Length);
 		}
-		
+
 		public override void WritePreProcessorDirective(PreProcessorDirectiveType type, string argument)
 		{
 			// pre-processor directive must start on its own line
@@ -330,7 +329,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			}
 			output.WriteLine();
 		}
-		
+
 		public override void WritePrimitiveValue(object value, object data = null, string literalValue = null)
 		{
 			int column = 0;
@@ -351,7 +350,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			else
 				output.Write(text, color);
 		}
-		
+
 		public override void WritePrimitiveType(string type)
 		{
 			WriteKeyword(type);
@@ -363,15 +362,15 @@ namespace ICSharpCode.Decompiler.Ast {
 				output.AddBracePair(new TextSpan(startPos1, 1), new TextSpan(startPos2, 1), CodeBracesRangeFlags.Parentheses);
 			}
 		}
-		
+
 		MethodDebugInfoBuilder currentMethodDebugInfoBuilder;
 		Stack<MethodDebugInfoBuilder> parentMethodDebugInfoBuilder = new Stack<MethodDebugInfoBuilder>();
 		List<Tuple<MethodDebugInfoBuilder, List<ILSpan>>> multiMappings;
-		
+
 		public override void StartNode(AstNode node)
 		{
 			nodeStack.Push(node);
-			
+
 			MethodDebugInfoBuilder mapping = node.Annotation<MethodDebugInfoBuilder>();
 			if (mapping != null) {
 				parentMethodDebugInfoBuilder.Push(currentMethodDebugInfoBuilder);
@@ -389,7 +388,7 @@ namespace ICSharpCode.Decompiler.Ast {
 		{
 			if (nodeStack.Pop() != node)
 				throw new InvalidOperationException();
-			
+
 			if (node.Annotation<MethodDebugInfoBuilder>() != null) {
 				if (context.CalculateILSpans) {
 					foreach (var ns in context.UsingNamespaces)
@@ -409,7 +408,7 @@ namespace ICSharpCode.Decompiler.Ast {
 				}
 			}
 		}
-		
+
 		private static bool IsDefinition(AstNode node)
 		{
 			return node is EntityDeclaration
