@@ -95,7 +95,8 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 				Initializers = {
 					new Repeat(
 						new Choice {
-							new IdentifierExpression(Pattern.AnyString).WithName("expr"), // capture variable with same name
+							new IdentifierExpression(Pattern.AnyString).WithName("expr"), // name is equivalent to name = name
+							new MemberReferenceExpression(new AnyNode(), Pattern.AnyString).WithName("expr"), // expr.name is equivalent to name = expr.name
 							new NamedExpression {
 								Name = Pattern.AnyString,
 								Expression = new AnyNode()
@@ -137,14 +138,14 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 					letClauses[identifier.Identifier] = identifier.Annotation<ILVariable>();
 					continue;
 				case MemberReferenceExpression member:
-					query.Clauses.InsertAfter(insertionPos, new QueryLetClause { Identifier = member.MemberName, Expression = member.Detach() });
+					query.Clauses.InsertAfter(insertionPos, new QueryLetClause { IdentifierToken = (Identifier)member.MemberNameToken.Clone(), Expression = member.Detach() });
 					break;
 				case NamedExpression namedExpression:
 					if (namedExpression.Expression is IdentifierExpression identifierExpression && namedExpression.Name == identifierExpression.Identifier) {
 						letClauses[namedExpression.Name] = identifierExpression.Annotation<ILVariable>();
 						continue;
 					}
-					query.Clauses.InsertAfter(insertionPos, new QueryLetClause { Identifier = namedExpression.Name, Expression = namedExpression.Expression.Detach() });
+					query.Clauses.InsertAfter(insertionPos, new QueryLetClause { IdentifierToken = (Identifier)namedExpression.NameToken.Clone(), Expression = namedExpression.Expression.Detach() });
 					break;
 				}
 			}
