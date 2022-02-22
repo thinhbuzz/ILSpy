@@ -120,7 +120,6 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				// Recognize field initializers:
 				// Convert first statement in all ctors (if all ctors have the same statement) into a field initializer.
 				bool allSame;
-				uint lastFieldToken = 0, lastPropertyToken = 0;
 				do {
 					Match m = fieldOrPropInitializerPattern.Match(instanceCtorsNotChainingWithThis[0].Body.FirstOrDefault());
 					if (!m.Success)
@@ -135,16 +134,14 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 							break;
 
 						FieldDef fieldDef = field.ResolveFieldWithinSameModule();
-						if (fieldDef == null || fieldDef.MDToken.Raw <= lastFieldToken)
+						if (fieldDef == null)
 							break;
 						fieldOrEventDecl = members.FirstOrDefault(f => f.Annotation<FieldDef>() == fieldDef);
-						lastFieldToken = fieldDef.MDToken.Raw;
 					}
 					else {
 						var prop = node.Annotation<PropertyDef>();
-						if (prop != null && prop.MDToken.Raw > lastPropertyToken) {
+						if (prop != null) {
 							fieldOrEventDecl = members.FirstOrDefault(f => f.Annotation<PropertyDef>() == prop);
-							lastPropertyToken = prop.MDToken.Raw;
 						}
 					}
 					if (fieldOrEventDecl == null)
