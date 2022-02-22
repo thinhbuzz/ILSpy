@@ -1,14 +1,14 @@
 ﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
-// 
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -17,15 +17,16 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System.Linq;
+using dnlib.DotNet;
 using ICSharpCode.NRefactory.CSharp;
 
 namespace ICSharpCode.Decompiler.Ast.Transforms {
 	public class IntroduceUnsafeModifier : DepthFirstAstVisitor<object, bool>, IAstTransformPoolObject
 	{
 		public static readonly object PointerArithmeticAnnotation = new PointerArithmetic();
-		
+
 		sealed class PointerArithmetic {}
-		
+
 		public void Run(AstNode compilationUnit)
 		{
 			compilationUnit.AcceptVisitor(this, null);
@@ -34,7 +35,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 		public void Reset(DecompilerContext context)
 		{
 		}
-		
+
 		protected override bool VisitChildren(AstNode node, object data)
 		{
 			bool result = false;
@@ -59,13 +60,24 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			}
 			return result;
 		}
-		
+
 		public override bool VisitPointerReferenceExpression(PointerReferenceExpression pointerReferenceExpression, object data)
 		{
 			base.VisitPointerReferenceExpression(pointerReferenceExpression, data);
 			return true;
 		}
-		
+
+		public override bool VisitSizeOfExpression(SizeOfExpression sizeOfExpression, object data)
+		{
+			var result = base.VisitSizeOfExpression(sizeOfExpression, data);
+
+			// C# sizeof(MyStruct) requires unsafe{} but C# sizeof(int) does not.
+			var type = sizeOfExpression.Type.Annotation<ITypeDefOrRef>();
+			if (type is null)
+				return result;
+			return !type.IsPrimitive;
+		}
+
 		public override bool VisitComposedType(ComposedType composedType, object data)
 		{
 			if (composedType.PointerRank > 0)
@@ -73,7 +85,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			else
 				return base.VisitComposedType(composedType, data);
 		}
-		
+
 		public override bool VisitUnaryOperatorExpression(UnaryOperatorExpression unaryOperatorExpression, object data)
 		{
 			bool result = base.VisitUnaryOperatorExpression(unaryOperatorExpression, data);
@@ -96,7 +108,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				return result;
 			}
 		}
-		
+
 		public override bool VisitMemberReferenceExpression(MemberReferenceExpression memberReferenceExpression, object data)
 		{
 			bool result = base.VisitMemberReferenceExpression(memberReferenceExpression, data);
@@ -113,10 +125,16 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			}
 			return result;
 		}
-		
+
 		public override bool VisitStackAllocExpression(StackAllocExpression stackAllocExpression, object data)
 		{
 			base.VisitStackAllocExpression(stackAllocExpression, data);
+			return true;
+		}
+
+		public override bool VisitFixedVariableInitializer(FixedVariableInitializer fixedVariableInitializer, object data)
+		{
+			base.VisitFixedVariableInitializer(fixedVariableInitializer, data);
 			return true;
 		}
 	}
