@@ -1,14 +1,14 @@
 // Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
-// 
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -35,13 +35,13 @@ namespace ICSharpCode.Decompiler.ILAst {
 		{
 			public readonly ByteCode[] Definitions;  // Reaching definitions of this stack slot
 			public readonly ILVariable LoadFrom;     // Variable used for storage of the value
-			
+
 			public StackSlot(ByteCode[] definitions, ILVariable loadFrom)
 			{
 				this.Definitions = definitions;
 				this.LoadFrom = loadFrom;
 			}
-			
+
 			public static StackSlot[] ModifyStack(StackSlot[] stack, int popCount, int pushCount, ByteCode pushDefinition)
 			{
 				StackSlot[] newStack = new StackSlot[stack.Length - popCount + pushCount];
@@ -52,13 +52,13 @@ namespace ICSharpCode.Decompiler.ILAst {
 				return newStack;
 			}
 		}
-		
+
 		/// <summary> Immutable </summary>
 		struct VariableSlot
 		{
 			public readonly ByteCode[] Definitions;       // Reaching deinitions of this variable
 			public readonly bool       UnknownDefinition; // Used for initial state and exceptional control flow
-			
+
 			static readonly VariableSlot UnknownInstance = new VariableSlot(Array.Empty<ByteCode>(), true);
 
 			public VariableSlot(ByteCode[] definitions, bool unknownDefinition)
@@ -66,7 +66,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				this.Definitions = definitions;
 				this.UnknownDefinition = unknownDefinition;
 			}
-			
+
 			public static VariableSlot[] CloneVariableState(VariableSlot[] state)
 			{
 				if (state.Length == 0)
@@ -75,7 +75,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				Array.Copy(state, clone, state.Length);
 				return clone;
 			}
-			
+
 			public static VariableSlot[] MakeUknownState(int varCount)
 			{
 				if (varCount == 0)
@@ -87,7 +87,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				return unknownVariableState;
 			}
 		}
-		
+
 		sealed class ByteCode
 		{
 			public ILLabel  Label;      // Non-null only if needed
@@ -103,23 +103,23 @@ namespace ICSharpCode.Decompiler.ILAst {
 			public StackSlot[]      StackBefore;     // Unique per bytecode; not shared
 			public VariableSlot[]   VariablesBefore; // Unique per bytecode; not shared
 			public List<ILVariable> StoreTo;         // Store result of instruction to those AST variables
-			
+
 			public bool IsVariableDefinition {
 				get {
 					return (this.Code == ILCode.Stloc) || (this.Code == ILCode.Ldloca && this.Next != null && this.Next.Code == ILCode.Initobj);
 				}
 			}
-			
+
 			public override string ToString()
 			{
 				StringBuilder sb = new StringBuilder();
-				
+
 				// Label
 				sb.Append(this.Name);
 				sb.Append(':');
 				if (this.Label != null)
 					sb.Append('*');
-				
+
 				// Name
 				sb.Append(' ');
 				if (this.Prefixes != null) {
@@ -129,7 +129,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					}
 				}
 				sb.Append(this.Code.GetName());
-				
+
 				if (this.Operand != null) {
 					sb.Append(' ');
 					if (this.Operand is Instruction) {
@@ -152,7 +152,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 						sb.Append(this.Operand.ToString());
 					}
 				}
-				
+
 				if (this.StackBefore != null) {
 					sb.Append(" StackBefore={");
 					bool first = true;
@@ -168,7 +168,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					}
 					sb.Append("}");
 				}
-				
+
 				if (this.StoreTo != null && this.StoreTo.Count > 0) {
 					sb.Append(" StoreTo={");
 					bool first = true;
@@ -179,7 +179,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					}
 					sb.Append("}");
 				}
-				
+
 				if (this.VariablesBefore != null) {
 					sb.Append(" VarsBefore={");
 					bool first = true;
@@ -199,14 +199,14 @@ namespace ICSharpCode.Decompiler.ILAst {
 					}
 					sb.Append("}");
 				}
-				
+
 				return sb.ToString();
 			}
 		}
-		
+
 		MethodDef methodDef;
 		bool optimize;
-		
+
 		// Virtual instructions to load exception on stack
 		readonly Dictionary<ExceptionHandler, ByteCode> ldexceptions = new Dictionary<ExceptionHandler, ILAstBuilder.ByteCode>();
 		readonly Dictionary<ExceptionHandler, ByteCode> ldfilters = new Dictionary<ExceptionHandler, ILAstBuilder.ByteCode>();
@@ -257,19 +257,19 @@ namespace ICSharpCode.Decompiler.ILAst {
 			StackAnalysis_ILVariables_hash.Clear();
 			nullByteCodeDummy.Next = null;
 		}
-		
+
 		public List<ILNode> Build(MethodDef methodDef, bool optimize, DecompilerContext context)
 		{
 			this.methodDef = methodDef;
 			this.optimize = optimize;
 			this.context = context;
-			
+
 			if (methodDef.Body.Instructions.Count == 0) return new List<ILNode>();
-			
+
 			List<ByteCode> body = StackAnalysis(methodDef);
-			
+
 			List<ILNode> ast = ConvertToAst(body, new HashSet<ExceptionHandler>(methodDef.Body.ExceptionHandlers));
-			
+
 			return ast;
 		}
 
@@ -323,11 +323,11 @@ namespace ICSharpCode.Decompiler.ILAst {
 				prevByteCode = byteCode;
 				inst = next;
 			}
-			
+
 			Stack<ByteCode> agenda = new Stack<ByteCode>();
-			
+
 			int varCount = methodDef.Body.Variables.Count;
-			
+
 			var exceptionHandlerStarts = new HashSet<ByteCode>(methodDef.Body.ExceptionHandlers.Select(eh => eh.HandlerStart == null ? null : instrToByteCode[eh.HandlerStart]));
 			exceptionHandlerStarts.Remove(null);
 
@@ -357,7 +357,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 						handlerStart.StackBefore = new StackSlot[] { new StackSlot(new [] { ldexception }, null) };
 					}
 					agenda.Push(handlerStart);
-					
+
 					if (ex.HandlerType == ExceptionHandlerType.Filter && ex.FilterStart != null) {
 						ByteCode filterStart = instrToByteCode[ex.FilterStart];
 						ByteCode ldexception = new ByteCode() {
@@ -373,11 +373,11 @@ namespace ICSharpCode.Decompiler.ILAst {
 					}
 				}
 			}
-			
+
 			StackAnalysis_body[0].StackBefore = Array.Empty<StackSlot>();
 			StackAnalysis_body[0].VariablesBefore = VariableSlot.MakeUknownState(varCount);
 			agenda.Push(StackAnalysis_body[0]);
-			
+
 			// Process agenda
 			while(agenda.Count > 0) {
 				context.CancellationToken.ThrowIfCancellationRequested();
@@ -385,23 +385,22 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 				// Calculate new stack
 				StackSlot[] newStack = StackSlot.ModifyStack(byteCode.StackBefore, byteCode.PopCount >= 0 ? byteCode.PopCount : byteCode.StackBefore.Length, byteCode.PushCount, byteCode);
-				
+
 				// Calculate new variable state
-				VariableSlot[] newVariableState = VariableSlot.CloneVariableState(byteCode.VariablesBefore);
-				if (byteCode.IsVariableDefinition && byteCode.Operand is Local) {
-					newVariableState[((Local)byteCode.Operand).Index] = new VariableSlot(new [] { byteCode }, false);
-				}
 				// After the leave, finally block might have touched the variables
-				else if (byteCode.Code == ILCode.Leave) {
-					newVariableState = VariableSlot.MakeUknownState(varCount);
-				}
-				
+				var newVariableState = byteCode.Code == ILCode.Leave
+					? VariableSlot.MakeUknownState(varCount)
+					: VariableSlot.CloneVariableState(byteCode.VariablesBefore);
+
+				if (byteCode.IsVariableDefinition && byteCode.Operand is Local local)
+					newVariableState[local.Index] = new VariableSlot(new[] { byteCode }, false);
+
 				// Find all successors
 				List<ByteCode> branchTargets = new List<ByteCode>();
 				if (!byteCode.Code.IsUnconditionalControlFlow()) {
 					if (exceptionHandlerStarts.Contains(byteCode.Next)) {
 						// Do not fall though down to exception handler
-						// It is invalid IL as per ECMA-335 ง12.4.2.8.1, but some obfuscators produce it
+						// It is invalid IL as per ECMA-335 ยง12.4.2.8.1, but some obfuscators produce it
 					} else {
 						branchTargets.Add(byteCode.Next);
 					}
@@ -423,7 +422,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 						target.Label = new ILLabel() { Name = target.Name, Offset = target.Offset };
 					}
 				}
-				
+
 				// Apply the state to successors
 				foreach (ByteCode branchTarget in branchTargets) {
 					if (branchTarget == null)
@@ -442,12 +441,12 @@ namespace ICSharpCode.Decompiler.ILAst {
 						if (branchTarget.StackBefore.Length != newStack.Length) {
 							throw new Exception("Inconsistent stack size at " + byteCode.Name);
 						}
-						
+
 						// Be careful not to change our new data - it might be reused for several branch targets.
 						// In general, be careful that two bytecodes never share data structures.
-						
+
 						bool modified = false;
-						
+
 						// Merge stacks - modify the target
 						for (int i = 0; i < newStack.Length; i++) {
 							ByteCode[] oldDefs = branchTarget.StackBefore[i].Definitions;
@@ -457,7 +456,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 								modified = true;
 							}
 						}
-						
+
 						// Merge variables - modify the target
 						for (int i = 0; i < newVariableState.Length; i++) {
 							VariableSlot oldSlot = branchTarget.VariablesBefore[i];
@@ -476,18 +475,18 @@ namespace ICSharpCode.Decompiler.ILAst {
 								}
 							}
 						}
-						
+
 						if (modified) {
 							agenda.Push(branchTarget);
 						}
 					}
 				}
 			}
-			
+
 			// Occasionally the compilers or obfuscators generate unreachable code (which might be intentionally invalid)
 			// I believe it is safe to just remove it
 			StackAnalysis_body.RemoveAll(b => b.StackBefore == null);
-			
+
 			// Generate temporary variables to replace stack
 			foreach(ByteCode byteCode in StackAnalysis_body) {
 				int argIdx = 0;
@@ -518,7 +517,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					if (!dictInitd) {
 						dictInitd = true;
 						foreach (var bc in StackAnalysis_body) {
-							var storeTo = byteCode.StoreTo;
+							var storeTo = bc.StoreTo;
 							if (storeTo == null)
 								continue;
 							foreach (var v in storeTo)
@@ -571,7 +570,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					}
 				}
 			}
-			
+
 			// Split and convert the normal local variables
 			ConvertLocalVariables(StackAnalysis_body);
 
@@ -587,10 +586,10 @@ namespace ICSharpCode.Decompiler.ILAst {
 					byteCode.Operand = instrToByteCode[(Instruction)byteCode.Operand].Label;
 				}
 			}
-			
+
 			// Convert parameters to ILVariables
 			ConvertParameters(StackAnalysis_body);
-			
+
 			return StackAnalysis_body;
 		}
 
@@ -692,14 +691,14 @@ namespace ICSharpCode.Decompiler.ILAst {
 				return true;
 			return (b.Code == ILCode.Call || b.Code == ILCode.Callvirt) && b.Operand is IMethod && ((IMethod)b.Operand).MethodSig != null && ((IMethod)b.Operand).MethodSig.HasThis;
 		}
-		
+
 		sealed class VariableInfo
 		{
 			public ILVariable Variable;
 			public List<ByteCode> Defs;
 			public List<ByteCode> Uses;
 		}
-		
+
 		/// <summary>
 		/// If possible, separates local variables into several independent variables.
 		/// It should undo any compilers merging.
@@ -719,13 +718,13 @@ namespace ICSharpCode.Decompiler.ILAst {
 							uses.Add(b);
 					}
 				}
-				
+
 				List<VariableInfo> newVars;
-				
+
 				// If the variable is pinned, use single variable.
 				// If any of the uses is from unknown definition, use single variable
 				// If any of the uses is ldloca with a nondeterministic usage pattern, use  single variable
-				if (!optimize || varDef.Type is PinnedSig || uses.Any(b => b.VariablesBefore[varDef.Index].UnknownDefinition || (b.Code == ILCode.Ldloca && !IsDeterministicLdloca(b)))) {				
+				if (!optimize || varDef.Type is PinnedSig || uses.Any(b => b.VariablesBefore[varDef.Index].UnknownDefinition || (b.Code == ILCode.Ldloca && !IsDeterministicLdloca(b)))) {
 					newVars = new List<VariableInfo>(1) { new VariableInfo() {
 						Variable = new ILVariable(string.IsNullOrEmpty(varDef.Name) ? "var_" + varDef.Index : varDef.Name) {
 							Type = varDef.Type is PinnedSig ? ((PinnedSig)varDef.Type).Next : varDef.Type,
@@ -744,16 +743,16 @@ namespace ICSharpCode.Decompiler.ILAst {
 					    Defs = new List<ByteCode>() { def },
 					    Uses  = new List<ByteCode>()
 					}).ToList();
-					
+
 					// VB.NET uses the 'init' to allow use of uninitialized variables.
 					// We do not really care about them too much - if the original variable
 					// was uninitialized at that point it means that no store was called and
 					// thus all our new variables must be uninitialized as well.
 					// So it does not matter which one we load.
-					
+
 					// TODO: We should add explicit initialization so that C# code compiles.
 					// Remember to handle cases where one path inits the variable, but other does not.
-					
+
 					// Add loads to the data structure; merge variables if necessary
 					foreach(ByteCode use in uses) {
 						ByteCode[] useDefs = use.VariablesBefore[varDef.Index].Definitions;
@@ -773,7 +772,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 						}
 					}
 				}
-				
+
 				// Set bytecode operands
 				foreach(VariableInfo newVar in newVars) {
 					foreach(ByteCode def in newVar.Defs) {
@@ -785,7 +784,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				}
 			}
 		}
-		
+
 		void ConvertParameters(List<ByteCode> body)
 		{
 			ILVariable thisParameter = null;
@@ -825,7 +824,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			if (thisParameter != null)
 				this.Parameters.Add(thisParameter);
 		}
-		
+
 		List<ILNode> ConvertToAst(List<ByteCode> body, HashSet<ExceptionHandler> ehs)
 		{
 			List<ILNode> ast = new List<ILNode>();
@@ -833,21 +832,21 @@ namespace ICSharpCode.Decompiler.ILAst {
 			uint codeSize = (uint)methodDef.Body.GetCodeSize();
 			while (ehs.Any()) {
 				ILTryCatchBlock tryCatchBlock = new ILTryCatchBlock();
-				
+
 				// Find the first and widest scope
 				uint tryStart = ehs.Min(eh => eh.TryStart.GetOffset());
 				uint tryEnd   = ehs.Where(eh => eh.TryStart.GetOffset() == tryStart).Max(eh => eh.TryEnd?.Offset ?? codeSize);
 				var handlers = ehs.Where(eh => eh.TryStart.GetOffset() == tryStart && (eh.TryEnd?.Offset ?? codeSize) == tryEnd).ToList();
-				
+
 				// Remember that any part of the body migt have been removed due to unreachability
-				
+
 				// Cut all instructions up to the try block
 				{
 					int tryStartIdx = 0;
 					while (tryStartIdx < body.Count && body[tryStartIdx].Offset < tryStart) tryStartIdx++;
 					ast.AddRange(ConvertToAst(body.CutRange(0, tryStartIdx)));
 				}
-				
+
 				// Cut the try block
 				{
 					HashSet<ExceptionHandler> nestedEHs = new HashSet<ExceptionHandler>(ehs.Where(eh => (tryStart <= eh.TryStart.GetOffset() && (eh.TryEnd?.Offset ?? codeSize) < tryEnd) || (tryStart < eh.TryStart.GetOffset() && (eh.TryEnd?.Offset ?? codeSize) <= tryEnd)));
@@ -856,7 +855,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					while (tryEndIdx < body.Count && body[tryEndIdx].Offset < tryEnd) tryEndIdx++;
 					tryCatchBlock.TryBlock = new ILBlock(ConvertToAst(body.CutRange(0, tryEndIdx), nestedEHs), CodeBracesRangeFlags.TryBraces);
 				}
-				
+
 				// Cut all handlers
 				tryCatchBlock.CatchBlocks = new List<ILTryCatchBlock.CatchBlock>();
 				foreach(ExceptionHandler eh in handlers) {
@@ -906,15 +905,15 @@ namespace ICSharpCode.Decompiler.ILAst {
 						catchBlock.FilterBlock = filterBlock;
 					}
 				}
-				
+
 				ehs.ExceptWith(handlers);
-				
+
 				ast.Add(tryCatchBlock);
 			}
-			
+
 			// Add whatever is left
 			ast.AddRange(ConvertToAst(body));
-			
+
 			return ast;
 		}
 
@@ -949,7 +948,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				}
 			}
 		}
-		
+
 		List<ILNode> ConvertToAst(List<ByteCode> body)
 		{
 			List<ILNode> ast = new List<ILNode>();
@@ -961,7 +960,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					// Unreachable code
 					continue;
 				}
-				
+
 				ILExpression expr = new ILExpression(byteCode.Code, byteCode.Operand);
 				if (context.CalculateILSpans) {
 					if (byteCode.Code == ILCode.Dup) {
@@ -984,7 +983,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					}
 					expr.Prefixes = prefixes;
 				}
-				
+
 				// Label for this instruction
 				if (byteCode.Label != null) {
 					ast.Add(byteCode.Label);
@@ -996,7 +995,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					StackSlot slot = byteCode.StackBefore[i];
 					expr.Arguments.Add(new ILExpression(ILCode.Ldloc, slot.LoadFrom));
 				}
-				
+
 				// Store the result to temporary variable(s) if needed
 				if ((byteCode.StoreTo?.Count ?? 0) == 0) {
 					ast.Add(expr);
@@ -1010,11 +1009,11 @@ namespace ICSharpCode.Decompiler.ILAst {
 					}
 				}
 			}
-			
+
 			return ast;
 		}
 	}
-	
+
 	public static class ILAstBuilderExtensionMethods
 	{
 		public static List<T> CutRange<T>(this List<T> list, int start, int count)
