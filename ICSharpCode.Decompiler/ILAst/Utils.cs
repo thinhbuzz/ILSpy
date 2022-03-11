@@ -5,15 +5,28 @@ using dnSpy.Contracts.Decompiler;
 namespace ICSharpCode.Decompiler.ILAst {
 	static class Utils
 	{
-		public static void NopMergeILSpans(ILBlockBase block, List<ILNode> newBody, int instrIndexToRemove)
-		{
+		public static void NopMergeILSpans(ILBlockBase block, List<ILNode> newBody, ref int i) {
 			var body = block.Body;
+
+			var j = i;
+			do {
+				j++;
+			}
+			while (j < body.Count && body[j].Match(ILCode.Nop));
+
+			var spans = new List<ILSpan>(j - i);
+			while (i < j) {
+				body[i].AddSelfAndChildrenRecursiveILSpans(spans);
+				i++;
+			}
+			i--;
+
 			ILNode prevNode = null, nextNode = null;
 			ILExpression prev = null, next = null;
 			if (newBody.Count > 0)
 				prev = (prevNode = newBody[newBody.Count - 1]) as ILExpression;
-			if (instrIndexToRemove + 1 < body.Count)
-				next = (nextNode = body[instrIndexToRemove + 1]) as ILExpression;
+			if (i + 1 < body.Count)
+				next = (nextNode = body[i + 1]) as ILExpression;
 
 			ILNode node = null;
 
@@ -37,10 +50,28 @@ namespace ICSharpCode.Decompiler.ILAst {
 					node = next;
 			}
 
-			if (node != null && node == prevNode)
-				AddILSpansTryPreviousFirst(body[instrIndexToRemove], prevNode, nextNode, block);
-			else
-				AddILSpansTryNextFirst(body[instrIndexToRemove], prevNode, nextNode, block);
+			if (node != null && node == prevNode) {
+				if (prevNode != null && prevNode.SafeToAddToEndILSpans)
+					prevNode.EndILSpans.AddRange(spans);
+				else if (nextNode != null)
+					nextNode.ILSpans.AddRange(spans);
+				else if (prevNode != null)
+					block.EndILSpans.AddRange(spans);
+				else
+					block.ILSpans.AddRange(spans);
+			}
+			else {
+				if (nextNode != null)
+					nextNode.ILSpans.AddRange(spans);
+				else if (prevNode != null) {
+					if (prevNode.SafeToAddToEndILSpans)
+						prevNode.EndILSpans.AddRange(spans);
+					else
+						block.EndILSpans.AddRange(spans);
+				}
+				else
+					block.ILSpans.AddRange(spans);
+			}
 		}
 
 		public static void LabelMergeILSpans(ILBlockBase block, List<ILNode> newBody, int instrIndexToRemove)

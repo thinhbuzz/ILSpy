@@ -1,14 +1,14 @@
 ﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
-// 
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -38,7 +38,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			this.parent.Clear();
 			this.nextSibling.Clear();
 		}
-		
+
 		public static void RemoveGotos(DecompilerContext context, ILBlock method)
 		{
 			var gr = context.Cache.GetGotoRemoval();
@@ -68,7 +68,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				if (previousChild != null)
 					nextSibling[previousChild] = null;
 			}
-			
+
 			// Simplify gotos
 			bool modified;
 			do {
@@ -80,7 +80,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				}
 			} while(modified);
 		}
-		
+
 		public static void RemoveRedundantCode(ILBlock method, DecompilerContext context)
 		{
 			// Remove dead lables and nops
@@ -91,7 +91,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					var node = block.Body[i];
 					if (node.Match(ILCode.Nop)) {
 						if (context.CalculateILSpans)
-							Utils.NopMergeILSpans(block, newBody, i);
+							Utils.NopMergeILSpans(block, newBody, ref i);
 					}
 					else if (node is ILLabel && !liveLabels.Contains((ILLabel)node)) {
 						if (context.CalculateILSpans)
@@ -102,7 +102,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				}
 				block.Body = newBody;
 			}
-			
+
 			// Remove redundant continue
 			foreach(ILWhileLoop loop in method.GetSelfAndChildrenRecursive<ILWhileLoop>()) {
 				var body = loop.BodyBlock.Body;
@@ -112,17 +112,17 @@ namespace ICSharpCode.Decompiler.ILAst {
 					body.RemoveAt(body.Count - 1);
 				}
 			}
-			
+
 			// Remove redundant break at the end of case
 			// Remove redundant case blocks altogether
 			foreach(ILSwitch ilSwitch in method.GetSelfAndChildrenRecursive<ILSwitch>()) {
 				foreach(ILBlock ilCase in ilSwitch.CaseBlocks) {
 					Debug.Assert(ilCase.EntryGoto == null);
-					
+
 					int count = ilCase.Body.Count;
 					if (count >= 2) {
 						if (ilCase.Body[count - 2].IsUnconditionalControlFlow() &&
-						    ilCase.Body[count - 1].Match(ILCode.LoopOrSwitchBreak)) 
+						    ilCase.Body[count - 1].Match(ILCode.LoopOrSwitchBreak))
 						{
 							var prev = ilCase.Body[count - 2];
 							if (context.CalculateILSpans)
@@ -131,7 +131,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 						}
 					}
 				}
-				
+
 				var defaultCase = ilSwitch.CaseBlocks.SingleOrDefault(cb => cb.Values == null);
 				// If there is no default block, remove empty case blocks
 				if (defaultCase == null || (defaultCase.Body.Count == 1 && defaultCase.Body.Single().Match(ILCode.LoopOrSwitchBreak))) {
@@ -145,14 +145,14 @@ namespace ICSharpCode.Decompiler.ILAst {
 					}
 				}
 			}
-			
+
 			// Remove redundant return at the end of method
 			if (method.Body.Count > 0 && method.Body.Last().Match(ILCode.Ret) && ((ILExpression)method.Body.Last()).Arguments.Count == 0) {
 				if (context.CalculateILSpans)
 					method.Body[method.Body.Count - 1].AddSelfAndChildrenRecursiveILSpans(method.EndILSpans);
 				method.Body.RemoveAt(method.Body.Count - 1);
 			}
-			
+
 			// Remove unreachable return statements
 			bool modified = false;
 			foreach(ILBlock block in method.GetSelfAndChildrenRecursive<ILBlock>()) {
@@ -172,7 +172,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				RemoveGotos(context, method);
 			}
 		}
-		
+
 		IEnumerable<ILNode> GetParents(ILNode node)
 		{
 			ILNode current = node;
@@ -183,46 +183,46 @@ namespace ICSharpCode.Decompiler.ILAst {
 				yield return current;
 			}
 		}
-		
+
 		bool TrySimplifyGoto(ILExpression gotoExpr)
 		{
 			Debug.Assert(gotoExpr.Code == ILCode.Br || gotoExpr.Code == ILCode.Leave);
 			Debug.Assert(gotoExpr.Prefixes == null);
 			Debug.Assert(gotoExpr.Operand != null);
-			
+
 			ILNode target = Enter(gotoExpr, new HashSet<ILNode>());
 			if (target == null)
 				return false;
-			
+
 			// The gotoExper is marked as visited because we do not want to
 			// walk over node which we plan to modify
-			
+
 			// The simulated path always has to start in the same try-block
 			// in other for the same finally blocks to be executed.
-			
+
 			if (target == Exit(gotoExpr, new HashSet<ILNode>() { gotoExpr })) {
 				gotoExpr.Code = ILCode.Nop;
 				gotoExpr.Operand = null;
 				return true;
 			}
-			
+
 			ILNode breakBlock = GetParents(gotoExpr).FirstOrDefault(n => n is ILWhileLoop || n is ILSwitch);
 			if (breakBlock != null && target == Exit(breakBlock, new HashSet<ILNode>() { gotoExpr })) {
 				gotoExpr.Code = ILCode.LoopOrSwitchBreak;
 				gotoExpr.Operand = null;
 				return true;
 			}
-			
+
 			ILNode continueBlock = GetParents(gotoExpr).FirstOrDefault(n => n is ILWhileLoop);
 			if (continueBlock != null && target == Enter(continueBlock, new HashSet<ILNode>() { gotoExpr })) {
 				gotoExpr.Code = ILCode.LoopContinue;
 				gotoExpr.Operand = null;
 				return true;
 			}
-			
+
 			return false;
 		}
-		
+
 		/// <summary>
 		/// Get the first expression to be excecuted if the instruction pointer is at the start of the given node.
 		/// Try blocks may not be entered in any way.  If possible, the try block is returned as the node to be executed.
@@ -231,15 +231,15 @@ namespace ICSharpCode.Decompiler.ILAst {
 		{
 			if (node == null)
 				throw new ArgumentNullException();
-			
+
 			if (!visitedNodes.Add(node))
 				return null;  // Infinite loop
-			
+
 			ILLabel label = node as ILLabel;
 			if (label != null) {
 				return Exit(label, visitedNodes);
 			}
-			
+
 			ILExpression expr = node as ILExpression;
 			if (expr != null) {
 				if (expr.Code == ILCode.Br || expr.Code == ILCode.Leave) {
@@ -284,7 +284,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					return expr;
 				}
 			}
-			
+
 			ILBlock block = node as ILBlock;
 			if (block != null) {
 				if (block.EntryGoto != null) {
@@ -295,12 +295,12 @@ namespace ICSharpCode.Decompiler.ILAst {
 					return Exit(block, visitedNodes);
 				}
 			}
-			
+
 			ILCondition cond = node as ILCondition;
 			if (cond != null) {
 				return cond.Condition;
 			}
-			
+
 			ILWhileLoop loop = node as ILWhileLoop;
 			if (loop != null) {
 				if (loop.Condition != null) {
@@ -309,20 +309,20 @@ namespace ICSharpCode.Decompiler.ILAst {
 					return Enter(loop.BodyBlock, visitedNodes);
 				}
 			}
-			
+
 			ILTryCatchBlock tryCatch = node as ILTryCatchBlock;
 			if (tryCatch != null) {
 				return tryCatch;
 			}
-			
+
 			ILSwitch ilSwitch = node as ILSwitch;
 			if (ilSwitch != null) {
 				return ilSwitch.Condition;
 			}
-			
+
 			throw new NotSupportedException(node.GetType().ToString());
 		}
-		
+
 		/// <summary>
 		/// Get the first expression to be excecuted if the instruction pointer is at the end of the given node
 		/// </summary>
@@ -330,11 +330,11 @@ namespace ICSharpCode.Decompiler.ILAst {
 		{
 			if (node == null)
 				throw new ArgumentNullException();
-			
+
 			ILNode nodeParent = parent[node];
 			if (nodeParent == null)
 				return null;  // Exited main body
-			
+
 			if (nodeParent is ILBlock) {
 				ILNode nextNode = nextSibling[node];
 				if (nextNode != null) {
@@ -343,25 +343,25 @@ namespace ICSharpCode.Decompiler.ILAst {
 					return Exit(nodeParent, visitedNodes);
 				}
 			}
-			
+
 			if (nodeParent is ILCondition) {
 				return Exit(nodeParent, visitedNodes);
 			}
-			
+
 			if (nodeParent is ILTryCatchBlock) {
 				// Finally blocks are completely ignored.
 				// We rely on the fact that try blocks can not be entered.
 				return Exit(nodeParent, visitedNodes);
 			}
-			
+
 			if (nodeParent is ILSwitch) {
 				return null;  // Implicit exit from switch is not allowed
 			}
-			
+
 			if (nodeParent is ILWhileLoop) {
 				return Enter(nodeParent, visitedNodes);
 			}
-			
+
 			throw new NotSupportedException(nodeParent.GetType().ToString());
 		}
 	}

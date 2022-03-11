@@ -1,14 +1,14 @@
 // Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
-// 
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -78,11 +78,11 @@ namespace ICSharpCode.Decompiler.ILAst {
 		IntroduceConstants,
 		None
 	}
-	
+
 	public partial class ILAstOptimizer
 	{
 		int nextLabelIndex = 0;
-		
+
 		DecompilerContext context;
 		ICorLibTypes corLib;
 		ILBlock method;
@@ -1427,7 +1427,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				foreach (var target in e.GetBranchTargets())
 					labelRefCount[target] = labelRefCount.GetOrDefault(target) + 1;
 			}
-			
+
 			foreach(ILBlock block in method.GetSelfAndChildrenRecursive<ILBlock>(listBlock)) {
 				List<ILNode> body = block.Body;
 				List<ILNode> newBody = new List<ILNode>(body.Count);
@@ -1449,10 +1449,10 @@ namespace ICSharpCode.Decompiler.ILAst {
 							if (label != null)
 								Utils.AddILSpansTryPreviousFirst(label, prev, next, block);
 						}
-					} else if (body[i].Match(ILCode.Nop)){
+					} else if (body[i].Match(ILCode.Nop)) {
 						// Ignore nop
 						if (context.CalculateILSpans)
-							Utils.NopMergeILSpans(block, newBody, i);
+							Utils.NopMergeILSpans(block, newBody, ref i);
 					} else if (body[i].Match(ILCode.Pop, out popExpr)) {
 						ILVariable v;
 						if (!popExpr.Match(ILCode.Ldloc, out v))
@@ -1481,7 +1481,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				}
 				block.Body = newBody;
 			}
-			
+
 			// Ignore arguments of 'leave'
 			foreach (ILExpression expr in method.GetSelfAndChildrenRecursive<ILExpression>(listExpr, e => e.Code == ILCode.Leave)) {
 				if (expr.Arguments.Any(arg => !arg.Match(ILCode.Ldloc)))
@@ -1492,7 +1492,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				}
 				expr.Arguments.Clear();
 			}
-			
+
 			// 'dup' removal
 			foreach (ILExpression expr in method.GetSelfAndChildrenRecursive<ILExpression>(listExpr)) {
 				for (int i = 0; i < expr.Arguments.Count; i++) {
@@ -1554,12 +1554,12 @@ namespace ICSharpCode.Decompiler.ILAst {
 				}
 			}
 		}
-		
+
 		/// <summary>
 		/// Converts call and callvirt instructions that read/write properties into CallGetter/CallSetter instructions.
-		/// 
+		///
 		/// CallGetter/CallSetter is used to allow the ILAst to represent "while ((SomeProperty = value) != null)".
-		/// 
+		///
 		/// Also simplifies 'newobj(SomeDelegate, target, ldvirtftn(F, target))' to 'newobj(SomeDelegate, target, ldvirtftn(F))'
 		/// </summary>
 		void IntroducePropertyAccessInstructions(ILNode node)
@@ -1581,7 +1581,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				}
 			}
 		}
-		
+
 		void IntroducePropertyAccessInstructions(ILExpression expr, ILExpression parentExpr, int posInParent)
 		{
 			if (expr.Code == ILCode.Call || expr.Code == ILCode.Callvirt) {
@@ -1653,21 +1653,21 @@ namespace ICSharpCode.Decompiler.ILAst {
 		void SplitToBasicBlocks(ILBlock block)
 		{
 			List<ILNode> basicBlocks = new List<ILNode>();
-			
+
 			ILLabel entryLabel = block.Body.FirstOrDefault() as ILLabel ?? new ILLabel() { Name = "Block_" + (nextLabelIndex++).ToString() };
 			ILBasicBlock basicBlock = new ILBasicBlock();
 			basicBlocks.Add(basicBlock);
 			basicBlock.Body.Add(entryLabel);
 			block.EntryGoto = new ILExpression(ILCode.Br, entryLabel);
-			
+
 			if (block.Body.Count > 0) {
 				if (block.Body[0] != entryLabel)
 					basicBlock.Body.Add(block.Body[0]);
-				
+
 				for (int i = 1; i < block.Body.Count; i++) {
 					ILNode lastNode = block.Body[i - 1];
 					ILNode currNode = block.Body[i];
-					
+
 					// Start a new basic block if necessary
 					if (currNode is ILLabel ||
 						currNode is ILTryCatchBlock || // Counts as label
@@ -1676,18 +1676,18 @@ namespace ICSharpCode.Decompiler.ILAst {
 					{
 						// Try to reuse the label
 						ILLabel label = currNode as ILLabel ?? new ILLabel() { Name = "Block_" + (nextLabelIndex++).ToString() };
-						
+
 						// Terminate the last block
 						if (!lastNode.IsUnconditionalControlFlow()) {
 							// Explicit branch from one block to other
 							basicBlock.Body.Add(new ILExpression(ILCode.Br, label));
 						}
-						
+
 						// Start the new block
 						basicBlock = new ILBasicBlock();
 						basicBlocks.Add(basicBlock);
 						basicBlock.Body.Add(label);
-						
+
 						// Add the node to the basic block
 						if (currNode != label)
 							basicBlock.Body.Add(currNode);
@@ -1696,7 +1696,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					}
 				}
 			}
-			
+
 			block.Body = basicBlocks;
 			return;
 		}
@@ -1816,7 +1816,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				}
 			}
 		}
-		
+
 		/// <summary>
 		/// Replace endfinally with jump to the end of the finally block
 		/// </summary>
@@ -1837,7 +1837,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				}
 			}
 		}
-		
+
 		/// <summary>
 		/// Reduce the nesting of conditions.
 		/// It should be done on flat data that already had most gotos removed
@@ -1889,7 +1889,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				}
 			}
 		}
-		
+
 		void RecombineVariables(ILBlock method)
 		{
 			// Recombine variables that were split when the ILAst was created
@@ -2094,7 +2094,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			if (!(sizeOfExpression.Code == ILCode.Ldc_I4 && (int)sizeOfExpression.Operand == 1))
 				adjustmentExpr = new ILExpression(divide ? ILCode.Div_Un : ILCode.Mul, null, adjustmentExpr, sizeOfExpression);
 		}
-		
+
 		public static void ReplaceVariables(ILNode node, Func<ILVariable, ILVariable> variableMapping)
 		{
 			ILExpression expr = node as ILExpression;
@@ -2109,13 +2109,13 @@ namespace ICSharpCode.Decompiler.ILAst {
 				if (catchBlock != null && catchBlock.ExceptionVariable != null) {
 					catchBlock.ExceptionVariable = variableMapping(catchBlock.ExceptionVariable);
 				}
-				
+
 				foreach (ILNode child in node.GetChildren())
 					ReplaceVariables(child, variableMapping);
 			}
 		}
 	}
-	
+
 	public static class ILAstOptimizerExtensionMethods
 	{
 		/// <summary>
@@ -2133,7 +2133,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			}
 			return modified;
 		}
-		
+
 		public static bool RunOptimization(this ILBlock block, Func<ILBlockBase, List<ILNode>, ILExpression, int, bool> optimization)
 		{
 			bool modified = false;
@@ -2147,19 +2147,19 @@ namespace ICSharpCode.Decompiler.ILAst {
 			}
 			return modified;
 		}
-		
+
 		public static bool IsConditionalControlFlow(this ILNode node)
 		{
 			ILExpression expr = node as ILExpression;
 			return expr != null && expr.Code.IsConditionalControlFlow();
 		}
-		
+
 		public static bool IsUnconditionalControlFlow(this ILNode node)
 		{
 			ILExpression expr = node as ILExpression;
 			return expr != null && expr.Code.IsUnconditionalControlFlow();
 		}
-		
+
 		/// <summary>
 		/// The expression has no effect on the program and can be removed
 		/// if its return value is not needed.
@@ -2167,7 +2167,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		public static bool HasNoSideEffects(this ILExpression expr)
 		{
 			// Remember that if expression can throw an exception, it is a side effect
-			
+
 			switch(expr.Code) {
 				case ILCode.Ldloc:
 				case ILCode.Ldloca:
@@ -2183,7 +2183,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					return false;
 			}
 		}
-		
+
 		public static bool IsStoreToArray(this ILCode code)
 		{
 			switch (code) {
@@ -2201,7 +2201,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					return false;
 			}
 		}
-		
+
 		public static bool IsLoadFromArray(this ILCode code)
 		{
 			switch (code) {
@@ -2222,7 +2222,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					return false;
 			}
 		}
-		
+
 		/// <summary>
 		/// Can the expression be used as a statement in C#?
 		/// </summary>
@@ -2273,7 +2273,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			}
 			return expr;
 		}
-		
+
 		public static ILNode[] RemoveTail(this List<ILNode> body, params ILCode[] codes)
 		{
 			for (int i = 0; i < codes.Length; i++) {
@@ -2286,26 +2286,26 @@ namespace ICSharpCode.Decompiler.ILAst {
 			body.RemoveRange(body.Count - codes.Length, codes.Length);
 			return list;
 		}
-		
+
 		public static V GetOrDefault<K,V>(this Dictionary<K, V> dict, K key)
 		{
 			V ret;
 			dict.TryGetValue(key, out ret);
 			return ret;
 		}
-		
+
 		public static void RemoveOrThrow<T>(this ICollection<T> collection, T item)
 		{
 			if (!collection.Remove(item))
 				throw new Exception("The item was not found in the collection");
 		}
-		
+
 		public static void RemoveOrThrow<K,V>(this Dictionary<K,V> collection, K key)
 		{
 			if (!collection.Remove(key))
 				throw new Exception("The key was not found in the dictionary");
 		}
-		
+
 		public static bool ContainsReferenceTo(this ILExpression expr, ILVariable v)
 		{
 			if (expr.Operand == v)
