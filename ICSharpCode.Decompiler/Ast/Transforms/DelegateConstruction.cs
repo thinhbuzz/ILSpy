@@ -213,7 +213,17 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			subContext.ReservedVariableNames.AddRange(currentlyUsedVariableNames);
 			subContext.CalculateILSpans = true;
 			MethodDebugInfoBuilder builder;
-			BlockStatement body = AstMethodBodyBuilder.CreateMethodBody(method, subContext, autoPropertyProvider, ame.Parameters, false, stringBuilder, out builder);
+			BlockStatement body;
+			try {
+				body = AstMethodBodyBuilder.CreateMethodBody(method, subContext, autoPropertyProvider, ame.Parameters, false,
+					stringBuilder, out builder);
+			}
+			catch (OperationCanceledException) {
+				throw;
+			}
+			catch (Exception ex) {
+				AstBuilder.CreateBadMethod(subContext, method, ex, out body, out builder);
+			}
 			TransformationPipeline.RunTransformationsUntil(body, v => v is DelegateConstruction, subContext);
 			body.AcceptVisitor(this, null);
 			ame.IsAsync = subContext.CurrentMethodIsAsync;

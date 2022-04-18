@@ -1523,7 +1523,7 @@ namespace ICSharpCode.Decompiler.Ast {
 								throw;
 							}
 							catch (Exception ex) {
-								CreateBadMethod(method, ex, out body, out builder2);
+								CreateBadMethod(context, method, ex, out body, out builder2);
 							}
 							Return(asyncState);
 							return new AsyncMethodBodyResult(methodNode, method, body, builder2, context.variableMap, context.CurrentMethodIsAsync, context.CurrentMethodIsYieldReturn);
@@ -1545,7 +1545,7 @@ namespace ICSharpCode.Decompiler.Ast {
 					throw;
 				}
 				catch (Exception ex) {
-					CreateBadMethod(method, ex, out bs, out builder3);
+					CreateBadMethod(context, method, ex, out bs, out builder3);
 				}
 				methodNode.SetChildByRole(Roles.Body, bs);
 				methodNode.AddAnnotation(builder3);
@@ -1619,7 +1619,7 @@ namespace ICSharpCode.Decompiler.Ast {
 		}
 		static readonly UTF8String name_Finalize = new UTF8String("Finalize");
 
-		void CreateBadMethod(MethodDef method, Exception ex, out BlockStatement bs, out MethodDebugInfoBuilder builder) {
+		public static void CreateBadMethod(DecompilerContext context, MethodDef method, Exception ex, out BlockStatement bs, out MethodDebugInfoBuilder builder) {
 			var msg = string.Format("{0}An exception occurred when decompiling this method ({1:X8}){0}{0}{2}{0}",
 					Environment.NewLine, method.MDToken.ToUInt32(), ex.ToString());
 
