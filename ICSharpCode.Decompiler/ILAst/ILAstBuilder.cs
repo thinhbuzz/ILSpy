@@ -311,9 +311,15 @@ namespace ICSharpCode.Decompiler.ILAst {
 					PushCount   = pushCount
 				};
 				if (prefixes != null) {
-					instrToByteCode[prefixes[0]] = byteCode;
-					byteCode.Offset = prefixes[0].Offset;
-					byteCode.Prefixes = prefixes.ToArray();
+					var firstPrefix = prefixes[0];
+					if (inst.SupportsPrefix(firstPrefix.OpCode.Code)) {
+						instrToByteCode[firstPrefix] = byteCode;
+						byteCode.Offset = firstPrefix.Offset;
+						byteCode.Prefixes = prefixes.ToArray();
+					}
+					else {
+						instrToByteCode[inst] = byteCode;
+					}
 					prefixes = null;
 					StackAnalysis_cachedPrefixes.Clear();
 				} else {
