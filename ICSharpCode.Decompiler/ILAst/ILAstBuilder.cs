@@ -301,13 +301,14 @@ namespace ICSharpCode.Decompiler.ILAst {
 					code = codeBkp;
 					operand = inst.Operand;
 				}
+				inst.CalculateStackUsage(methodDef.HasReturnType, out int pushCount, out int popCount);
 				ByteCode byteCode = new ByteCode() {
 					Offset      = inst.Offset,
 					EndOffset   = next?.Offset ?? (uint)methodDef.Body.GetCodeSize(),
 					Code        = code,
 					Operand     = operand,
-					PopCount    = inst.GetPopDelta(methodDef),
-					PushCount   = inst.GetPushDelta(methodDef)
+					PopCount    = popCount,
+					PushCount   = pushCount
 				};
 				if (prefixes != null) {
 					instrToByteCode[prefixes[0]] = byteCode;

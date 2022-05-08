@@ -99,22 +99,6 @@ namespace ICSharpCode.Decompiler {
 			return ary;
 		}
 
-		#region GetPushDelta / GetPopDelta
-		public static int GetPushDelta(this Instruction instruction, MethodDef methodDef)
-		{
-			int pushes, pops;
-			instruction.CalculateStackUsage(methodDef.HasReturnType, out pushes, out pops);
-			return pushes;
-		}
-
-		public static int GetPopDelta(this Instruction instruction, MethodDef methodDef)
-		{
-			int pushes, pops;
-			instruction.CalculateStackUsage(methodDef.HasReturnType, out pushes, out pops);
-			return pops;
-		}
-		#endregion
-
 		/// <summary>
 		/// checks if the given TypeReference is one of the following types:
 		/// [sbyte, short, int, long, IntPtr]
