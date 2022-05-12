@@ -91,17 +91,15 @@ namespace ICSharpCode.Decompiler.Ast {
 						storeNames = nv.proposedStoreNames[storedVar] = new List<string>();
 					storeNames.Add(name);
 				}
-				else {
-					for (int i = 0; i < ilExpression.Arguments.Count; i++) {
-						var argument = ilExpression.Arguments[i];
-						if (argument.Code == ILCode.Ldloc && ilExpression.Operand is ILVariable loadedVar) {
-							var name = nv.GetNameForArgument(argument, i);
-							if (nv.fieldNamesInCurrentType.Contains(name))
-								continue;
-							if (!nv.proposedLoadNames.TryGetValue(loadedVar, out var loadNames))
-								loadNames = nv.proposedLoadNames[loadedVar] = new List<string>();
-							loadNames.Add(name);
-						}
+				for (int i = 0; i < ilExpression.Arguments.Count; i++) {
+					var argument = ilExpression.Arguments[i];
+					if (argument.Code == ILCode.Ldloc && ilExpression.Operand is ILVariable loadedVar) {
+						var name = nv.GetNameForArgument(argument, i);
+						if (nv.fieldNamesInCurrentType.Contains(name))
+							continue;
+						if (!nv.proposedLoadNames.TryGetValue(loadedVar, out var loadNames))
+							loadNames = nv.proposedLoadNames[loadedVar] = new List<string>();
+						loadNames.Add(name);
 					}
 				}
 			}
