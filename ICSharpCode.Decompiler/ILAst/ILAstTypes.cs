@@ -451,6 +451,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 		public ILBlock          FinallyBlock;
 		public ILBlock          FaultBlock;
 
+		// Used for inlined finally blocks in yield return state machines
+		public MethodDef InlinedFinallyMethod;
+
 		internal override ILNode GetNext(ref int index)
 		{
 			if (index == 0) {
