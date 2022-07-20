@@ -842,7 +842,7 @@ namespace ICSharpCode.Decompiler.Ast {
 						return IdentifierExpression.Create("ldvirtftn", BoxedTextColor.OpCode).Invoke(expr)
 							.WithAnnotation(Transforms.DelegateConstruction.Annotation.True);
 					}
-					case ILCode.Calli:		 return TransformCalli(byteCode, args);
+					case ILCode.Calli:		 return context.Settings.EmitCalliAsInvocationExpression ? TransformCalli(byteCode, args) : InlineAssembly(byteCode, args);
 					case ILCode.Ckfinite:    return InlineAssembly(byteCode, args);
 					case ILCode.Constrained: return InlineAssembly(byteCode, args);
 					case ILCode.Cpblk:       return InlineAssembly(byteCode, args);
@@ -1349,23 +1349,20 @@ namespace ICSharpCode.Decompiler.Ast {
 		}
 		static readonly UTF8String nameInvoke = new UTF8String("Invoke");
 
-		AstNode TransformCalli(ILExpression byteCode, List<Ast.Expression> args) {
-			MethodSig MethodSig = (MethodSig)byteCode.Operand;
-			//MethodDef methodDef = method.Resolve();
-			Ast.Expression target;
-			List<Ast.Expression> methodArgs = new List<Ast.Expression>(args);
+		AstNode TransformCalli(ILExpression byteCode, List<Expression> args) {
+			var methodSig = (MethodSig)byteCode.Operand;
+			var methodArgs = new List<Expression>(args);
 
-			target = methodArgs.Last();
+			var target = methodArgs.Last();
 			methodArgs.RemoveAt(methodArgs.Count - 1);
 
 			// Unpack any DirectionExpression that is used as target for the call
 			// (calling methods on value types implicitly passes the first argument by reference)
 			target = UnpackDirectionExpression(target);
 
-			target.AddChild(new Comment(MethodSig.CallingConvention.ToString(), CommentType.MultiLine), Roles.Comment);
-			//target.CastAs(AstType.Create("void*", null));
+			target.AddChild(new Comment($"calli[{methodSig.CallingConvention.ToString().ToLower()}]", CommentType.MultiLine), Roles.Comment);
 
-			return target.Invoke(methodArgs).CastTo(AstBuilder.ConvertType(MethodSig.RetType, stringBuilder));
+			return target.Invoke(methodArgs).CastTo(AstBuilder.ConvertType(methodSig.RetType, stringBuilder));
 		}
 
 		static MethodSemanticsAttributes GetMethodSemanticsAttributes(dnlib.DotNet.IMethod method) {
