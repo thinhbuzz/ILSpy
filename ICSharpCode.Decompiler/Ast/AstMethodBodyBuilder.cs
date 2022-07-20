@@ -842,7 +842,7 @@ namespace ICSharpCode.Decompiler.Ast {
 						return IdentifierExpression.Create("ldvirtftn", BoxedTextColor.OpCode).Invoke(expr)
 							.WithAnnotation(Transforms.DelegateConstruction.Annotation.True);
 					}
-					case ILCode.Calli:       return InlineAssembly(byteCode, args);
+					case ILCode.Calli:		 return TransformCalli(byteCode, args);
 					case ILCode.Ckfinite:    return InlineAssembly(byteCode, args);
 					case ILCode.Constrained: return InlineAssembly(byteCode, args);
 					case ILCode.Cpblk:       return InlineAssembly(byteCode, args);
@@ -1349,7 +1349,26 @@ namespace ICSharpCode.Decompiler.Ast {
 		}
 		static readonly UTF8String nameInvoke = new UTF8String("Invoke");
 
-		static MethodSemanticsAttributes GetMethodSemanticsAttributes(IMethod method) {
+		AstNode TransformCalli(ILExpression byteCode, List<Ast.Expression> args) {
+			MethodSig MethodSig = (MethodSig)byteCode.Operand;
+			//MethodDef methodDef = method.Resolve();
+			Ast.Expression target;
+			List<Ast.Expression> methodArgs = new List<Ast.Expression>(args);
+
+			target = methodArgs.Last();
+			methodArgs.RemoveAt(methodArgs.Count - 1);
+
+			// Unpack any DirectionExpression that is used as target for the call
+			// (calling methods on value types implicitly passes the first argument by reference)
+			target = UnpackDirectionExpression(target);
+
+			target.AddChild(new Comment(MethodSig.CallingConvention.ToString(), CommentType.MultiLine), Roles.Comment);
+			//target.CastAs(AstType.Create("void*", null));
+
+			return target.Invoke(methodArgs).CastTo(AstBuilder.ConvertType(MethodSig.RetType, stringBuilder));
+		}
+
+		static MethodSemanticsAttributes GetMethodSemanticsAttributes(dnlib.DotNet.IMethod method) {
 			if (method == null)
 				return MethodSemanticsAttributes.None;
 			string name = method.Name;
