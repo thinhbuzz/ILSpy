@@ -1345,6 +1345,19 @@ namespace ICSharpCode.Decompiler.Ast {
 			}
 			// Default invocation
 			AdjustArgumentsForMethodCall(methodDef ?? method, methodArgs);
+
+			if (method.MethodSig is not null && method.MethodSig.IsVarArg) {
+				var argListArg = new UndocumentedExpression { UndocumentedExpressionType = UndocumentedExpressionType.ArgList };
+				for (int i = 0; i < methodArgs.Count; i++) {
+					if (i < method.MethodSig.Params.Count)
+						continue;
+					argListArg.Arguments.Add(methodArgs[i]);
+					methodArgs.RemoveAt(i);
+					i--;
+				}
+				methodArgs.Add(argListArg);
+			}
+
 			return target.Invoke(methodDef ?? method, method.Name, ConvertTypeArguments(method), methodArgs).WithAnnotation(method);
 		}
 		static readonly UTF8String nameInvoke = new UTF8String("Invoke");

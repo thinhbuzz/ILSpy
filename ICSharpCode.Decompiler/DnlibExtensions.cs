@@ -418,6 +418,15 @@ namespace ICSharpCode.Decompiler {
 				return methodSig.Params;
 		}
 
+		public static IList<TypeSig> GetParametersWithoutSentinel(this MethodBaseSig methodSig)
+		{
+			if (methodSig is null)
+				return new List<TypeSig>();
+			if (methodSig.ParamsAfterSentinel is not null)
+				return methodSig.Params.Concat(methodSig.ParamsAfterSentinel).ToList();
+			return methodSig.Params;
+		}
+
 		public static ITypeDefOrRef GetTypeDefOrRef(this TypeSig type)
 		{
 			type = type.RemovePinnedAndModifiers();

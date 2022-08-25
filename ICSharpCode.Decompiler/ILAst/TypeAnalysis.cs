@@ -369,7 +369,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				case ILCode.CallReadOnlySetter:
 					{
 						IMethod method = expr.Operand as IMethod;
-						var parameters = method == null ? null : method.MethodSig.GetParameters();
+						var parameters = method == null ? null : method.MethodSig.GetParametersWithoutSentinel();
 						if (forceInferChildren && parameters != null && method.MethodSig != null) {
 							for (int i = 0; i < expr.Arguments.Count; i++) {
 								if (i == 0 && method.MethodSig.HasThis) {
@@ -392,7 +392,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				case ILCode.Calli:
 					{
 						var methodSig = expr.Operand as MethodSig;
-						var parameters = methodSig?.GetParameters();
+						var parameters = methodSig?.GetParametersWithoutSentinel();
 						if (forceInferChildren && parameters != null) {
 							for (int i = 0; i < expr.Arguments.Count; i++) {
 								if (i == 0 && methodSig.HasThis) {
@@ -411,7 +411,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					{
 						IMethod ctor = (IMethod)expr.Operand;
 						if (forceInferChildren) {
-							var parameters = ctor.MethodSig.GetParameters();
+							var parameters = ctor.MethodSig.GetParametersWithoutSentinel();
 							for (int i = 0; i < parameters.Count; i++) {
 								InferTypeForExpression(expr.Arguments[i], SubstituteTypeArgs(parameters[i], null, ctor));
 							}
