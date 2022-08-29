@@ -702,17 +702,5 @@ namespace ICSharpCode.Decompiler {
 			}
 			return null;
 		}
-
-		public static int IndexOf<T>(this IReadOnlyList<T> collection, T value) {
-			var comparer = EqualityComparer<T>.Default;
-			int index = 0;
-			foreach (var item in collection) {
-				if (comparer.Equals(item, value)) {
-					return index;
-				}
-				index++;
-			}
-			return -1;
-		}
 	}
 }
