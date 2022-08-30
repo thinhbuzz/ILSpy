@@ -1167,6 +1167,8 @@ namespace ICSharpCode.Decompiler.Ast {
 							continue;
 						astType.Members.Add(CreateMethod(otherMethod));
 					}
+
+					continue;
 				}
 
 				Debug.Fail("Shouldn't be here");
