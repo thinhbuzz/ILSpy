@@ -1,4 +1,4 @@
-// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
+﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -604,17 +604,18 @@ namespace ICSharpCode.Decompiler.Disassembler {
 		string GetAssemblyQualifiedName(IType type)
 		{
 			IAssembly anr = type.Scope as IAssembly;
-			if (anr == null) {
-				ModuleDef md = type.Scope as ModuleDef;
-				if (md != null) {
+			if (anr is null) {
+				if (type.Scope is ModuleDef md) {
 					anr = md.Assembly;
 				}
 			}
-			if (anr != null) {
-				return type.FullName + ", " + anr.FullName;
-			} else {
-				return type.FullName;
+			sb.Clear();
+			FullNameFactory.FullNameSB(type, false, null, sb);
+			if (anr is not null) {
+				sb.Append(", ");
+				sb.Append(anr.FullName);
 			}
+			return sb.ToString();
 		}
 		#endregion
 
@@ -914,7 +915,8 @@ namespace ICSharpCode.Decompiler.Disassembler {
 						if (sami.IsUserDefinedSubTypeValid) {
 							output.Write(",", BoxedTextColor.Punctuation);
 							output.Write(" ", BoxedTextColor.Text);
-							output.Write("\"" + NRefactory.CSharp.TextWriterTokenWriter.ConvertStringMaxLength(sami.UserDefinedSubType.FullName, options.MaxStringLength) + "\"", BoxedTextColor.String);
+							sb.Clear();
+							output.Write("\"" + NRefactory.CSharp.TextWriterTokenWriter.ConvertStringMaxLength(FullNameFactory.FullName(sami.UserDefinedSubType, false, null, sb), options.MaxStringLength) + "\"", BoxedTextColor.String);
 						}
 					}
 					break;
@@ -965,7 +967,14 @@ namespace ICSharpCode.Decompiler.Disassembler {
 						goto default;
 					output.Write("custom", BoxedTextColor.Keyword);
 					var bh3 = BracePairHelper.Create(output, "(", CodeBracesRangeFlags.Parentheses);
-					output.Write(string.Format("\"{0}\"", NRefactory.CSharp.TextWriterTokenWriter.ConvertStringMaxLength(cmi.CustomMarshaler == null ? string.Empty : cmi.CustomMarshaler.FullName, options.MaxStringLength)), BoxedTextColor.String);
+					string customMarshalerFullName;
+					if (cmi.CustomMarshaler is null)
+						customMarshalerFullName = string.Empty;
+					else {
+						sb.Clear();
+						customMarshalerFullName = FullNameFactory.FullName(cmi.CustomMarshaler, false, null, sb);
+					}
+					output.Write(string.Format("\"{0}\"", NRefactory.CSharp.TextWriterTokenWriter.ConvertStringMaxLength(customMarshalerFullName, options.MaxStringLength)), BoxedTextColor.String);
 					output.Write(",", BoxedTextColor.Punctuation);
 					output.Write(" ", BoxedTextColor.Text);
 					output.Write(string.Format("\"{0}\"", NRefactory.CSharp.TextWriterTokenWriter.ConvertStringMaxLength(cmi.Cookie, options.MaxStringLength)), BoxedTextColor.String);
@@ -1480,7 +1489,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 		void WriteTypeName(TypeDef type) {
 			var ns = type.Namespace ?? string.Empty;
 			if (ns != string.Empty) {
-				DisassemblerHelpers.WriteNamespace(output, ns, type.DefinitionAssembly);
+				DisassemblerHelpers.WriteNamespace(output, ns, type.DefinitionAssembly, sb);
 				output.Write(".", BoxedTextColor.Operator);
 			}
 			output.Write(DisassemblerHelpers.Escape(type.Name.String), type, DecompilerReferenceFlags.Definition, CSharpMetadataTextColorProvider.Instance.GetColor(type));
@@ -1601,7 +1610,14 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				}
 				output.WriteLine();
 			}
-			CloseBlock(bh1, addLineSep, "end of class " + (type.DeclaringType != null ? type.Name.String : type.FullName));
+
+			sb.Clear();
+			sb.Append("end of class ");
+			if (type.DeclaringType is not null)
+				sb.Append(type.Name.String);
+			else
+				FullNameFactory.FullNameSB(type, false, null, sb);
+			CloseBlock(bh1, addLineSep, sb.ToString());
 			isInType = oldIsInType;
 		}
 
@@ -1893,14 +1909,22 @@ namespace ICSharpCode.Decompiler.Disassembler {
 						output.Write("forwarder", BoxedTextColor.Keyword);
 						output.Write(" ", BoxedTextColor.Text);
 					}
-					output.Write(exportedType.DeclaringType != null ? exportedType.TypeName.String : exportedType.FullName, CSharpMetadataTextColorProvider.Instance.GetColor(exportedType));
+					string exportedTypeFullName;
+					if (exportedType.DeclaringType != null)
+						exportedTypeFullName = exportedType.TypeName.String;
+					else {
+						sb.Clear();
+						exportedTypeFullName = FullNameFactory.FullName(exportedType, false, null, sb);
+					}
+					output.Write(exportedTypeFullName, CSharpMetadataTextColorProvider.Instance.GetColor(exportedType));
 					var bh1 = OpenBlock(false, CodeBracesRangeFlags.OtherBlockBraces);
 					if (exportedType.DeclaringType != null) {
 						output.Write(".class", BoxedTextColor.ILDirective);
 						output.Write(" ", BoxedTextColor.Text);
 						output.Write("extern", BoxedTextColor.Keyword);
 						output.Write(" ", BoxedTextColor.Text);
-						output.WriteLine(DisassemblerHelpers.Escape(exportedType.DeclaringType.FullName), CSharpMetadataTextColorProvider.Instance.GetColor(exportedType.DeclaringType));
+						sb.Clear();
+						output.WriteLine(DisassemblerHelpers.Escape(FullNameFactory.FullName(exportedType.DeclaringType, false, null, sb)), CSharpMetadataTextColorProvider.Instance.GetColor(exportedType.DeclaringType));
 					}
 					else {
 						output.Write(".assembly", BoxedTextColor.ILDirective);
