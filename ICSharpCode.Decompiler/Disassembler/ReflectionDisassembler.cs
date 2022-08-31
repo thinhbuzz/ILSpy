@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -172,6 +172,8 @@ namespace ICSharpCode.Decompiler.Disassembler {
 		bool isInType; // whether we are currently disassembling a whole type (-> defaultCollapsed for foldings)
 		MethodBodyDisassembler methodBodyDisassembler;
 		IMemberDef currentMember;
+
+		const DecompilerReferenceFlags numberFlags = DecompilerReferenceFlags.Local | DecompilerReferenceFlags.Hidden | DecompilerReferenceFlags.NoFollow;
 
 		public ReflectionDisassembler(IDecompilerOutput output, bool detectControlStructure, DisassemblerOptions options)
 		{
@@ -695,13 +697,13 @@ namespace ICSharpCode.Decompiler.Disassembler {
 						WriteNativeType(ami.ElementType);
 					var bh1 = BracePairHelper.Create(output, "[", CodeBracesRangeFlags.SquareBrackets);
 					if (ami.Size >= 0) {
-						output.Write(numberFormatter.Format(ami.Size), BoxedTextColor.Number);
+						output.Write(numberFormatter.Format(ami.Size), ami.Size, numberFlags, BoxedTextColor.Number);
 					}
 					if (ami.Flags != 0 && ami.ParamNumber >= 0) {
 						output.Write(" ", BoxedTextColor.Text);
 						output.Write("+", BoxedTextColor.Operator);
 						output.Write(" ", BoxedTextColor.Text);
-						output.Write(numberFormatter.Format(ami.ParamNumber), BoxedTextColor.Number);
+						output.Write(numberFormatter.Format(ami.ParamNumber), ami.ParamNumber, numberFlags, BoxedTextColor.Number);
 					}
 					bh1.Write("]");
 					break;
@@ -724,7 +726,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 					output.Write("sysstring", BoxedTextColor.Keyword);
 					if (fsmi != null && fsmi.IsSizeValid) {
 						var bh2 = BracePairHelper.Create(output, "[", CodeBracesRangeFlags.SquareBrackets);
-						output.Write(numberFormatter.Format(fsmi.Size), BoxedTextColor.Number);
+						output.Write(numberFormatter.Format(fsmi.Size), fsmi.Size, numberFlags, BoxedTextColor.Number);
 						bh2.Write("]");
 					}
 					break;
@@ -746,7 +748,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 						output.Write(" ", BoxedTextColor.Text);
 						output.Write("=", BoxedTextColor.Operator);
 						output.Write(" ", BoxedTextColor.Text);
-						output.Write(numberFormatter.Format(imti.IidParamIndex), BoxedTextColor.Number);
+						output.Write(numberFormatter.Format(imti.IidParamIndex), imti.IsIidParamIndexValid, numberFlags, BoxedTextColor.Number);
 						bh2.Write(")");
 					}
 					break;
@@ -924,7 +926,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 					if (fami != null) {
 						if (fami.IsSizeValid) {
 							var bh2 = BracePairHelper.Create(output, "[", CodeBracesRangeFlags.SquareBrackets);
-							output.Write(numberFormatter.Format(fami.Size), BoxedTextColor.Number);
+							output.Write(numberFormatter.Format(fami.Size), fami.Size, numberFlags, BoxedTextColor.Number);
 							bh2.Write("]");
 						}
 						if (fami.IsElementTypeValid) {
@@ -1096,7 +1098,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			output.Write(".param", BoxedTextColor.ILDirective);
 			output.Write(" ", BoxedTextColor.Text);
 			var bh1 = BracePairHelper.Create(output, "[", CodeBracesRangeFlags.SquareBrackets);
-			output.Write(numberFormatter.Format(index), BoxedTextColor.Number);
+			output.Write(numberFormatter.Format(index), index, numberFlags, BoxedTextColor.Number);
 			bh1.Write("]");
 			if (p.HasParamDef && p.ParamDef.HasConstant) {
 				output.Write(" ", BoxedTextColor.Text);
@@ -1124,9 +1126,11 @@ namespace ICSharpCode.Decompiler.Disassembler {
 					float? cf = constant as float?;
 					double? cd = constant as double?;
 					if (cf.HasValue && (float.IsNaN(cf.Value) || float.IsInfinity(cf.Value))) {
-						output.Write(numberFormatter.Format(BitConverter.ToUInt32(BitConverter.GetBytes(cf.Value), 0)), BoxedTextColor.Number);
+						uint asUint32 = BitConverter.ToUInt32(BitConverter.GetBytes(cf.Value), 0);
+						output.Write(numberFormatter.Format(asUint32), asUint32, numberFlags, BoxedTextColor.Number);
 					} else if (cd.HasValue && (double.IsNaN(cd.Value) || double.IsInfinity(cd.Value))) {
-						output.Write(numberFormatter.Format((ulong)BitConverter.DoubleToInt64Bits(cd.Value)), BoxedTextColor.Number);
+						ulong asUlong = (ulong)BitConverter.DoubleToInt64Bits(cd.Value);
+						output.Write(numberFormatter.Format(asUlong), asUlong, numberFlags, BoxedTextColor.Number);
 					} else {
 						DisassemblerHelpers.WriteOperand(output, constant, options.MaxStringLength, numberFormatter, sb);
 					}
@@ -1165,7 +1169,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			output.Write(" ", BoxedTextColor.Text);
 			if (field.HasLayoutInfo && field.FieldOffset.HasValue) {
 				var bh1 = BracePairHelper.Create(output, "[", CodeBracesRangeFlags.SquareBrackets);
-				output.Write(numberFormatter.Format(field.FieldOffset.Value), BoxedTextColor.Number);
+				output.Write(numberFormatter.Format(field.FieldOffset.Value), field.FieldOffset.Value, numberFlags, BoxedTextColor.Number);
 				bh1.Write("]");
 				output.Write(" ", BoxedTextColor.Text);
 			}
@@ -1544,10 +1548,12 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			if (type.HasClassLayout) {
 				output.Write(".pack", BoxedTextColor.ILDirective);
 				output.Write(" ", BoxedTextColor.Text);
-				output.WriteLine(numberFormatter.Format(type.PackingSize), BoxedTextColor.Number);
+				output.Write(numberFormatter.Format(type.PackingSize), type.PackingSize, numberFlags, BoxedTextColor.Number);
+				output.WriteLine();
 				output.Write(".size", BoxedTextColor.ILDirective);
 				output.Write(" ", BoxedTextColor.Text);
-				output.WriteLine(numberFormatter.Format(type.ClassSize), BoxedTextColor.Number);
+				output.Write(numberFormatter.Format(type.ClassSize), type.ClassSize, numberFlags, BoxedTextColor.Number);
+				output.WriteLine();
 				output.WriteLine();
 			}
 			int membersLeft = type.NestedTypes.Count + type.Fields.Count + type.Methods.Count + type.Events.Count + type.Properties.Count;
@@ -1673,7 +1679,8 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				} else {
 					output.Write(" ", BoxedTextColor.Text);
 				}
-				output.Write(blob[i].ToString("x2"), BoxedTextColor.Number);
+				var b = blob[i];
+				output.Write(b.ToString("x2"), b, numberFlags, BoxedTextColor.Number);
 			}
 
 			output.WriteLine();
@@ -1803,7 +1810,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				output.Write(" ", BoxedTextColor.Text);
 				output.Write("algorithm", BoxedTextColor.Keyword);
 				output.Write(" ", BoxedTextColor.Text);
-				output.Write(numberFormatter.Format((uint)asm.HashAlgorithm), BoxedTextColor.Number);
+				output.Write(numberFormatter.Format((uint)asm.HashAlgorithm), (uint)asm.HashAlgorithm, numberFlags, BoxedTextColor.Number);
 				if (asm.HashAlgorithm == AssemblyHashAlgorithm.SHA1) {
 					output.Write(" ", BoxedTextColor.Text);
 					output.Write("// SHA1", BoxedTextColor.Comment);
@@ -1814,13 +1821,14 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			if (v != null) {
 				output.Write(".ver", BoxedTextColor.ILDirective);
 				output.Write(" ", BoxedTextColor.Text);
-				output.Write(v.Major.ToString(), BoxedTextColor.Number);
+				output.Write(v.Major.ToString(), v.Major, numberFlags, BoxedTextColor.Number);
 				output.Write(":", BoxedTextColor.Operator);
-				output.Write(v.Minor.ToString(), BoxedTextColor.Number);
+				output.Write(v.Minor.ToString(), v.Minor, numberFlags, BoxedTextColor.Number);
 				output.Write(":", BoxedTextColor.Operator);
-				output.Write(v.Build.ToString(), BoxedTextColor.Number);
+				output.Write(v.Build.ToString(), v.Build, numberFlags, BoxedTextColor.Number);
 				output.Write(":", BoxedTextColor.Operator);
-				output.WriteLine(v.Revision.ToString(), BoxedTextColor.Number);
+				output.Write(v.Revision.ToString(), v.Revision, numberFlags, BoxedTextColor.Number);
+				output.WriteLine();
 			}
 			CloseBlock(bh1);
 		}
@@ -1859,13 +1867,14 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				if (aref.Version != null) {
 					output.Write(".ver", BoxedTextColor.ILDirective);
 					output.Write(" ", BoxedTextColor.Text);
-					output.Write(aref.Version.Major.ToString(), BoxedTextColor.Number);
+					output.Write(aref.Version.Major.ToString(), aref.Version.Major, numberFlags, BoxedTextColor.Number);
 					output.Write(":", BoxedTextColor.Operator);
-					output.Write(aref.Version.Minor.ToString(), BoxedTextColor.Number);
+					output.Write(aref.Version.Minor.ToString(), aref.Version.Minor, numberFlags, BoxedTextColor.Number);
 					output.Write(":", BoxedTextColor.Operator);
-					output.Write(aref.Version.Build.ToString(), BoxedTextColor.Number);
+					output.Write(aref.Version.Build.ToString(), aref.Version.Build, numberFlags, BoxedTextColor.Number);
 					output.Write(":", BoxedTextColor.Operator);
-					output.WriteLine(aref.Version.Revision.ToString(), BoxedTextColor.Number);
+					output.Write(aref.Version.Revision.ToString(), aref.Version.Revision, numberFlags, BoxedTextColor.Number);
+					output.WriteLine();
 				}
 				CloseBlock(bh1);
 			}
@@ -1913,23 +1922,34 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			if (module is ModuleDefMD moduleDefMd) {
 				output.Write(".imagebase", BoxedTextColor.ILDirective);
 				output.Write(" ", BoxedTextColor.Text);
-				output.WriteLine(numberFormatter.Format(moduleDefMd.Metadata.PEImage.ImageNTHeaders.OptionalHeader.ImageBase), BoxedTextColor.Number);
+				var imageBase = moduleDefMd.Metadata.PEImage.ImageNTHeaders.OptionalHeader.ImageBase;
+				output.Write(numberFormatter.Format(imageBase), imageBase, numberFlags, BoxedTextColor.Number);
+				output.WriteLine();
+
 				output.Write(".file alignment", BoxedTextColor.ILDirective);
 				output.Write(" ", BoxedTextColor.Text);
-				output.WriteLine(numberFormatter.Format(moduleDefMd.Metadata.PEImage.ImageNTHeaders.OptionalHeader.FileAlignment), BoxedTextColor.Number);
+				uint fileAlignment = moduleDefMd.Metadata.PEImage.ImageNTHeaders.OptionalHeader.FileAlignment;
+				output.Write(numberFormatter.Format(fileAlignment), fileAlignment, numberFlags, BoxedTextColor.Number);
+				output.WriteLine();
+
 				output.Write(".stackreserve", BoxedTextColor.ILDirective);
 				output.Write(" ", BoxedTextColor.Text);
-				output.WriteLine(numberFormatter.Format(moduleDefMd.Metadata.PEImage.ImageNTHeaders.OptionalHeader.SizeOfStackReserve), BoxedTextColor.Number);
+				ulong sizeOfStackReserve = moduleDefMd.Metadata.PEImage.ImageNTHeaders.OptionalHeader.SizeOfStackReserve;
+				output.Write(numberFormatter.Format(sizeOfStackReserve), sizeOfStackReserve, numberFlags, BoxedTextColor.Number);
+				output.WriteLine();
+
 				output.Write(".subsystem", BoxedTextColor.ILDirective);
 				output.Write(" ", BoxedTextColor.Text);
-				output.Write(numberFormatter.Format((ushort)moduleDefMd.Metadata.PEImage.ImageNTHeaders.OptionalHeader.Subsystem), BoxedTextColor.Number);
+				ushort subsystem = (ushort)moduleDefMd.Metadata.PEImage.ImageNTHeaders.OptionalHeader.Subsystem;
+				output.Write(numberFormatter.Format(subsystem), subsystem, numberFlags, BoxedTextColor.Number);
 				output.Write(" ", BoxedTextColor.Text);
 				output.WriteLine(string.Format("// {0}", moduleDefMd.Metadata.PEImage.ImageNTHeaders.OptionalHeader.Subsystem.ToString()), BoxedTextColor.Comment);
 			}
 
 			output.Write(".corflags", BoxedTextColor.ILDirective);
 			output.Write(" ", BoxedTextColor.Text);
-			output.Write(numberFormatter.Format((uint)module.Cor20HeaderFlags), BoxedTextColor.Number);
+			uint cor20HeaderFlags = (uint)module.Cor20HeaderFlags;
+			output.Write(numberFormatter.Format(cor20HeaderFlags), cor20HeaderFlags, numberFlags, BoxedTextColor.Number);
 			output.Write(" ", BoxedTextColor.Text);
 			output.WriteLine(string.Format("// {0}", module.Cor20HeaderFlags.ToString()), BoxedTextColor.Comment);
 
