@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -91,8 +91,8 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				var bh1 = BracePairHelper.Create(output, "(", CodeBracesRangeFlags.Parentheses);
 				output.WriteLine();
 				output.IncreaseIndent();
-				foreach (var v in body.Variables) {
-					var local = (SourceLocal)instructionOperandConverter.Convert(v);
+				for (int i = 0; i < body.Variables.Count; i++) {
+					var local = (SourceLocal)instructionOperandConverter.Convert(body.Variables[i]);
 					var bh2 = BracePairHelper.Create(output, "[", CodeBracesRangeFlags.SquareBrackets);
 					bool hasName = !string.IsNullOrEmpty(local.Local.Name);
 					if (hasName)
@@ -131,8 +131,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				var instructions = body.Instructions;
 				for (int i = 0; i < instructions.Count; i++) {
 					var inst = instructions[i];
-					int startLocation;
-					inst.WriteTo(output, sb, options, baseRva, baseOffs, byteReader, method, instructionOperandConverter, pdbAsyncInfo, out startLocation);
+					inst.WriteTo(output, sb, options, baseRva, baseOffs, byteReader, method, instructionOperandConverter, pdbAsyncInfo, out int startLocation);
 
 					if (builder != null) {
 						var next = i + 1 < instructions.Count ? instructions[i + 1] : null;
@@ -143,26 +142,28 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				}
 				if (body.HasExceptionHandlers) {
 					output.WriteLine();
-					foreach (var eh in body.ExceptionHandlers) {
-						eh.WriteTo(output, sb, method);
+					for (int i = 0; i < body.ExceptionHandlers.Count; i++) {
+						body.ExceptionHandlers[i].WriteTo(output, sb, method);
 						output.WriteLine();
 					}
 				}
 			}
 		}
 
-		HashSet<uint> GetBranchTargets(IEnumerable<Instruction> instructions)
+		HashSet<uint> GetBranchTargets(IList<Instruction> instructions)
 		{
-			HashSet<uint> branchTargets = new HashSet<uint>();
-			foreach (var inst in instructions) {
-				Instruction target = inst.Operand as Instruction;
-				if (target != null)
+			var branchTargets = new HashSet<uint>();
+			for (int i = 0; i < instructions.Count; i++) {
+				var inst = instructions[i];
+				if (inst.Operand is Instruction target)
 					branchTargets.Add(target.Offset);
-				IList<Instruction> targets = inst.Operand as IList<Instruction>;
-				if (targets != null)
-					foreach (Instruction t in targets)
+				else if (inst.Operand is IList<Instruction> targets) {
+					for (int j = 0; j < targets.Count; j++) {
+						var t = targets[j];
 						if (t != null)
 							branchTargets.Add(t.Offset);
+					}
+				}
 			}
 			return branchTargets;
 		}

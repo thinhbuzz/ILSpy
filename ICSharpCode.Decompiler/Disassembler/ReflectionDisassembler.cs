@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -52,12 +52,13 @@ namespace ICSharpCode.Decompiler.Disassembler {
 
 		public void Add(MethodDef method) {
 			var body = method.Body;
-			if (body != null) {
-				foreach (var local in body.Variables) {
-					var sourceLocal = new SourceLocal(local, CreateLocalName(local), local.Type, SourceVariableFlags.None);
-					sourceLocals.Add(sourceLocal);
-					dict.Add(local, sourceLocal);
-				}
+			if (body == null)
+				return;
+			for (int i = 0; i < body.Variables.Count; i++) {
+				var local = body.Variables[i];
+				var sourceLocal = new SourceLocal(local, CreateLocalName(local), local.Type, SourceVariableFlags.None);
+				sourceLocals.Add(sourceLocal);
+				dict.Add(local, sourceLocal);
 			}
 		}
 
@@ -397,22 +398,22 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			var bh1 = OpenBlock(defaultCollapsed: isInType, flags: CodeBracesRangeFlags.MethodBraces);
 			WriteAttributes(method.CustomAttributes);
 			if (method.HasOverrides) {
-				foreach (var methodOverride in method.Overrides) {
+				for (int i = 0; i < method.Overrides.Count; i++) {
 					output.Write(".override", BoxedTextColor.ILDirective);
 					output.Write(" ", BoxedTextColor.Text);
 					output.Write("method", BoxedTextColor.Keyword);
 					output.Write(" ", BoxedTextColor.Text);
-					methodOverride.MethodDeclaration.WriteMethodTo(output, sb);
+					method.Overrides[i].MethodDeclaration.WriteMethodTo(output, sb);
 					output.WriteLine();
 				}
 			}
 
-			foreach (var p in method.GenericParameters) {
-				WriteGenericParameterAttributes(p);
-			}
+			for (int i = 0; i < method.GenericParameters.Count; i++)
+				WriteGenericParameterAttributes(method.GenericParameters[i]);
 
 			WriteParameterAttributes(0, method.Parameters.ReturnParameter);
-			foreach (var p in method.Parameters) {
+			for (int i = 0; i < method.Parameters.Count; i++) {
+				var p = method.Parameters[i];
 				if (p.IsHiddenThisParameter)
 					continue;
 				WriteParameterAttributes(p.MethodSigIndex + 1, p);
@@ -437,17 +438,17 @@ namespace ICSharpCode.Decompiler.Disassembler {
 		}
 
 		#region Write Security Declarations
-		void WriteSecurityDeclarations(IHasDeclSecurity secDeclProvider)
-		{
+		void WriteSecurityDeclarations(IHasDeclSecurity secDeclProvider) {
 			if (!secDeclProvider.HasDeclSecurities)
 				return;
 
-			foreach (var secdecl in secDeclProvider.DeclSecurities) {
+			for (int i = 0; i < secDeclProvider.DeclSecurities.Count; i++) {
+				var secdecl = secDeclProvider.DeclSecurities[i];
 				output.Write(".permissionset", BoxedTextColor.ILDirective);
 				output.Write(" ", BoxedTextColor.Text);
 				switch (secdecl.Action) {
 					case SecurityAction.Request:
-					output.Write("request", BoxedTextColor.Keyword);
+						output.Write("request", BoxedTextColor.Keyword);
 						break;
 					case SecurityAction.Demand:
 						output.Write("demand", BoxedTextColor.Keyword);
@@ -513,8 +514,8 @@ namespace ICSharpCode.Decompiler.Disassembler {
 					output.WriteLine();
 					output.IncreaseIndent();
 
-					for (int i = 0; i < secdecl.SecurityAttributes.Count; i++) {
-						SecurityAttribute sa = secdecl.SecurityAttributes[i];
+					for (int j = 0; j < secdecl.SecurityAttributes.Count; j++) {
+						SecurityAttribute sa = secdecl.SecurityAttributes[j];
 						if (sa.AttributeType != null && sa.AttributeType.Scope == sa.AttributeType.Module) {
 							output.Write("class", BoxedTextColor.Keyword);
 							output.Write(" ", BoxedTextColor.Text);
@@ -549,7 +550,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 						}
 						bh2.Write("}");
 
-						if (i + 1< secdecl.SecurityAttributes.Count)
+						if (j + 1 < secdecl.SecurityAttributes.Count)
 							output.Write(",", BoxedTextColor.Punctuation);
 						output.WriteLine();
 					}
@@ -1069,8 +1070,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			return p.ParamDef != null && (p.ParamDef.HasConstant || p.ParamDef.CustomAttributes.Count > 0);
 		}
 
-		void WriteGenericParameterAttributes(GenericParam p)
-		{
+		void WriteGenericParameterAttributes(GenericParam p) {
 			if (p.HasCustomAttributes) {
 				output.Write(".param", BoxedTextColor.ILDirective);
 				output.Write(" ", BoxedTextColor.Text);
@@ -1082,7 +1082,8 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				WriteAttributes(p.CustomAttributes);
 				output.DecreaseIndent();
 			}
-			foreach (var constraint in p.GenericParamConstraints) {
+			for (int i = 0; i < p.GenericParamConstraints.Count; i++) {
+				var constraint = p.GenericParamConstraints[i];
 				if (constraint.HasCustomAttributes) {
 					output.Write(".param", BoxedTextColor.ILDirective);
 					output.Write(" ", BoxedTextColor.Text);
@@ -1299,12 +1300,12 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				var bh2 = OpenBlock(false, CodeBracesRangeFlags.PropertyBraces);
 				WriteAttributes(property.CustomAttributes);
 
-				foreach (var method in property.GetMethods)
-					WriteNestedMethod(".get", method);
-				foreach (var method in property.SetMethods)
-					WriteNestedMethod(".set", method);
-				foreach (var method in property.OtherMethods)
-					WriteNestedMethod(".other", method);
+				for (int i = 0; i < property.GetMethods.Count; i++)
+					WriteNestedMethod(".get", property.GetMethods[i]);
+				for (int i = 0; i < property.SetMethods.Count; i++)
+					WriteNestedMethod(".set", property.SetMethods[i]);
+				for (int i = 0; i < property.OtherMethods.Count; i++)
+					WriteNestedMethod(".other", property.OtherMethods[i]);
 				CloseBlock(bh2, addLineSep);
 			}
 			else {
@@ -1367,9 +1368,8 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				WriteNestedMethod(".addon", ev.AddMethod);
 				WriteNestedMethod(".removeon", ev.RemoveMethod);
 				WriteNestedMethod(".fire", ev.InvokeMethod);
-				foreach (var method in ev.OtherMethods) {
-					WriteNestedMethod(".other", method);
-				}
+				for (int i = 0; i < ev.OtherMethods.Count; i++)
+					WriteNestedMethod(".other", ev.OtherMethods[i]);
 				CloseBlock(bh1, addLineSep);
 			}
 			else {
@@ -1550,9 +1550,8 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			WriteAttributes(type.CustomAttributes);
 			WriteSecurityDeclarations(type);
 
-			foreach (var tp in type.GenericParameters) {
-				WriteGenericParameterAttributes(tp);
-			}
+			for (int i = 0; i < type.GenericParameters.Count; i++)
+				WriteGenericParameterAttributes(type.GenericParameters[i]);
 
 			if (type.HasClassLayout) {
 				output.Write(".pack", BoxedTextColor.ILDirective);
@@ -1568,19 +1567,21 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			int membersLeft = type.NestedTypes.Count + type.Fields.Count + type.Methods.Count + type.Events.Count + type.Properties.Count;
 			if (type.HasNestedTypes) {
 				output.WriteLine("// Nested Types", BoxedTextColor.Comment);
-				foreach (var nestedType in type.GetNestedTypes(options.SortMembers)) {
+				var nestedTypes = type.GetNestedTypes(options.SortMembers);
+				for (int i = 0; i < nestedTypes.Count; i++) {
 					options.CancellationToken.ThrowIfCancellationRequested();
-					DisassembleType(nestedType, addLineSep: addLineSep && --membersLeft > 0);
+					DisassembleType(nestedTypes[i], addLineSep: addLineSep && --membersLeft > 0);
 					output.WriteLine();
 				}
 				output.WriteLine();
 			}
 			if (type.HasFields) {
 				output.WriteLine("// Fields", BoxedTextColor.Comment);
-				foreach (var field in type.GetFields(options.SortMembers)) {
+				var fields = type.GetFields(options.SortMembers);
+				for (int i = 0; i < fields.Count; i++) {
 					options.CancellationToken.ThrowIfCancellationRequested();
 					membersLeft--;
-					DisassembleField(field);
+					DisassembleField(fields[i]);
 				}
 				if (addLineSep && membersLeft > 0)
 					output.AddLineSeparator(output.Length - 2);
@@ -1588,25 +1589,28 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			}
 			if (type.HasMethods) {
 				output.WriteLine("// Methods", BoxedTextColor.Comment);
-				foreach (var m in type.GetMethods(options.SortMembers)) {
+				var methods = type.GetMethods(options.SortMembers);
+				for (int i = 0; i < methods.Count; i++) {
 					options.CancellationToken.ThrowIfCancellationRequested();
-					DisassembleMethod(m, addLineSep: addLineSep && --membersLeft > 0);
+					DisassembleMethod(methods[i], addLineSep: addLineSep && --membersLeft > 0);
 					output.WriteLine();
 				}
 			}
 			if (type.HasEvents) {
 				output.WriteLine("// Events", BoxedTextColor.Comment);
-				foreach (var ev in type.GetEvents(options.SortMembers)) {
+				var events = type.GetEvents(options.SortMembers);
+				for (int i = 0; i < events.Count; i++) {
 					options.CancellationToken.ThrowIfCancellationRequested();
-					DisassembleEvent(ev, addLineSep: addLineSep && --membersLeft > 0);
+					DisassembleEvent(events[i], addLineSep: addLineSep && --membersLeft > 0);
 					output.WriteLine();
 				}
 			}
 			if (type.HasProperties) {
 				output.WriteLine("// Properties", BoxedTextColor.Comment);
-				foreach (var prop in type.GetProperties(options.SortMembers)) {
+				var properties = type.GetProperties(options.SortMembers);
+				for (int i = 0; i < properties.Count; i++) {
 					options.CancellationToken.ThrowIfCancellationRequested();
-					DisassembleProperty(prop, addLineSep: addLineSep && --membersLeft > 0);
+					DisassembleProperty(properties[i], addLineSep: addLineSep && --membersLeft > 0);
 				}
 				output.WriteLine();
 			}
@@ -1667,14 +1671,15 @@ namespace ICSharpCode.Decompiler.Disassembler {
 		#endregion
 
 		#region Helper methods
-		void WriteAttributes(CustomAttributeCollection attributes)
-		{
-			foreach (CustomAttribute a in attributes) {
+		void WriteAttributes(CustomAttributeCollection attributes) {
+			for (int i = 0; i < attributes.Count; i++) {
+				var a = attributes[i];
 				output.Write(".custom", BoxedTextColor.ILDirective);
 				output.Write(" ", BoxedTextColor.Text);
 				a.Constructor.WriteMethodTo(output, sb);
 				uint blobOffset = a.BlobOffset;
-				if (blobOffset != 0 && options.OwnerModule is ModuleDefMD md && md.Metadata.BlobStream.TryCreateReader(blobOffset, out var reader)) {
+				if (blobOffset != 0 && options.OwnerModule is ModuleDefMD md &&
+				    md.Metadata.BlobStream.TryCreateReader(blobOffset, out var reader)) {
 					output.Write(" ", BoxedTextColor.Text);
 					output.Write("=", BoxedTextColor.Operator);
 					output.Write(" ", BoxedTextColor.Text);
@@ -1735,8 +1740,9 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			foreach (var pair in flagNames) {
 				tested |= pair.Key;
 				if ((val & pair.Key) != 0 && pair.Value != null) {
-					foreach (var kv in pair.Value.Split(' ')) {
-						output.Write(kv, BoxedTextColor.Keyword);
+					string[] kvs = pair.Value.Split(' ');
+					for (int i = 0; i < kvs.Length; i++) {
+						output.Write(kvs[i], BoxedTextColor.Keyword);
 						output.Write(" ", BoxedTextColor.Text);
 					}
 				}
@@ -1759,8 +1765,9 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			foreach (var pair in enumNames) {
 				if (pair.Key == val) {
 					if (pair.Value != null) {
-						foreach (var kv in pair.Value.Split(' ')) {
-							output.Write(kv, BoxedTextColor.Keyword);
+						string[] kvs = pair.Value.Split(' ');
+						for (int i = 0; i < kvs.Length; i++) {
+							output.Write(kvs[i], BoxedTextColor.Keyword);
 							output.Write(" ", BoxedTextColor.Text);
 						}
 					}
@@ -1899,7 +1906,8 @@ namespace ICSharpCode.Decompiler.Disassembler {
 		public void WriteModuleHeader(ModuleDef module)
 		{
 			if (module.HasExportedTypes) {
-				foreach (ExportedType exportedType in module.ExportedTypes) {
+				for (int i = 0; i < module.ExportedTypes.Count; i++) {
+					var exportedType = module.ExportedTypes[i];
 					AddTokenComment(exportedType);
 					output.Write(".class", BoxedTextColor.ILDirective);
 					output.Write(" ", BoxedTextColor.Text);
@@ -1980,10 +1988,9 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			WriteAttributes(module.CustomAttributes);
 		}
 
-		public void WriteModuleContents(ModuleDef module)
-		{
-			foreach (TypeDef td in module.Types) {
-				DisassembleType(td, true);
+		public void WriteModuleContents(ModuleDef module) {
+			for (int i = 0; i < module.Types.Count; i++) {
+				DisassembleType(module.Types[i]);
 				output.WriteLine();
 			}
 		}
