@@ -136,9 +136,8 @@ namespace ICSharpCode.Decompiler.Ast {
 				NameVariables.AssignNamesToVariables(context, astBuilder.Parameters, localVariables, ilMethod, stringBuilder);
 
 				if (parameters != null) {
-					foreach (var pair in (from p in parameters
-										  join v in astBuilder.Parameters on p.Annotation<Parameter>() equals v.OriginalParameter
-										  select new { p, v })) {
+					foreach (var pair in parameters.Join(astBuilder.Parameters, p => p.Annotation<Parameter>(),
+								 v => v.OriginalParameter, (p, v) => (p, v))) {
 						pair.p.NameToken = Identifier.Create(pair.v.Name).WithAnnotation(GetParameterColor(pair.v)).WithAnnotation(pair.v);
 					}
 				}
@@ -176,16 +175,16 @@ namespace ICSharpCode.Decompiler.Ast {
 		}
 
 		IEnumerable<ILVariable> GetVariables(ILBlock ilMethod) {
-			foreach (var n in ilMethod.GetSelfAndChildrenRecursive(ILNode_List)) {
-				var expr = n as ILExpression;
-				if (expr != null) {
-					var v = expr.Operand as ILVariable;
-					if (v != null && !v.IsParameter)
+			var ns = ilMethod.GetSelfAndChildrenRecursive(ILNode_List);
+			for (int i = 0; i < ns.Count; i++) {
+				var n = ns[i];
+				if (n is ILExpression expr) {
+					if (expr.Operand is ILVariable v && !v.IsParameter)
 						yield return v;
 					continue;
 				}
-				var cb = n as ILTryCatchBlock.CatchBlockBase;
-				if (cb != null && cb.ExceptionVariable != null)
+
+				if (n is ILTryCatchBlock.CatchBlockBase cb && cb.ExceptionVariable != null)
 					yield return cb.ExceptionVariable;
 			}
 		}
@@ -204,11 +203,13 @@ namespace ICSharpCode.Decompiler.Ast {
 
 		readonly List<SourceParameter> sourceParametersList = new List<SourceParameter>();
 		SourceParameter[] CreateSourceParameters(List<ILVariable> variables) {
-			foreach (var v in variables) {
+			for (int i = 0; i < variables.Count; i++) {
+				var v = variables[i];
 				if (!v.IsParameter)
 					continue;
 				sourceParametersList.Add(v.GetSourceParameter());
 			}
+
 			var array = sourceParametersList.ToArray();
 			sourceParametersList.Clear();
 			return array;
@@ -318,10 +319,11 @@ namespace ICSharpCode.Decompiler.Ast {
 				if (context.CalculateILSpans)
 					switchStmt.Expression.AddAnnotation(ilSwitch.ILSpans);
 				switchStmt.HiddenEnd = NRefactoryExtensions.CreateHidden(!context.CalculateILSpans ? null : ILSpan.OrderAndCompact(ilSwitch.EndILSpans), switchStmt.HiddenEnd);
-				foreach (var caseBlock in ilSwitch.CaseBlocks) {
+				for (int i = 0; i < ilSwitch.CaseBlocks.Count; i++) {
+					var caseBlock = ilSwitch.CaseBlocks[i];
 					SwitchSection section = new SwitchSection();
 					if (caseBlock.Values != null) {
-						section.CaseLabels.AddRange(caseBlock.Values.Select(i => new CaseLabel() { Expression = AstBuilder.MakePrimitive(i, (ilSwitch.Condition.ExpectedType ?? ilSwitch.Condition.InferredType).ToTypeDefOrRef(), stringBuilder) }));
+						section.CaseLabels.AddRange(caseBlock.Values.Select(v => new CaseLabel() { Expression = AstBuilder.MakePrimitive(v, (ilSwitch.Condition.ExpectedType ?? ilSwitch.Condition.InferredType).ToTypeDefOrRef(), stringBuilder) }));
 					} else {
 						section.CaseLabels.Add(new CaseLabel());
 					}
@@ -334,7 +336,8 @@ namespace ICSharpCode.Decompiler.Ast {
 				var tryCatchStmt = new Ast.TryCatchStatement();
 				tryCatchStmt.TryBlock = TransformBlock(tryCatchNode.TryBlock);
 				tryCatchStmt.TryBlock.HiddenStart = NRefactoryExtensions.CreateHidden(!context.CalculateILSpans ? null : ILSpan.OrderAndCompact(tryCatchNode.ILSpans), tryCatchStmt.TryBlock.HiddenStart);
-				foreach (var catchClause in tryCatchNode.CatchBlocks) {
+				for (int i = 0; i < tryCatchNode.CatchBlocks.Count; i++) {
+					var catchClause = tryCatchNode.CatchBlocks[i];
 					if (catchClause.ExceptionVariable == null
 					    && (catchClause.ExceptionType == null || catchClause.ExceptionType.GetElementType() == ElementType.Object))
 					{
@@ -484,9 +487,9 @@ namespace ICSharpCode.Decompiler.Ast {
 			AstType operandAsTypeRef = AstBuilder.ConvertType(operand as ITypeDefOrRef, stringBuilder);
 
 			List<Ast.Expression> args = new List<Expression>(byteCode.Arguments.Count);
-			foreach(ILExpression arg in byteCode.Arguments) {
-				args.Add((Ast.Expression)TransformExpression(arg));
-			}
+			for (int i = 0; i < byteCode.Arguments.Count; i++)
+				args.Add((Ast.Expression)TransformExpression(byteCode.Arguments[i]));
+
 			Ast.Expression arg1 = args.Count >= 1 ? args[0] : null;
 			Ast.Expression arg2 = args.Count >= 2 ? args[1] : null;
 			Ast.Expression arg3 = args.Count >= 3 ? args[2] : null;
@@ -608,9 +611,7 @@ namespace ICSharpCode.Decompiler.Ast {
 									child.Elements.AddRange(args.GetRange(j, length));
 									newArgs.Add(child);
 								}
-								var temp = args;
-								args = newArgs;
-								newArgs = temp;
+								(args, newArgs) = (newArgs, args);
 								newArgs.Clear();
 							}
 							ace.Initializer.Elements.AddRange(args);
@@ -1272,7 +1273,8 @@ namespace ICSharpCode.Decompiler.Ast {
 				if (methodArgs.Count == 0 && (semAttr & MethodSemanticsAttributes.Getter) != 0) {
 					if (methodDef == null)
 						return target.Member(method.Name.Substring(4), method).WithAnnotation(method);
-					foreach (var prop in methodDef.DeclaringType.Properties) {
+					for (int i = 0; i < methodDef.DeclaringType.Properties.Count; i++) {
+						var prop = methodDef.DeclaringType.Properties[i];
 						if (prop.GetMethod == methodDef)
 							return target.Member(prop.Name, prop).WithAnnotation(prop).WithAnnotation(method);
 					}
@@ -1285,14 +1287,17 @@ namespace ICSharpCode.Decompiler.Ast {
 				} else if (methodArgs.Count == 1 && (semAttr & MethodSemanticsAttributes.Setter) != 0) {
 					if (methodDef == null)
 						return new Ast.AssignmentExpression(target.Member(method.Name.Substring(4), method).WithAnnotation(method), methodArgs[0]);
-					if (forceSemAttr != null) {// read-only property, the method is actually the getter since there's no setter
-						foreach (var prop in methodDef.DeclaringType.Properties) {
+					if (forceSemAttr != null) {
+						// read-only property, the method is actually the getter since there's no setter
+						for (int i = 0; i < methodDef.DeclaringType.Properties.Count; i++) {
+							var prop = methodDef.DeclaringType.Properties[i];
 							if (prop.GetMethod == methodDef)
 								return new Ast.AssignmentExpression(target.Member(prop.Name, prop).WithAnnotation(prop).WithAnnotation(method), methodArgs[0]);
 						}
 					}
 					else {
-						foreach (var prop in methodDef.DeclaringType.Properties) {
+						for (int i = 0; i < methodDef.DeclaringType.Properties.Count; i++) {
+							var prop = methodDef.DeclaringType.Properties[i];
 							if (prop.SetMethod == methodDef)
 								return new Ast.AssignmentExpression(target.Member(prop.Name, prop).WithAnnotation(prop).WithAnnotation(method), methodArgs[0]);
 						}
@@ -1312,7 +1317,8 @@ namespace ICSharpCode.Decompiler.Ast {
 							Right = methodArgs[0]
 						};
 					}
-					foreach (var ev in methodDef.DeclaringType.Events) {
+					for (int i = 0; i < methodDef.DeclaringType.Events.Count; i++) {
+						var ev = methodDef.DeclaringType.Events[i];
 						if (ev.AddMethod == methodDef) {
 							return new Ast.AssignmentExpression {
 								Left = target.Member(ev.Name, ev).WithAnnotation(ev).WithAnnotation(method),
@@ -1329,7 +1335,8 @@ namespace ICSharpCode.Decompiler.Ast {
 							Right = methodArgs[0]
 						};
 					}
-					foreach (var ev in methodDef.DeclaringType.Events) {
+					for (int i = 0; i < methodDef.DeclaringType.Events.Count; i++) {
+						var ev = methodDef.DeclaringType.Events[i];
 						if (ev.RemoveMethod == methodDef) {
 							return new Ast.AssignmentExpression {
 								Left = target.Member(ev.Name, ev).WithAnnotation(ev).WithAnnotation(method),
@@ -1432,7 +1439,8 @@ namespace ICSharpCode.Decompiler.Ast {
 				return null;
 			TypeDef typeDef = method.DeclaringType;
 			UTF8String indexerName = null;
-			foreach (var ca in typeDef.CustomAttributes) {
+			for (int i = 0; i < typeDef.CustomAttributes.Count; i++) {
+				var ca = typeDef.CustomAttributes[i];
 				if (ca.ConstructorArguments.Count != 1)
 					continue;
 				var ctor = ca.Constructor;
@@ -1448,14 +1456,15 @@ namespace ICSharpCode.Decompiler.Ast {
 				if (!UTF8String.IsNull(indexerName))
 					break;
 			}
+
 			if (UTF8String.IsNull(indexerName))
 				return null;
-			foreach (PropertyDef prop in typeDef.Properties) {
-				if (prop.Name == indexerName) {
-					if (prop.GetMethod == method || prop.SetMethod == method)
-						return prop;
-				}
+			for (int i = 0; i < typeDef.Properties.Count; i++) {
+				var prop = typeDef.Properties[i];
+				if (prop.Name == indexerName && (prop.GetMethod == method || prop.SetMethod == method))
+					return prop;
 			}
+
 			return null;
 		}
 

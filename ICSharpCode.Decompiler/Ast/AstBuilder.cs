@@ -234,8 +234,8 @@ namespace ICSharpCode.Decompiler.Ast {
 				// event-fields are not [CompilerGenerated]
 				if (settings.AutomaticEvents) {
 					string fieldName = field.Name;
-					foreach (var e in field.DeclaringType.Events) {
-						if (IsEventBackingFieldName(fieldName, e.Name))
+					for (int i = 0; i < field.DeclaringType.Events.Count; i++) {
+						if (IsEventBackingFieldName(fieldName, field.DeclaringType.Events[i].Name))
 							return true;
 					}
 				}
@@ -268,12 +268,12 @@ namespace ICSharpCode.Decompiler.Ast {
 				return false;
 			// VB's auto prop backing fields are named "_" + PropertyName
 			if (name[0] == '_') {
-				foreach (var prop in field.DeclaringType.Properties) {
-					string propName = prop.Name;
+				for (int i = 0; i < field.DeclaringType.Properties.Count; i++) {
+					string propName = field.DeclaringType.Properties[i].Name;
 					if (propName.Length == name.Length - 1) {
 						bool same = true;
-						for (int i = 0; i < propName.Length; i++) {
-							if (name[i + 1] != propName[i]) {
+						for (int j = 0; j < propName.Length; j++) {
+							if (name[j + 1] != propName[j]) {
 								same = false;
 								break;
 							}
@@ -351,7 +351,8 @@ namespace ICSharpCode.Decompiler.Ast {
 				ConvertCustomAttributes(Context.MetadataTextColorProvider, syntaxTree, moduleDefinition, context.Settings, stringBuilder, "module");
 
 			if (decompileMod && !onlyAssemblyLevel) {
-				foreach (TypeDef typeDef in moduleDefinition.Types) {
+				for (int i = 0; i < moduleDefinition.Types.Count; i++) {
+					var typeDef = moduleDefinition.Types[i];
 					// Skip the <Module> class
 					if (typeDef.IsGlobalModuleType) continue;
 					// Skip any hidden types
@@ -497,9 +498,9 @@ namespace ICSharpCode.Decompiler.Ast {
 				astType.ClassType = ClassType.Class;
 			}
 
-			IEnumerable<GenericParam> genericParameters = typeDef.GenericParameters;
+			IList<GenericParam> genericParameters = typeDef.GenericParameters;
 			if (typeDef.DeclaringType != null && typeDef.DeclaringType.HasGenericParameters)
-				genericParameters = genericParameters.Skip(typeDef.DeclaringType.GenericParameters.Count);
+				RemoveFirst(genericParameters, typeDef.DeclaringType.GenericParameters.Count);
 			astType.TypeParameters.AddRange(MakeTypeParameters(genericParameters));
 			astType.Constraints.AddRange(MakeConstraints(genericParameters));
 
@@ -508,7 +509,8 @@ namespace ICSharpCode.Decompiler.Ast {
 				long expectedEnumMemberValue = 0;
 				bool forcePrintingInitializers = IsFlagsEnum(typeDef);
 				var enumType = typeDef.Fields.FirstOrDefault(f => !f.IsStatic);
-				foreach (FieldDef field in typeDef.Fields) {
+				for (int i = 0; i < typeDef.Fields.Count; i++) {
+					var field = typeDef.Fields[i];
 					if (!field.IsStatic) {
 						// the value__ field
 						if (!new SigComparer().Equals(field.FieldType, typeDef.Module.CorLibTypes.Int32)) {
@@ -540,11 +542,12 @@ namespace ICSharpCode.Decompiler.Ast {
 				astType.Attributes.MoveTo(dd.Attributes);
 				astType.TypeParameters.MoveTo(dd.TypeParameters);
 				astType.Constraints.MoveTo(dd.Constraints);
-				foreach (var m in typeDef.Methods) {
+				for (int i = 0; i < typeDef.Methods.Count; i++) {
+					var m = typeDef.Methods[i];
 					if (m.Name == "Invoke") {
 						dd.ReturnType = ConvertType(m.ReturnType, stringBuilder, m.Parameters.ReturnParameter.ParamDef);
 						dd.Parameters.AddRange(MakeParameters(Context.MetadataTextColorProvider, m, context.Settings, stringBuilder));
-						ConvertAttributes(dd, m.Parameters.ReturnParameter, m.Module);
+						ConvertAttributes(dd, m.Parameters.ReturnParameter);
 						AddComment(dd, m, "Invoke");
 					}
 				}
@@ -555,8 +558,9 @@ namespace ICSharpCode.Decompiler.Ast {
 				if (typeDef.BaseType != null && !DnlibExtensions.IsValueType(typeDef) && !typeDef.BaseType.IsSystemObject()) {
 					astType.AddChild(ConvertType(typeDef.BaseType, stringBuilder), Roles.BaseType);
 				}
-				foreach (var i in GetInterfaceImpls(typeDef))
-					astType.AddChild(ConvertType(i.Interface, stringBuilder), Roles.BaseType);
+				var interfaceImpls = GetInterfaceImpls(typeDef);
+				for (int i = 0; i < interfaceImpls.Count; i++)
+					astType.AddChild(ConvertType(interfaceImpls[i].Interface, stringBuilder), Roles.BaseType);
 
 				AddTypeMembers(astType, typeDef);
 
@@ -583,6 +587,15 @@ namespace ICSharpCode.Decompiler.Ast {
 		static readonly UTF8String defaultMemberAttributeString = new UTF8String("DefaultMemberAttribute");
 		static readonly UTF8String systemString = new UTF8String("System");
 		static readonly UTF8String multicastDelegateString = new UTF8String("MulticastDelegate");
+
+		static void RemoveFirst<T>(IList<T> collection, int count) {
+			if (collection is List<T> list)
+				list.RemoveRange(0, count);
+			else {
+				for (int i = count - 1; i >= 0; i--)
+					collection.RemoveAt(i);
+			}
+		}
 
 		bool IsNormalDelegate(TypeDef td)
 		{
@@ -713,11 +726,11 @@ namespace ICSharpCode.Decompiler.Ast {
 						HasNullableSpecifier = true
 					};
 				}
-				AstType baseType = ConvertType(gType.GenericType == null ? null : gType.GenericType.TypeDefOrRef, typeAttributes, ref typeIndex, options & ~ConvertTypeOptions.IncludeTypeParameterDefinitions, depth, sb);
+				AstType baseType = ConvertType(gType.GenericType?.TypeDefOrRef, typeAttributes, ref typeIndex, options & ~ConvertTypeOptions.IncludeTypeParameterDefinitions, depth, sb);
 				List<AstType> typeArguments = new List<AstType>(gType.GenericArguments.Count);
-				foreach (var typeArgument in gType.GenericArguments) {
+				for (int i = 0; i < gType.GenericArguments.Count; i++) {
 					typeIndex++;
-					typeArguments.Add(ConvertType(typeArgument, typeAttributes, ref typeIndex, options, depth, sb));
+					typeArguments.Add(ConvertType(gType.GenericArguments[i], typeAttributes, ref typeIndex, options, depth, sb));
 				}
 				ApplyTypeArgumentsTo(baseType, typeArguments);
 				return baseType;
@@ -837,7 +850,8 @@ namespace ICSharpCode.Decompiler.Ast {
 			TypeDef typeDef = type.ResolveTypeDef();
 			if (typeDef != null && typeDef.HasGenericParameters) {
 				List<AstType> typeArguments = new List<AstType>(typeDef.GenericParameters.Count);
-				foreach (GenericParam gp in typeDef.GenericParameters) {
+				for (int i = 0; i < typeDef.GenericParameters.Count; i++) {
+					var gp = typeDef.GenericParameters[i];
 					typeArguments.Add(new SimpleType(gp.Name).WithAnnotation(gp));
 				}
 				ApplyTypeArgumentsTo(astType, typeArguments);
@@ -874,7 +888,8 @@ namespace ICSharpCode.Decompiler.Ast {
 		{
 			if (attributeProvider == null)
 				return false;
-			foreach (CustomAttribute a in attributeProvider.CustomAttributes) {
+			for (int i = 0; i < attributeProvider.CustomAttributes.Count; i++) {
+				var a = attributeProvider.CustomAttributes[i];
 				if (a.AttributeType.Compare(systemRuntimeCompilerServicesString, dynamicAttributeString)) {
 					if (a.ConstructorArguments.Count == 1) {
 						IList<CAArgument> values = a.ConstructorArguments[0].Value as IList<CAArgument>;
@@ -1014,7 +1029,8 @@ namespace ICSharpCode.Decompiler.Ast {
 				// If we failed to resolve it, assume it's a method override
 				if (type == null)
 					return Modifiers.Override;
-				foreach (var m in type.Methods) {
+				for (int i = 0; i < type.Methods.Count; i++) {
+					var m = type.Methods[i];
 					// This method doesn't handle generic base classes so assume it matches if name
 					// and param count matches.
 					if (m.IsVirtual && m.Name == name && m.MethodSig.GetParamCount() == paramCount)
@@ -1027,21 +1043,21 @@ namespace ICSharpCode.Decompiler.Ast {
 
 		#endregion
 
-		IEnumerable<InterfaceImpl> GetInterfaceImpls(TypeDef type)
+		IList<InterfaceImpl> GetInterfaceImpls(TypeDef type)
 		{
 			if (context.Settings.UseSourceCodeOrder)
 				return type.Interfaces;// These are already sorted by MD token
 			return type.GetInterfaceImpls(context.Settings.SortMembers);
 		}
 
-		IEnumerable<TypeDef> GetNestedTypes(TypeDef type)
+		IList<TypeDef> GetNestedTypes(TypeDef type)
 		{
 			if (context.Settings.UseSourceCodeOrder)
 				return type.NestedTypes;// These are already sorted by MD token
 			return type.GetNestedTypes(context.Settings.SortMembers);
 		}
 
-		IEnumerable<FieldDef> GetFields(TypeDef type)
+		IList<FieldDef> GetFields(TypeDef type)
 		{
 			if (context.Settings.UseSourceCodeOrder)
 				return type.Fields;// These are already sorted by MD token
@@ -1054,7 +1070,9 @@ namespace ICSharpCode.Decompiler.Ast {
 			foreach (var d in this.context.Settings.DecompilationObjects) {
 				switch (d) {
 				case DecompilationObject.NestedTypes:
-					foreach (TypeDef nestedTypeDef in GetNestedTypes(typeDef)) {
+					var nestedTypes = GetNestedTypes(typeDef);
+					for (int i = 0; i < nestedTypes.Count; i++) {
+						var nestedTypeDef = nestedTypes[i];
 						if (MemberIsHidden(nestedTypeDef, context.Settings))
 							continue;
 						var nestedType = CreateType(nestedTypeDef);
@@ -1064,7 +1082,9 @@ namespace ICSharpCode.Decompiler.Ast {
 					break;
 
 				case DecompilationObject.Fields:
-					foreach (FieldDef fieldDef in GetFields(typeDef)) {
+					var fieldDefs = GetFields(typeDef);
+					for (int i = 0; i < fieldDefs.Count; i++) {
+						var fieldDef = fieldDefs[i];
 						if (MemberIsHidden(fieldDef, context.Settings)) continue;
 						astType.AddChild(CreateField(fieldDef), Roles.TypeMemberRole);
 					}
@@ -1078,7 +1098,9 @@ namespace ICSharpCode.Decompiler.Ast {
 						hasShownMethods = true;
 						break;
 					}
-					foreach (EventDef eventDef in typeDef.GetEvents(context.Settings.SortMembers)) {
+					var eventDefs = typeDef.GetEvents(context.Settings.SortMembers);
+					for (int i = 0; i < eventDefs.Count; i++) {
+						var eventDef = eventDefs[i];
 						if (eventDef.AddMethod == null && eventDef.RemoveMethod == null)
 							continue;
 						astType.AddChild(CreateEvent(eventDef), Roles.TypeMemberRole);
@@ -1093,7 +1115,9 @@ namespace ICSharpCode.Decompiler.Ast {
 						hasShownMethods = true;
 						break;
 					}
-					foreach (PropertyDef propDef in typeDef.GetProperties(context.Settings.SortMembers)) {
+					var propertyDefs = typeDef.GetProperties(context.Settings.SortMembers);
+					for (int i = 0; i < propertyDefs.Count; i++) {
+						var propDef = propertyDefs[i];
 						if (propDef.GetMethod == null && propDef.SetMethod == null)
 							continue;
 						astType.Members.Add(CreateProperty(propDef));
@@ -1108,7 +1132,9 @@ namespace ICSharpCode.Decompiler.Ast {
 						hasShownMethods = true;
 						break;
 					}
-					foreach (MethodDef methodDef in typeDef.GetMethods(context.Settings.SortMembers)) {
+					var methodDefs = typeDef.GetMethods(context.Settings.SortMembers);
+					for (int i = 0; i < methodDefs.Count; i++) {
+						var methodDef = methodDefs[i];
 						if (MemberIsHidden(methodDef, context.Settings)) continue;
 
 						if (methodDef.IsConstructor)
@@ -1143,7 +1169,8 @@ namespace ICSharpCode.Decompiler.Ast {
 						astType.Members.Add(CreateProperty(pd));
 
 					// Methods marked as 'other' are not supported in C#
-					foreach (var otherMethod in pd.OtherMethods) {
+					for (int i = 0; i < pd.OtherMethods.Count; i++) {
+						var otherMethod = pd.OtherMethods[i];
 						if (otherMethod.DeclaringType != pd.DeclaringType)
 							continue;
 						astType.Members.Add(CreateMethod(otherMethod));
@@ -1162,7 +1189,8 @@ namespace ICSharpCode.Decompiler.Ast {
 						astType.Members.Add(CreateMethod(ed.InvokeMethod));
 
 					// Methods marked as 'other' are not supported in C#
-					foreach (var otherMethod in ed.OtherMethods) {
+					for (int i = 0; i < ed.OtherMethods.Count; i++) {
+						var otherMethod = ed.OtherMethods[i];
 						if (otherMethod.DeclaringType != ed.DeclaringType)
 							continue;
 						astType.Members.Add(CreateMethod(otherMethod));
@@ -1261,9 +1289,9 @@ namespace ICSharpCode.Decompiler.Ast {
 			return methodDef != null && methodDef.HasOverrides && methodDef.IsPrivate;
 		}
 
-		IEnumerable<TypeParameterDeclaration> MakeTypeParameters(IEnumerable<GenericParam> genericParameters)
-		{
-			foreach (var gp in genericParameters) {
+		IEnumerable<TypeParameterDeclaration> MakeTypeParameters(IList<GenericParam> genericParameters) {
+			for (int i = 0; i < genericParameters.Count; i++) {
+				var gp = genericParameters[i];
 				TypeParameterDeclaration tp = new TypeParameterDeclaration();
 				tp.AddAnnotation(gp);
 				tp.NameToken = Identifier.Create(CleanName(gp.Name)).WithAnnotation(Context.MetadataTextColorProvider.GetColor(gp));
@@ -1276,9 +1304,9 @@ namespace ICSharpCode.Decompiler.Ast {
 			}
 		}
 
-		IEnumerable<Constraint> MakeConstraints(IEnumerable<GenericParam> genericParameters)
-		{
-			foreach (var gp in genericParameters) {
+		IEnumerable<Constraint> MakeConstraints(IList<GenericParam> genericParameters) {
+			for (int i = 0; i < genericParameters.Count; i++) {
+				var gp = genericParameters[i];
 				Constraint c = new Constraint();
 				c.TypeParameter = new SimpleType(CleanName(gp.Name)).WithAnnotation(gp);
 				c.TypeParameter.IdentifierToken.WithAnnotation(gp);
@@ -1288,7 +1316,8 @@ namespace ICSharpCode.Decompiler.Ast {
 				if (gp.HasNotNullableValueTypeConstraint)
 					c.BaseTypes.Add(new PrimitiveType("struct"));
 
-				foreach (var constraintType in gp.GenericParamConstraints) {
+				for (int j = 0; j < gp.GenericParamConstraints.Count; j++) {
+					var constraintType = gp.GenericParamConstraints[j];
 					if (constraintType.Constraint == null)
 						continue;
 					if (gp.HasNotNullableValueTypeConstraint && constraintType.Constraint.Compare(systemString, valueTypeString))
@@ -1583,15 +1612,14 @@ namespace ICSharpCode.Decompiler.Ast {
 					if (baseCtor != null) {
 						var methodSig = GetMethodBaseSig(method.DeclaringType.BaseType, baseCtor.MethodSig);
 						var args = new List<Expression>(methodSig.Params.Count);
-						foreach (var argType in methodSig.Params) {
-							var defVal = new DefaultValueExpression(ConvertType(argType.RemovePinnedAndModifiers(), stringBuilder));
-							args.Add(defVal);
-						}
+						for (int i = 0; i < methodSig.Params.Count; i++)
+							args.Add(new DefaultValueExpression(ConvertType(methodSig.Params[i].RemovePinnedAndModifiers(), stringBuilder)));
 						var stmt = new ExpressionStatement(new InvocationExpression(new MemberReferenceExpression(new BaseReferenceExpression(), method.Name), args));
 						bs.Statements.Add(stmt);
 					}
 					if (method.DeclaringType.IsValueType && !method.DeclaringType.IsEnum) {
-						foreach (var field in method.DeclaringType.Fields) {
+						for (int i = 0; i < method.DeclaringType.Fields.Count; i++) {
+							var field = method.DeclaringType.Fields[i];
 							if (field.IsStatic)
 								continue;
 							var defVal = new DefaultValueExpression(ConvertType(field.FieldType.RemovePinnedAndModifiers(), stringBuilder));
@@ -1708,7 +1736,8 @@ namespace ICSharpCode.Decompiler.Ast {
 			constantAttribute = null;
 			if (hc.Constant != null)
 				return true;
-			foreach (var ca in hc.CustomAttributes) {
+			for (int i = 0; i < hc.CustomAttributes.Count; i++) {
+				var ca = hc.CustomAttributes[i];
 				var type = ca.AttributeType;
 				while (type != null) {
 					var fullName = type.FullName;
@@ -1885,9 +1914,9 @@ namespace ICSharpCode.Decompiler.Ast {
 			return false;
 		}
 
-		static IEnumerable<ParameterDeclaration> MakeParameters(MetadataTextColorProvider metadataTextColorProvider, IEnumerable<Parameter> paramCol, DecompilerSettings settings, StringBuilder sb, bool isLambda = false)
-		{
-			foreach (Parameter paramDef in paramCol) {
+		static IEnumerable<ParameterDeclaration> MakeParameters(MetadataTextColorProvider metadataTextColorProvider, IList<Parameter> paramCol, DecompilerSettings settings, StringBuilder sb, bool isLambda = false) {
+			for (int i = 0; i < paramCol.Count; i++) {
+				var paramDef = paramCol[i];
 				if (paramDef.IsHiddenThisParameter)
 					continue;
 
@@ -1920,7 +1949,6 @@ namespace ICSharpCode.Decompiler.Ast {
 				}
 
 				ConvertCustomAttributes(metadataTextColorProvider, astParam, paramDef.ParamDef, settings, sb);
-				ModuleDef module = paramDef.Method == null ? null : paramDef.Method.Module;
 				yield return astParam;
 			}
 		}
@@ -1930,18 +1958,6 @@ namespace ICSharpCode.Decompiler.Ast {
 		void ConvertAttributes(EntityDeclaration attributedNode, TypeDef typeDef)
 		{
 			ConvertCustomAttributes(Context.MetadataTextColorProvider, attributedNode, typeDef, context.Settings, stringBuilder);
-		}
-
-		ModuleDef GetModule()
-		{
-			if (context.CurrentMethod != null && context.CurrentMethod.Module != null)
-				return context.CurrentMethod.Module;
-			if (context.CurrentType != null && context.CurrentType.Module != null)
-				return context.CurrentType.Module;
-			if (context.CurrentModule != null)
-				return context.CurrentModule;
-
-			return null;
 		}
 
 		void ConvertAttributes(EntityDeclaration attributedNode, MethodDef methodDef)
@@ -1957,22 +1973,22 @@ namespace ICSharpCode.Decompiler.Ast {
 			if (methodIsIterator)
 				options |= ConvertCustomAttributesFlags.IsYieldReturn;
 			ConvertCustomAttributes(Context.MetadataTextColorProvider, attributedNode, methodDef, context.Settings, stringBuilder, options: options);
-			ConvertAttributes(attributedNode, methodDef.Parameters.ReturnParameter, methodDef.Module);
+			ConvertAttributes(attributedNode, methodDef.Parameters.ReturnParameter);
 		}
 
-		void ConvertAttributes(EntityDeclaration attributedNode, Parameter methodReturnType, ModuleDef module)
+		void ConvertAttributes(EntityDeclaration attributedNode, Parameter methodReturnType)
 		{
 			ConvertCustomAttributes(Context.MetadataTextColorProvider, attributedNode, methodReturnType.ParamDef, context.Settings, stringBuilder, "return");
 		}
 
-		internal static void ConvertAttributes(MetadataTextColorProvider metadataTextColorProvider, EntityDeclaration attributedNode, FieldDef fieldDef, DecompilerSettings settings, StringBuilder sb, string attributeTarget = null)
+		internal static void ConvertAttributes(MetadataTextColorProvider metadataTextColorProvider, EntityDeclaration attributedNode, FieldDef fieldDef, DecompilerSettings settings, StringBuilder sb)
 		{
 			ConvertCustomAttributes(metadataTextColorProvider, attributedNode, fieldDef, settings, sb);
 		}
 
 		static IEnumerable<CustomAttribute> SortCustomAttributes(IHasCustomAttribute customAttributeProvider, bool sort, StringBuilder sb)
 		{
-			var cas = customAttributeProvider.GetCustomAttributes();
+			var cas = customAttributeProvider.GetCustomAttributes().ToList();
 			if (customAttributeProvider is AssemblyDef) {
 				// Always sort these pseudo custom attributes
 				if (cas.Any(IsTypeForwardedToAttribute)) {
@@ -2115,10 +2131,8 @@ namespace ICSharpCode.Decompiler.Ast {
 					}
 
 					if(customAttribute.HasConstructorArguments) {
-						foreach (var parameter in customAttribute.ConstructorArguments) {
-							Expression parameterValue = ConvertArgumentValue(parameter, sb);
-							attribute.Arguments.Add(parameterValue);
-						}
+						for (int i = 0; i < customAttribute.ConstructorArguments.Count; i++)
+							attribute.Arguments.Add(ConvertArgumentValue(customAttribute.ConstructorArguments[i], sb));
 					}
 					if (customAttribute.HasNamedArguments) {
 						TypeDef resolvedAttributeType = attributeType.ResolveTypeDef();
@@ -2143,7 +2157,8 @@ namespace ICSharpCode.Decompiler.Ast {
 					IAssembly lastAssembly = null;
 
 					// use separate section for each attribute
-					foreach (var attribute in attributes) {
+					for (int i = 0; i < attributes.Count; i++) {
+						var attribute = attributes[i];
 						if (isAssembly && attribute.Annotation<CustomAttribute>() is CustomAttribute ca && IsTypeForwardedToAttribute(ca, out var exportedType)) {
 							if (lastAssembly == null || !AssemblyNameComparer.CompareAll.Equals(exportedType.DefinitionAssembly, lastAssembly)) {
 								lastAssembly = exportedType.DefinitionAssembly;
@@ -2170,7 +2185,8 @@ namespace ICSharpCode.Decompiler.Ast {
 		static PropertyDef GetProperty(TypeDef type, UTF8String name)
 		{
 			while (type != null) {
-				foreach (var pd in type.Properties) {
+				for (int i = 0; i < type.Properties.Count; i++) {
+					var pd = type.Properties[i];
 					if (pd.Name == name)
 						return pd;
 				}
@@ -2182,9 +2198,10 @@ namespace ICSharpCode.Decompiler.Ast {
 		static FieldDef GetField(TypeDef type, UTF8String name)
 		{
 			while (type != null) {
-				foreach (var pd in type.Fields) {
-					if (pd.Name == name)
-						return pd;
+				for (int i = 0; i < type.Fields.Count; i++) {
+					var fd = type.Fields[i];
+					if (fd.Name == name)
+						return fd;
 				}
 				type = type.BaseType.ResolveTypeDef();
 			}
@@ -2195,9 +2212,9 @@ namespace ICSharpCode.Decompiler.Ast {
 		{
 			if (argument.Value is IList<CAArgument>) {
 				ArrayInitializerExpression arrayInit = new ArrayInitializerExpression();
-				foreach (CAArgument element in (IList<CAArgument>)argument.Value) {
-					arrayInit.Elements.Add(ConvertArgumentValue(element, sb));
-				}
+				var argumentValue = (IList<CAArgument>)argument.Value;
+				for (int i = 0; i < argumentValue.Count; i++)
+					arrayInit.Elements.Add(ConvertArgumentValue(argumentValue[i], sb));
 				ArraySigBase arrayType = argument.Type as ArraySigBase;
 				return new ArrayCreateExpression {
 					Type = ConvertType(arrayType != null ? arrayType.Next : argument.Type, sb),
@@ -2250,7 +2267,8 @@ namespace ICSharpCode.Decompiler.Ast {
 				TypeDef enumDefinition = type.ResolveTypeDef();
 				if (enumDefinition != null && enumDefinition.IsEnum) {
 					TypeCode enumBaseTypeCode = TypeCode.Int32;
-					foreach (FieldDef field in enumDefinition.Fields) {
+					for (int i = 0; i < enumDefinition.Fields.Count; i++) {
+						var field = enumDefinition.Fields[i];
 						if (field.IsStatic) {
 							TryGetConstant(field, out var constant);
 							TypeCode c = constant == null ? TypeCode.Empty : Type.GetTypeCode(constant.GetType());
