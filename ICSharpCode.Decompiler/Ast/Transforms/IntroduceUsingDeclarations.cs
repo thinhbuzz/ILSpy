@@ -38,6 +38,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 		readonly List<Dictionary<string, List<TypeDef>>> typesWithNamespace_allAsms_list = new List<Dictionary<string, List<TypeDef>>>();
 		readonly List<NamespaceRef> namespaceRefList = new List<NamespaceRef>();
 		ModuleDef lastCheckedModule;
+		readonly Dictionary<AssemblyDef, bool> friendAssemblyCache = new Dictionary<AssemblyDef, bool>();
 
 		public IntroduceUsingDeclarations(DecompilerContext context)
 		{
@@ -98,10 +99,11 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			if (context.CurrentModule != null) {
 				if (lastCheckedModule != context.CurrentModule) {
 					typesWithNamespace_currentModule.Clear();
-					BuildAmbiguousTypeNamesTable(typesWithNamespace_currentModule, context.CurrentModule.Types, _ => true);
+					BuildAmbiguousTypeNamesTable(typesWithNamespace_currentModule, context.CurrentModule.Types, static _ => true);
 				}
-				FindAmbiguousTypeNames(typesWithNamespace_currentModule, _ => true);
+				FindAmbiguousTypeNames(typesWithNamespace_currentModule, static _ => true);
 				if (lastCheckedModule != context.CurrentModule) {
+					friendAssemblyCache.Clear();
 					var asmDict = new Dictionary<AssemblyDef, List<AssemblyDef>>(AssemblyEqualityComparer.Instance);
 					lastCheckedModule = context.CurrentModule;
 					foreach (var r in context.CurrentModule.GetAssemblyRefs()) {
@@ -115,12 +117,12 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 					typesWithNamespace_allAsms_list.Clear();
 					foreach (var list in asmDict.Values) {
 						var dict = new Dictionary<string, List<TypeDef>>(StringComparer.Ordinal);
-						BuildAmbiguousTypeNamesTable(dict, GetTypes(list), def => context.CurrentModule.Assembly?.IsFriendAssemblyOf(def) ?? false);
+						BuildAmbiguousTypeNamesTable(dict, GetTypes(list), IsFriendAssemblyOf);
 						typesWithNamespace_allAsms_list.Add(dict);
 					}
 				}
 				foreach (var dict in typesWithNamespace_allAsms_list) {
-					FindAmbiguousTypeNames(dict, def => context.CurrentModule.Assembly?.IsFriendAssemblyOf(def) ?? false);
+					FindAmbiguousTypeNames(dict, IsFriendAssemblyOf);
 				}
 			}
 
@@ -128,6 +130,15 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			compilationUnit.AcceptVisitor(new FullyQualifyAmbiguousTypeNamesVisitor(this), null);
 		}
 		static readonly char[] namespaceSep = new char[] { '.' };
+
+		bool IsFriendAssemblyOf(AssemblyDef assemblyDef) {
+			if (context.CurrentModule.Assembly is null)
+				return false;
+			if (friendAssemblyCache.TryGetValue(assemblyDef, out var cachedValue))
+				return cachedValue;
+
+			return friendAssemblyCache[assemblyDef] = context.CurrentModule.Assembly.IsFriendAssemblyOf(assemblyDef);
+		}
 
 		readonly struct NamespaceRef : IEquatable<NamespaceRef> {
 			public IAssembly Assembly { get; }
