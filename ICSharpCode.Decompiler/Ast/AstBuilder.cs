@@ -499,8 +499,16 @@ namespace ICSharpCode.Decompiler.Ast {
 			}
 
 			IList<GenericParam> genericParameters = typeDef.GenericParameters;
-			if (typeDef.DeclaringType != null && typeDef.DeclaringType.HasGenericParameters)
-				RemoveFirst(genericParameters, typeDef.DeclaringType.GenericParameters.Count);
+			if (typeDef.DeclaringType != null && typeDef.DeclaringType.HasGenericParameters) {
+				int parentGenericCount = typeDef.DeclaringType.GenericParameters.Count;
+				int genericParametersCount = genericParameters.Count;
+
+				var newGenericParameters = new List<GenericParam>(genericParametersCount - parentGenericCount);
+				for (int i = parentGenericCount; i < genericParametersCount; i++)
+					newGenericParameters.Add(genericParameters[i]);
+
+				genericParameters = newGenericParameters;
+			}
 			astType.TypeParameters.AddRange(MakeTypeParameters(genericParameters));
 			astType.Constraints.AddRange(MakeConstraints(genericParameters));
 
