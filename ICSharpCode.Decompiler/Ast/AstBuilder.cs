@@ -1981,9 +1981,9 @@ namespace ICSharpCode.Decompiler.Ast {
 			ConvertCustomAttributes(Context.MetadataTextColorProvider, attributedNode, methodReturnType.ParamDef, context.Settings, stringBuilder, "return");
 		}
 
-		internal static void ConvertAttributes(MetadataTextColorProvider metadataTextColorProvider, EntityDeclaration attributedNode, FieldDef fieldDef, DecompilerSettings settings, StringBuilder sb)
+		internal static void ConvertAttributes(MetadataTextColorProvider metadataTextColorProvider, EntityDeclaration attributedNode, FieldDef fieldDef, DecompilerSettings settings, StringBuilder sb, string attributeTarget = null)
 		{
-			ConvertCustomAttributes(metadataTextColorProvider, attributedNode, fieldDef, settings, sb);
+			ConvertCustomAttributes(metadataTextColorProvider, attributedNode, fieldDef, settings, sb, attributeTarget);
 		}
 
 		static IEnumerable<CustomAttribute> SortCustomAttributes(IHasCustomAttribute customAttributeProvider, bool sort, StringBuilder sb)
@@ -2130,24 +2130,31 @@ namespace ICSharpCode.Decompiler.Ast {
 						st.IdentifierToken = id;
 					}
 
-					if(customAttribute.HasConstructorArguments) {
-						for (int i = 0; i < customAttribute.ConstructorArguments.Count; i++)
-							attribute.Arguments.Add(ConvertArgumentValue(customAttribute.ConstructorArguments[i], sb));
+					if (customAttribute.IsRawBlob) {
+						var emptyExpression = new ErrorExpression();
+						emptyExpression.AddChild(new Comment("Failed to decode CustomAttribute blob!", CommentType.MultiLine), Roles.Comment);
+						attribute.Arguments.Add(emptyExpression);
 					}
-					if (customAttribute.HasNamedArguments) {
-						TypeDef resolvedAttributeType = attributeType.ResolveTypeDef();
-						foreach (var propertyNamedArg in customAttribute.Properties) {
-							var propertyReference = GetProperty(resolvedAttributeType, propertyNamedArg.Name);
-							var propertyName = IdentifierExpression.Create(propertyNamedArg.Name, metadataTextColorProvider.GetColor((object)propertyReference ?? BoxedTextColor.InstanceProperty), true).WithAnnotation(propertyReference);
-							var argumentValue = ConvertArgumentValue(propertyNamedArg.Argument, sb);
-							attribute.Arguments.Add(new AssignmentExpression(propertyName, argumentValue));
+					else {
+						if (customAttribute.HasConstructorArguments) {
+							for (int i = 0; i < customAttribute.ConstructorArguments.Count; i++)
+								attribute.Arguments.Add(ConvertArgumentValue(customAttribute.ConstructorArguments[i], sb));
 						}
+						if (customAttribute.HasNamedArguments) {
+							TypeDef resolvedAttributeType = attributeType.ResolveTypeDef();
+							foreach (var propertyNamedArg in customAttribute.Properties) {
+								var propertyReference = GetProperty(resolvedAttributeType, propertyNamedArg.Name);
+								var propertyName = IdentifierExpression.Create(propertyNamedArg.Name, metadataTextColorProvider.GetColor((object)propertyReference ?? BoxedTextColor.InstanceProperty), true).WithAnnotation(propertyReference);
+								var argumentValue = ConvertArgumentValue(propertyNamedArg.Argument, sb);
+								attribute.Arguments.Add(new AssignmentExpression(propertyName, argumentValue));
+							}
 
-						foreach (var fieldNamedArg in customAttribute.Fields) {
-							var fieldReference = GetField(resolvedAttributeType, fieldNamedArg.Name);
-							var fieldName = IdentifierExpression.Create(fieldNamedArg.Name, metadataTextColorProvider.GetColor((object)fieldReference ?? BoxedTextColor.InstanceField), true).WithAnnotation(fieldReference);
-							var argumentValue = ConvertArgumentValue(fieldNamedArg.Argument, sb);
-							attribute.Arguments.Add(new AssignmentExpression(fieldName, argumentValue));
+							foreach (var fieldNamedArg in customAttribute.Fields) {
+								var fieldReference = GetField(resolvedAttributeType, fieldNamedArg.Name);
+								var fieldName = IdentifierExpression.Create(fieldNamedArg.Name, metadataTextColorProvider.GetColor((object)fieldReference ?? BoxedTextColor.InstanceField), true).WithAnnotation(fieldReference);
+								var argumentValue = ConvertArgumentValue(fieldNamedArg.Argument, sb);
+								attribute.Arguments.Add(new AssignmentExpression(fieldName, argumentValue));
+							}
 						}
 					}
 				}
@@ -2210,9 +2217,8 @@ namespace ICSharpCode.Decompiler.Ast {
 
 		private static Expression ConvertArgumentValue(CAArgument argument, StringBuilder sb)
 		{
-			if (argument.Value is IList<CAArgument>) {
+			if (argument.Value is IList<CAArgument> argumentValue) {
 				ArrayInitializerExpression arrayInit = new ArrayInitializerExpression();
-				var argumentValue = (IList<CAArgument>)argument.Value;
 				for (int i = 0; i < argumentValue.Count; i++)
 					arrayInit.Elements.Add(ConvertArgumentValue(argumentValue[i], sb));
 				ArraySigBase arrayType = argument.Type as ArraySigBase;
@@ -2221,20 +2227,21 @@ namespace ICSharpCode.Decompiler.Ast {
 					AdditionalArraySpecifiers = { new ArraySpecifier() },
 					Initializer = arrayInit
 				};
-			} else if (argument.Value is CAArgument) {
+			}
+			if (argument.Value is CAArgument value) {
 				// occurs with boxed arguments
-				return ConvertArgumentValue((CAArgument)argument.Value, sb);
+				return ConvertArgumentValue(value, sb);
 			}
 			var type = argument.Type.Resolve();
 			if (type != null && type.IsEnum && argument.Value != null) {
 				try {
 					object argVal;
-					if (argument.Value is UTF8String utf8String) {
+					if (argument.Value is UTF8String utf8String2) {
 						try {
-							argVal = Convert.ToInt64(utf8String.String);
+							argVal = Convert.ToInt64(utf8String2.String);
 						}
 						catch (OverflowException) {
-							argVal = Convert.ToUInt64(utf8String.String);
+							argVal = Convert.ToUInt64(utf8String2.String);
 						}
 					}
 					else
@@ -2244,13 +2251,11 @@ namespace ICSharpCode.Decompiler.Ast {
 				} catch (SystemException) {
 				}
 			}
-			if (argument.Value is TypeSig) {
-				return CreateTypeOfExpression(((TypeSig)argument.Value).ToTypeDefOrRef(), sb);
-			} else if (argument.Value is UTF8String) {
-				return new PrimitiveExpression(((UTF8String)argument.Value).String);
-			} else {
-				return new PrimitiveExpression(argument.Value);
-			}
+			if (argument.Value is TypeSig sig)
+				return CreateTypeOfExpression(sig.ToTypeDefOrRef(), sb);
+			if (argument.Value is UTF8String utf8String)
+				return new PrimitiveExpression(utf8String.String);
+			return new PrimitiveExpression(argument.Value);
 		}
 		#endregion
 

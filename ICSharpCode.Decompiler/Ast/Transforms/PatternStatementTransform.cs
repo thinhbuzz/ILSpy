@@ -1533,7 +1533,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				FieldDef field = eventDef.DeclaringType.Fields.FirstOrDefault(f => f.Name == ev.Name);
 				if (field != null) {
 					ed.AddAnnotation(field);
-					AstBuilder.ConvertAttributes(context.MetadataTextColorProvider, ed, field, context.Settings, stringBuilder);
+					AstBuilder.ConvertAttributes(context.MetadataTextColorProvider, ed, field, context.Settings, stringBuilder, "field");
 				}
 			}
 
