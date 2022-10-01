@@ -65,6 +65,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 		// See Microsoft.CodeAnalysis.CSharp.MethodToStateMachineRewriter.cachedThis for info on why and when it's cached
 		protected ILVariable cachedThisVar;
 
+		protected readonly List<ILExpression> list_ILExpression = new List<ILExpression>();
+
 		public abstract string CompilerName { get; }
 
 		protected AsyncDecompiler(DecompilerContext context, AutoPropertyProvider autoPropertyProvider) {
@@ -552,7 +554,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		}
 
 		void MarkGeneratedVariables(List<ILNode> newTopLevelBody) {
-			var expressions = new ILBlock(newTopLevelBody).GetSelfAndChildrenRecursive<ILExpression>();
+			var expressions = new ILBlock(newTopLevelBody).GetSelfAndChildrenRecursive<ILExpression>(list_ILExpression);
 			foreach (var v in expressions.Select(e => e.Operand).OfType<ILVariable>()) {
 				if (v.OriginalVariable != null && v.OriginalVariable.Index >= smallestGeneratedVariableIndex)
 					v.GeneratedByDecompiler = true;

@@ -469,7 +469,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			var block = CreateILAst(finallyMethod);
 			var lbl = CreateLabel();
 			block.Body.Add(lbl);
-			foreach (var expr in block.GetSelfAndChildrenRecursive<ILExpression>()) {
+			foreach (var expr in block.GetSelfAndChildrenRecursive<ILExpression>(list_ILExpression)) {
 				if (expr.Code == ILCode.Ret) {
 					expr.Code = ILCode.Br;
 					expr.Operand = lbl;

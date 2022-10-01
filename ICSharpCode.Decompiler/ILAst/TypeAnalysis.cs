@@ -39,7 +39,6 @@ namespace ICSharpCode.Decompiler.ILAst {
 			this.context = context;
 			module = context.CurrentMethod.Module;
 			typeSystem = module.CorLibTypes;
-			this.method = method;
 			allExpressions.Clear();
 			assignmentExpressions.Clear();
 			singleLoadVariables.Clear();
@@ -107,7 +106,6 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 		DecompilerContext context;
 		ICorLibTypes typeSystem;
-		ILBlock method;
 		ModuleDef module;
 		readonly List<ExpressionToInfer> allExpressions = new List<ExpressionToInfer>();
 		readonly DefaultDictionary<ILVariable, List<ExpressionToInfer>> assignmentExpressions = new DefaultDictionary<ILVariable, List<ExpressionToInfer>>(_ => new List<ExpressionToInfer>());
@@ -161,9 +159,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 			}
 		}
 
-		void FindNestedAssignments(ILExpression expr, ExpressionToInfer parent)
-		{
-			foreach (ILExpression arg in expr.Arguments) {
+		void FindNestedAssignments(ILExpression expr, ExpressionToInfer parent) {
+			for (int i = 0; i < expr.Arguments.Count; i++) {
+				var arg = expr.Arguments[i];
 				if (arg.Code == ILCode.Stloc) {
 					ExpressionToInfer expressionToInfer = CreateExpressionToInfer(arg);
 					allExpressions.Add(expressionToInfer);
@@ -174,11 +172,13 @@ namespace ICSharpCode.Decompiler.ILAst {
 						// the instruction that consumes the stloc result is handled as if it was reading the variable
 						parent.Dependencies.Add(v);
 					}
-				} else {
+				}
+				else {
 					ILVariable v;
 					if (arg.Match(ILCode.Ldloc, out v) && v.Type == null) {
 						parent.Dependencies.Add(v);
 					}
+
 					FindNestedAssignments(arg, parent);
 				}
 			}
@@ -188,18 +188,18 @@ namespace ICSharpCode.Decompiler.ILAst {
 		void IdentifySingleLoadVariables()
 		{
 			// Find all variables that are assigned to exactly a single time:
-			var q = from expr in allExpressions
-				from v in expr.Dependencies
-				group expr by v;
+			var q = allExpressions.SelectMany(expr => expr.Dependencies, (expr, v) => (expr, v))
+								  .GroupBy(t => t.v, t => t.expr);
 			List<ILExpression> listExpr = null;
-			foreach (var g in q.ToArray()) {
+			var expressionToInfers = q.ToArray();
+			for (int i = 0; i < expressionToInfers.Length; i++) {
+				var g = expressionToInfers[i];
 				ILVariable v = g.Key;
 				if (g.Count() == 1 && g.First().Expression.GetSelfAndChildrenRecursive<ILExpression>(listExpr ?? (listExpr = new List<ILExpression>())).Count(e => e.Operand == v) == 1) {
 					singleLoadVariables.Add(v);
 					// Mark the assignments as dependent on the type from the single load:
-					foreach (var assignment in assignmentExpressions[v]) {
-						assignment.DependsOnSingleLoad = v;
-					}
+					for (int j = 0; j < assignmentExpressions[v].Count; j++)
+						assignmentExpressions[v][j].DependsOnSingleLoad = v;
 				}
 			}
 		}
@@ -212,7 +212,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 			bool assignVariableTypesBasedOnPartialInformation = false;
 			while (numberOfExpressionsAlreadyInferred < allExpressions.Count) {
 				int oldCount = numberOfExpressionsAlreadyInferred;
-				foreach (ExpressionToInfer expr in allExpressions) {
+				for (int i = 0; i < allExpressions.Count; i++) {
+					var expr = allExpressions[i];
 					if (!expr.Done && expr.Dependencies.TrueForAll(v => v.Type != null || singleLoadVariables.Contains(v))
 					    && (expr.DependsOnSingleLoad == null || expr.DependsOnSingleLoad.Type != null || ignoreSingleLoadDependencies))
 					{
@@ -245,23 +246,27 @@ namespace ICSharpCode.Decompiler.ILAst {
 					ILVariable v = pair.Key;
 					if (v.Type == null && (assignVariableTypesBasedOnPartialInformation ? pair.Value.Any(e => e.Done) : pair.Value.All(e => e.Done))) {
 						TypeSig inferredType = null;
-						foreach (ExpressionToInfer expr in pair.Value) {
+						for (int i = 0; i < pair.Value.Count; i++) {
+							var expr = pair.Value[i];
 							Debug.Assert(expr.Expression.Code == ILCode.Stloc);
 							ILExpression assignedValue = expr.Expression.Arguments.Single();
 							if (assignedValue.InferredType != null) {
 								if (inferredType == null) {
 									inferredType = assignedValue.InferredType;
-								} else {
+								}
+								else {
 									// pick the common base type
 									inferredType = TypeWithMoreInformation(inferredType, assignedValue.InferredType);
 								}
 							}
 						}
+
 						if (inferredType == null)
 							inferredType = typeSystem.Object;
 						v.Type = inferredType;
 						// Assign inferred type to all the assignments (in case they used different inferred types):
-						foreach (ExpressionToInfer expr in pair.Value) {
+						for (int i = 0; i < pair.Value.Count; i++) {
+							var expr = pair.Value[i];
 							expr.Expression.InferredType = inferredType;
 							// re-infer if the expected type has changed
 							InferTypeForExpression(expr.Expression.Arguments.Single(), inferredType);
@@ -276,7 +281,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 			bool anyArgumentIsMissingExpectedType = expr.Arguments.Any(a => a.ExpectedType == null);
 			if (expr.InferredType == null || anyArgumentIsMissingExpectedType)
 				InferTypeForExpression(expr, expr.ExpectedType, forceInferChildren: anyArgumentIsMissingExpectedType);
-			foreach (var arg in expr.Arguments) {
+			for (int i = 0; i < expr.Arguments.Count; i++) {
+				var arg = expr.Arguments[i];
 				if (arg.Code != ILCode.Stloc) {
 					RunInference(arg);
 				}
@@ -711,10 +717,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 					return new SZArraySig(((ITypeDefOrRef)expr.Operand).ToTypeSig());
 				case ILCode.InitArray:
 					var operandSig = ((ITypeDefOrRef)expr.Operand).ToTypeSig();
-					if (forceInferChildren)
-					{
-						foreach (ILExpression arg in expr.Arguments)
-							InferTypeForExpression(arg, operandSig.Next);
+					if (forceInferChildren) {
+						for (int i = 0; i < expr.Arguments.Count; i++)
+							InferTypeForExpression(expr.Arguments[i], operandSig.Next);
 					}
 					return operandSig;
 				case ILCode.Ldlen:
@@ -1308,9 +1313,10 @@ namespace ICSharpCode.Decompiler.ILAst {
 		/// <summary>
 		/// Clears the type inference data on the method.
 		/// </summary>
-		public static void Reset(ILBlock method, List<ILExpression> list_ILExpression)
-		{
-			foreach (ILExpression expr in method.GetSelfAndChildrenRecursive<ILExpression>(list_ILExpression)) {
+		public static void Reset(ILBlock method, List<ILExpression> list_ILExpression) {
+			var list = method.GetSelfAndChildrenRecursive<ILExpression>(list_ILExpression);
+			for (int i = 0; i < list.Count; i++) {
+				var expr = list[i];
 				expr.InferredType = null;
 				expr.ExpectedType = null;
 				ILVariable v = expr.Operand as ILVariable;

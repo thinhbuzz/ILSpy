@@ -1,14 +1,14 @@
 ﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
-// 
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -30,28 +30,17 @@ namespace ICSharpCode.Decompiler.FlowAnalysis {
 	public sealed class ControlFlowGraph
 	{
 		readonly List<ControlFlowNode> nodes;
-		
-		public ControlFlowNode EntryPoint {
-			get { return nodes[0]; }
-		}
-		
-		public ControlFlowNode RegularExit {
-			get { return nodes[1]; }
-		}
-		
-		public ControlFlowNode ExceptionalExit {
-			get { return nodes[2]; }
-		}
-		
-		public List<ControlFlowNode> Nodes {
-			get { return nodes; }
-		}
-		
-		internal ControlFlowGraph()
-		{
-			this.nodes = new List<ControlFlowNode>();
-		}
-		
+
+		public ControlFlowNode EntryPoint => nodes[0];
+
+		public ControlFlowNode RegularExit => nodes[1];
+
+		public ControlFlowNode ExceptionalExit => nodes[2];
+
+		public List<ControlFlowNode> Nodes => nodes;
+
+		internal ControlFlowGraph() => this.nodes = new List<ControlFlowNode>();
+
 		public GraphVizGraph ExportGraph()
 		{
 			GraphVizGraph graph = new GraphVizGraph();
@@ -81,17 +70,15 @@ namespace ICSharpCode.Decompiler.FlowAnalysis {
 			}
 			return graph;
 		}
-		
+
 		/// <summary>
 		/// Resets "Visited" to false for all nodes in this graph.
 		/// </summary>
-		public void ResetVisited()
-		{
-			foreach (ControlFlowNode node in nodes) {
-				node.Visited = false;
-			}
+		public void ResetVisited() {
+			for (int i = 0; i < nodes.Count; i++)
+				nodes[i].Visited = false;
 		}
-		
+
 		/// <summary>
 		/// Computes the dominator tree.
 		/// </summary>
@@ -99,15 +86,15 @@ namespace ICSharpCode.Decompiler.FlowAnalysis {
 		{
 			// A Simple, Fast Dominance Algorithm
 			// Keith D. Cooper, Timothy J. Harvey and Ken Kennedy
-			
+
 			EntryPoint.ImmediateDominator = EntryPoint;
 			bool changed = true;
 			while (changed) {
 				changed = false;
 				ResetVisited();
-				
+
 				cancellationToken.ThrowIfCancellationRequested();
-				
+
 				// for all nodes b except the entry point
 				EntryPoint.TraversePreOrder(
 					b => b.Successors,
@@ -138,9 +125,9 @@ namespace ICSharpCode.Decompiler.FlowAnalysis {
 					});
 			}
 			EntryPoint.ImmediateDominator = null;
-			foreach (ControlFlowNode node in nodes) {
-				if (node.ImmediateDominator != null)
-					node.ImmediateDominator.DominatorTreeChildren.Add(node);
+			for (int i = 0; i < nodes.Count; i++) {
+				var node = nodes[i];
+				node.ImmediateDominator?.DominatorTreeChildren.Add(node);
 			}
 		}
 
@@ -154,12 +141,11 @@ namespace ICSharpCode.Decompiler.FlowAnalysis {
 			while (b2 != null) {
 				if (FindCommonDominator_path1.Contains(b2))
 					return b2;
-				else
-					b2 = b2.ImmediateDominator;
+				b2 = b2.ImmediateDominator;
 			}
 			throw new Exception("No common dominator found!");
 		}
-		
+
 		/// <summary>
 		/// Computes dominance frontiers.
 		/// This method requires that the dominator tree is already computed!
@@ -167,7 +153,7 @@ namespace ICSharpCode.Decompiler.FlowAnalysis {
 		public void ComputeDominanceFrontier()
 		{
 			ResetVisited();
-			
+
 			EntryPoint.TraversePostOrder(
 				b => b.DominatorTreeChildren,
 				n => {
@@ -182,7 +168,8 @@ namespace ICSharpCode.Decompiler.FlowAnalysis {
 						}
 					}
 					// DF_up computation
-					foreach (ControlFlowNode child in n.DominatorTreeChildren) {
+					for (int i = 0; i < n.DominatorTreeChildren.Count; i++) {
+						var child = n.DominatorTreeChildren[i];
 						foreach (ControlFlowNode p in child.DominanceFrontier) {
 							if (p.ImmediateDominator != n) {
 								//logger.WriteLine("  DF_up: " + p.Name + " (child=" + child.Name);

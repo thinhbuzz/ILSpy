@@ -1,14 +1,14 @@
 ﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
-// 
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -43,6 +43,10 @@ namespace ICSharpCode.Decompiler.ILAst
 			ILExpression Operator, SimpleOperand;
 			bool SimpleLeftOperand;
 			readonly DecompilerContext context;
+
+			readonly List<ILExpression> list_ILExpression = new List<ILExpression>();
+			readonly List<ILExpression> list_ILExpression2 = new List<ILExpression>();
+
 			public PatternMatcher(DecompilerContext context, ICorLibTypes corLib)
 			{
 				this.context = context;
@@ -60,8 +64,8 @@ namespace ICSharpCode.Decompiler.ILAst
 				if (Simplify(expr)) return true;
 
 				bool modified = false;
-				foreach (var a in expr.Arguments)
-					modified |= SimplifyLiftedOperators(a);
+				for (int i = 0; i < expr.Arguments.Count; i++)
+					modified |= SimplifyLiftedOperators(expr.Arguments[i]);
 				return modified;
 			}
 
@@ -532,7 +536,7 @@ namespace ICSharpCode.Decompiler.ILAst
 			{
 				if (context.CalculateILSpans) {
 					// IL ranges from removed nodes are assigned to the new operator expression
-					var removednodes = expr.GetSelfAndChildrenRecursive<ILExpression>().Except(n.GetSelfAndChildrenRecursive<ILExpression>());
+					var removednodes = expr.GetSelfAndChildrenRecursive<ILExpression>(list_ILExpression).Except(n.GetSelfAndChildrenRecursive<ILExpression>(list_ILExpression2));
 					n.ILSpans.AddRange(removednodes.SelectMany(el => el.ILSpans));
 					expr.ILSpans.Clear();
 				}

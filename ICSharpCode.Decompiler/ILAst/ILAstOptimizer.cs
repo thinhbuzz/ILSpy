@@ -90,6 +90,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		// PERF: Cache used lists used in Optimize() instead of creating new ones all the time
 		readonly List<ILTryCatchBlock.CatchBlockBase> Optimize_List_CatchBlockBase;
 		readonly List<ILTryCatchBlock.CatchBlock> Optimize_List_CatchBlocks;
+		readonly List<ILTryCatchBlock> Optimize_List_TryBlocks;
 		readonly List<ILWhileLoop> Optimize_List_ILWhileLoop;
 		readonly List<ILBlock> Optimize_List_ILBlock;
 		readonly List<ILNode> Optimize_List_ILNode;
@@ -107,6 +108,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			this.del_getILInlining = GetILInlining;
 			this.Optimize_List_CatchBlockBase = new List<ILTryCatchBlock.CatchBlockBase>();
 			this.Optimize_List_CatchBlocks = new List<ILTryCatchBlock.CatchBlock>();
+			this.Optimize_List_TryBlocks = new List<ILTryCatchBlock>();
 			this.Optimize_List_ILWhileLoop = new List<ILWhileLoop>();
 			this.Optimize_List_ILBlock = new List<ILBlock>();
 			this.Optimize_List_ILNode = new List<ILNode>();
@@ -126,6 +128,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			this.nextLabelIndex = 0;
 			this.Optimize_List_CatchBlockBase.Clear();
 			this.Optimize_List_CatchBlocks.Clear();
+			this.Optimize_List_TryBlocks.Clear();
 			this.Optimize_List_ILWhileLoop.Clear();
 			this.Optimize_List_ILBlock.Clear();
 			this.Optimize_List_ILNode.Clear();
@@ -215,9 +218,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 				RemoveRedundantCode(context, method, Optimize_List_ILExpression, Optimize_List_ILBlock, Optimize_Dict_ILLabel_Int32);
 
 				if (abortBeforeStep == ILAstOptimizationStep.ReduceBranchInstructionSet) return;
-				foreach (ILBlock block in method.GetSelfAndChildrenRecursive<ILBlock>(Optimize_List_ILBlock)) {
-					ReduceBranchInstructionSet(block);
-				}
+				var blockList = method.GetSelfAndChildrenRecursive<ILBlock>(Optimize_List_ILBlock);
+				for (int i = 0; i < blockList.Count; i++)
+					ReduceBranchInstructionSet(blockList[i]);
 				// ReduceBranchInstructionSet runs before inlining because the non-aggressive inlining heuristic
 				// looks at which type of instruction consumes the inlined variable.
 
@@ -244,9 +247,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 				IntroducePropertyAccessInstructions(method);
 
 				if (abortBeforeStep == ILAstOptimizationStep.SplitToMovableBlocks) return;
-				foreach (ILBlock block in method.GetSelfAndChildrenRecursive<ILBlock>(Optimize_List_ILBlock)) {
-					SplitToBasicBlocks(block);
-				}
+				blockList = method.GetSelfAndChildrenRecursive<ILBlock>(Optimize_List_ILBlock);
+				for (int i = 0; i < blockList.Count; i++)
+					SplitToBasicBlocks(blockList[i]);
 
 				if (abortBeforeStep == ILAstOptimizationStep.TypeInference) return;
 				// Types are needed for the ternary operator optimization
@@ -255,7 +258,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 				if (abortBeforeStep == ILAstOptimizationStep.HandlePointerArithmetic) return;
 				HandlePointerArithmetic(method);
 
-				foreach (ILBlock block in method.GetSelfAndChildrenRecursive<ILBlock>(Optimize_List_ILBlock)) {
+				blockList = method.GetSelfAndChildrenRecursive<ILBlock>(Optimize_List_ILBlock);
+				for (int i = 0; i < blockList.Count; i++) {
+					var block = blockList[i];
 					bool modified;
 					do {
 						modified = false;
@@ -318,17 +323,18 @@ namespace ICSharpCode.Decompiler.ILAst {
 						if (abortBeforeStep == ILAstOptimizationStep.InlineVariables2) return;
 						modified |= GetILInlining(method).InlineAllInBlock(block);
 						GetILInlining(method).CopyPropagation(Optimize_List_ILNode);
-
 					} while (modified);
 				}
 
 				if (abortBeforeStep == ILAstOptimizationStep.FindLoops) return;
-				foreach (ILBlock block in method.GetSelfAndChildrenRecursive<ILBlock>(Optimize_List_ILBlock)) {
-					GetLoopsAndConditions(context).FindLoops(block);
-				}
+				blockList = method.GetSelfAndChildrenRecursive<ILBlock>(Optimize_List_ILBlock);
+				for (int i = 0; i < blockList.Count; i++)
+					GetLoopsAndConditions(context).FindLoops(blockList[i]);
 
 				if (abortBeforeStep == ILAstOptimizationStep.FindConditions) return;
-				foreach (ILBlock block in method.GetSelfAndChildrenRecursive<ILBlock>(Optimize_List_ILBlock)) {
+				blockList = method.GetSelfAndChildrenRecursive<ILBlock>(Optimize_List_ILBlock);
+				for (int i = 0; i < blockList.Count; i++) {
+					var block = blockList[i];
 					if (block is ILTryCatchBlock.FilterILBlock)
 						hasFilters = true;
 					GetLoopsAndConditions(context).FindConditions(block);
@@ -371,11 +377,13 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 				if (abortBeforeStep == ILAstOptimizationStep.CachedDelegateInitialization) return;
 				if (context.Settings.AnonymousMethods) {
-					foreach (ILBlock block in method.GetSelfAndChildrenRecursive<ILBlock>(Optimize_List_ILBlock)) {
-						for (int i = 0; i < block.Body.Count; i++) {
+					blockList = method.GetSelfAndChildrenRecursive<ILBlock>(Optimize_List_ILBlock);
+					for (int i = 0; i < blockList.Count; i++) {
+						var block = blockList[i];
+						for (int j = 0; j < block.Body.Count; j++) {
 							// TODO: Move before loops
-							CachedDelegateInitializationWithField(block, ref i);
-							CachedDelegateInitializationWithLocal(block, ref i);
+							CachedDelegateInitializationWithField(block, ref j);
+							CachedDelegateInitializationWithLocal(block, ref j);
 						}
 					}
 				}
@@ -398,7 +406,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				GetTypeAnalysis().Run(context, method);
 
 				if (abortBeforeStep == ILAstOptimizationStep.RemoveRedundantCode3) return;
-				GotoRemoval.RemoveRedundantCode(method, context);
+				GotoRemoval.RemoveRedundantCode(context, method);
 
 				if (abortBeforeStep == ILAstOptimizationStep.IntroduceConstants) return;
 				IntroduceConstants(method);
@@ -421,8 +429,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 		}
 
 		void IntroduceConstants(ILBlock method) {
-			foreach (var block in method.GetSelfAndChildrenRecursive(Optimize_List_ILBlock))
-				IntroduceConstantsCore(block);
+			var list = method.GetSelfAndChildrenRecursive(Optimize_List_ILBlock);
+			for (int i = 0; i < list.Count; i++)
+				IntroduceConstantsCore(list[i]);
 		}
 
 		static readonly UTF8String nameSystem = "System";
@@ -652,8 +661,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 		}
 
 		void CreateLoopLocal(ILBlock method) {
-			foreach (var block in method.GetSelfAndChildrenRecursive(Optimize_List_ILWhileLoop))
-				CreateLoopLocalCore(block);
+			var list = method.GetSelfAndChildrenRecursive(Optimize_List_ILWhileLoop);
+			for (int i = 0; i < list.Count; i++)
+				CreateLoopLocalCore(list[i]);
 		}
 
 		static readonly UTF8String nameMoveNext = new UTF8String("MoveNext");
@@ -749,8 +759,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 			// The compiler uses method calls in all non-constructor methods
 			Debug.Assert(context.CurrentMethod.IsConstructor);
 			var info = autoPropertyProvider.GetOrCreate(context.CurrentMethod.DeclaringType);
-			foreach (var block in method.GetSelfAndChildrenRecursive(Optimize_List_ILBlock))
-				ConvertFieldAccessesToPropertyMethodCallsCore(info, block);
+			var list = method.GetSelfAndChildrenRecursive(Optimize_List_ILBlock);
+			for (int i = 0; i < list.Count; i++)
+				ConvertFieldAccessesToPropertyMethodCallsCore(info, list[i]);
 		}
 
 		void ConvertFieldAccessesToPropertyMethodCallsCore(AutoPropertyInfo info, ILBlock block) {
@@ -813,8 +824,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 		int readOnlyPropTempLocalNameCounter;
 
 		void FixRoslynStaticDelegates(ILBlock method) {
-			foreach (var block in method.GetSelfAndChildrenRecursive(Optimize_List_ILBlock))
-				FixRoslynStaticDelegatesCore(block);
+			var list = method.GetSelfAndChildrenRecursive(Optimize_List_ILBlock);
+			for (int i = 0; i < list.Count; i++)
+				FixRoslynStaticDelegatesCore(list[i]);
 		}
 
 		bool FixRoslynStaticDelegatesCore(ILBlock block) {
@@ -950,12 +962,12 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 		void RemoveVisualBasicCompilerCode(ILBlock method) {
 			Debug.Assert(IsVisualBasicModule());
-			Optimize_List_CatchBlockBase.Clear();
 			// The compiler adds the methods to all catch/filter blocks
-			foreach (var block in method.GetSelfAndChildrenRecursive(Optimize_List_CatchBlockBase)) {
-				var body = block.Body;
-				for (int i = 0; i < body.Count; i++) {
-					var expr = body[i] as ILExpression;
+			var list = method.GetSelfAndChildrenRecursive(Optimize_List_CatchBlockBase);
+			for (int i = 0; i < list.Count; i++) {
+				var body = list[i].Body;
+				for (int j = 0; j < body.Count; j++) {
+					var expr = body[j] as ILExpression;
 					IMethod calledMethod;
 					List<ILExpression> args;
 					if (!expr.Match(ILCode.Call, out calledMethod, out args))
@@ -979,8 +991,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 						if (calledMethod.Name != nameSetProjectError)
 							continue;
 						if (context.CalculateILSpans) {
-							foreach (var arg in args)
-								expr.ILSpans.AddRange(arg.GetSelfAndChildrenRecursiveILSpans());
+							for (int k = 0; k < args.Count; k++)
+								expr.ILSpans.AddRange(args[k].GetSelfAndChildrenRecursiveILSpans());
 						}
 						expr.Code = ILCode.Nop;
 						expr.Operand = null;
@@ -993,8 +1005,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 		void FixFilterBlocks(ILBlock method) {
 			if (!hasFilters)
 				return;
-			Optimize_List_CatchBlocks.Clear();
-			foreach (var catchBlock in method.GetSelfAndChildrenRecursive(Optimize_List_CatchBlocks)) {
+			var list = method.GetSelfAndChildrenRecursive(Optimize_List_CatchBlocks);
+			for (int i = 0; i < list.Count; i++) {
+				var catchBlock = list[i];
 				if (catchBlock.FilterBlock == null)
 					continue;
 				ILVariable exVar;
@@ -1423,12 +1436,18 @@ namespace ICSharpCode.Decompiler.ILAst {
 		internal static void RemoveRedundantCode(DecompilerContext context, ILBlock method, List<ILExpression> listExpr, List<ILBlock> listBlock, Dictionary<ILLabel, int> labelRefCount)
 		{
 			labelRefCount.Clear();
-			foreach (var e in method.GetSelfAndChildrenRecursive<ILExpression>(listExpr, e => e.IsBranch())) {
-				foreach (var target in e.GetBranchTargets())
+			var es = method.GetSelfAndChildrenRecursive<ILExpression>(listExpr, e => e.IsBranch());
+			for (int i = 0; i < es.Count; i++) {
+				var labels = es[i].GetBranchTargets();
+				for (int j = 0; j < labels.Length; j++) {
+					var target = labels[j];
 					labelRefCount[target] = labelRefCount.GetOrDefault(target) + 1;
+				}
 			}
 
-			foreach(ILBlock block in method.GetSelfAndChildrenRecursive<ILBlock>(listBlock)) {
+			var list = method.GetSelfAndChildrenRecursive<ILBlock>(listBlock);
+			for (int j = 0; j < list.Count; j++) {
+				var block = list[j];
 				List<ILNode> body = block.Body;
 				List<ILNode> newBody = new List<ILNode>(body.Count);
 				for (int i = 0; i < body.Count; i++) {
@@ -1483,18 +1502,22 @@ namespace ICSharpCode.Decompiler.ILAst {
 			}
 
 			// Ignore arguments of 'leave'
-			foreach (ILExpression expr in method.GetSelfAndChildrenRecursive<ILExpression>(listExpr, e => e.Code == ILCode.Leave)) {
+			var exprs = method.GetSelfAndChildrenRecursive<ILExpression>(listExpr, e => e.Code == ILCode.Leave);
+			for (int j = 0; j < exprs.Count; j++) {
+				var expr = exprs[j];
 				if (expr.Arguments.Any(arg => !arg.Match(ILCode.Ldloc)))
 					throw new Exception("Leave should have just ldloc at this stage");
 				if (context.CalculateILSpans) {
-					foreach (var arg in expr.Arguments)
-						arg.AddSelfAndChildrenRecursiveILSpans(expr.ILSpans);
+					for (int i = 0; i < expr.Arguments.Count; i++)
+						expr.Arguments[i].AddSelfAndChildrenRecursiveILSpans(expr.ILSpans);
 				}
 				expr.Arguments.Clear();
 			}
 
 			// 'dup' removal
-			foreach (ILExpression expr in method.GetSelfAndChildrenRecursive<ILExpression>(listExpr)) {
+			var recursive = method.GetSelfAndChildrenRecursive<ILExpression>(listExpr);
+			for (int j = 0; j < recursive.Count; j++) {
+				var expr = recursive[j];
 				for (int i = 0; i < expr.Arguments.Count; i++) {
 					ILExpression child;
 					if (expr.Arguments[i].Match(ILCode.Dup, out child)) {
@@ -1702,19 +1725,17 @@ namespace ICSharpCode.Decompiler.ILAst {
 		}
 
 		void DuplicateReturnStatements(ILBlock method) {
-			this.Optimize_Dict_ILLabel_ILNode.Clear();
-
-			foreach (ILBlock block in method.GetSelfAndChildrenRecursive(Optimize_List_ILBlock)) {
-				var body = block.Body;
-				for (int i = 0; i < body.Count - 1; i++) {
-					ILLabel curr = body[i] as ILLabel;
-					if (curr != null)
-						Optimize_Dict_ILLabel_ILNode[curr] = body[i + 1];
+			var list = method.GetSelfAndChildrenRecursive(Optimize_List_ILBlock);
+			for (int i = 0; i < list.Count; i++) {
+				var body = list[i].Body;
+				for (int j = 0; j < body.Count - 1; j++) {
+					if (body[j] is ILLabel curr)
+						Optimize_Dict_ILLabel_ILNode[curr] = body[j + 1];
 				}
 			}
 
-			foreach (ILBlock block in Optimize_List_ILBlock) {
-				var body = block.Body;
+			for (int index = 0; index < Optimize_List_ILBlock.Count; index++) {
+				var body = Optimize_List_ILBlock[index].Body;
 				for (int i = 0; i < body.Count; i++) {
 					var expr = body[i] as ILExpression;
 					if (expr == null)
@@ -1823,15 +1844,17 @@ namespace ICSharpCode.Decompiler.ILAst {
 		void RemoveEndFinally(ILBlock method)
 		{
 			// Go thought the list in reverse so that we do the nested blocks first
-			var list = method.GetSelfAndChildrenRecursive<ILTryCatchBlock>(tc => tc.FinallyBlock != null);
-			for (int j = list.Count - 1; j >= 0; j--) {
-				var tryCatch = list[j];
+			var list = method.GetSelfAndChildrenRecursive<ILTryCatchBlock>(Optimize_List_TryBlocks, tc => tc.FinallyBlock != null);
+			for (int i = list.Count - 1; i >= 0; i--) {
+				var tryCatch = list[i];
 				ILLabel label = new ILLabel() { Name = "EndFinally_" + (nextLabelIndex++).ToString() };
 				tryCatch.FinallyBlock.Body.Add(label);
-				foreach(var block in tryCatch.FinallyBlock.GetSelfAndChildrenRecursive<ILBlock>(Optimize_List_ILBlock)) {
-					for (int i = 0; i < block.Body.Count; i++) {
-						if (block.Body[i].Match(ILCode.Endfinally)) {
-							block.Body[i] = new ILExpression(ILCode.Br, label).WithILSpansFrom(context.CalculateILSpans, block.Body[i]);
+				var blocks = tryCatch.FinallyBlock.GetSelfAndChildrenRecursive<ILBlock>(Optimize_List_ILBlock);
+				for (int j = 0; j < blocks.Count; j++) {
+					var block = blocks[j];
+					for (int k = 0; k < block.Body.Count; k++) {
+						if (block.Body[k].Match(ILCode.Endfinally)) {
+							block.Body[k] = new ILExpression(ILCode.Br, label).WithILSpansFrom(context.CalculateILSpans, block.Body[k]);
 						}
 					}
 				}
@@ -1910,9 +1933,10 @@ namespace ICSharpCode.Decompiler.ILAst {
 				});
 		}
 
-		void HandlePointerArithmetic(ILNode method)
-		{
-			foreach (ILExpression expr in method.GetSelfAndChildrenRecursive<ILExpression>(this.Optimize_List_ILExpression2)) {
+		void HandlePointerArithmetic(ILNode method) {
+			var list = method.GetSelfAndChildrenRecursive<ILExpression>(this.Optimize_List_ILExpression2);
+			for (int i = 0; i < list.Count; i++) {
+				var expr = list[i];
 				List<ILExpression> args = expr.Arguments;
 				switch (expr.Code) {
 					case ILCode.Localloc:
@@ -2102,8 +2126,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 				ILVariable v = expr.Operand as ILVariable;
 				if (v != null)
 					expr.Operand = variableMapping(v);
-				foreach (ILExpression child in expr.Arguments)
-					ReplaceVariables(child, variableMapping);
+				for (int i = 0; i < expr.Arguments.Count; i++)
+					ReplaceVariables(expr.Arguments[i], variableMapping);
 			} else {
 				var catchBlock = node as ILTryCatchBlock.CatchBlockBase;
 				if (catchBlock != null && catchBlock.ExceptionVariable != null) {
@@ -2137,14 +2161,15 @@ namespace ICSharpCode.Decompiler.ILAst {
 		public static bool RunOptimization(this ILBlock block, Func<ILBlockBase, List<ILNode>, ILExpression, int, bool> optimization)
 		{
 			bool modified = false;
-			foreach (ILBasicBlock bb in block.Body) {
-				for (int i = bb.Body.Count - 1; i >= 0; i--) {
-					ILExpression expr = bb.Body.ElementAtOrDefault(i) as ILExpression;
-					if (expr != null && optimization(bb, bb.Body, expr, i)) {
+			for (int i = 0; i < block.Body.Count; i++) {
+				var bb = (ILBasicBlock)block.Body[i];
+				for (int j = bb.Body.Count - 1; j >= 0; j--) {
+					if (bb.Body.ElementAtOrDefault(j) is ILExpression expr && optimization(bb, bb.Body, expr, j)) {
 						modified = true;
 					}
 				}
 			}
+
 			return modified;
 		}
 
@@ -2310,10 +2335,11 @@ namespace ICSharpCode.Decompiler.ILAst {
 		{
 			if (expr.Operand == v)
 				return true;
-			foreach (var arg in expr.Arguments) {
-				if (ContainsReferenceTo(arg, v))
+			for (int i = 0; i < expr.Arguments.Count; i++) {
+				if (ContainsReferenceTo(expr.Arguments[i], v))
 					return true;
 			}
+
 			return false;
 		}
 	}

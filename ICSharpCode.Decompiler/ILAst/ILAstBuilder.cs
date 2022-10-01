@@ -44,11 +44,14 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 			public static StackSlot[] ModifyStack(StackSlot[] stack, int popCount, int pushCount, ByteCode pushDefinition)
 			{
-				StackSlot[] newStack = new StackSlot[stack.Length - popCount + pushCount];
-				Array.Copy(stack, newStack, stack.Length - popCount);
-				for (int i = stack.Length - popCount; i < newStack.Length; i++) {
-					newStack[i] = new StackSlot(new [] { pushDefinition }, null);
-				}
+				int stackLengthAfterPops = stack.Length - popCount;
+				int newStackLength = stackLengthAfterPops + pushCount;
+
+				StackSlot[] newStack = new StackSlot[newStackLength];
+				Array.Copy(stack, newStack, stackLengthAfterPops);
+
+				for (int i = stackLengthAfterPops; i < newStackLength; i++)
+					newStack[i] = new StackSlot(new[] { pushDefinition }, null);
 				return newStack;
 			}
 		}
@@ -69,10 +72,11 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 			public static VariableSlot[] CloneVariableState(VariableSlot[] state)
 			{
-				if (state.Length == 0)
+				int stateLength = state.Length;
+				if (stateLength == 0)
 					return state;
-				VariableSlot[] clone = new VariableSlot[state.Length];
-				Array.Copy(state, clone, state.Length);
+				VariableSlot[] clone = new VariableSlot[stateLength];
+				Array.Copy(state, clone, stateLength);
 				return clone;
 			}
 
@@ -81,7 +85,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				if (varCount == 0)
 					return Array.Empty<VariableSlot>();
 				VariableSlot[] unknownVariableState = new VariableSlot[varCount];
-				for (int i = 0; i < unknownVariableState.Length; i++) {
+				for (int i = 0; i < varCount; i++) {
 					unknownVariableState[i] = UnknownInstance;
 				}
 				return unknownVariableState;
@@ -205,13 +209,14 @@ namespace ICSharpCode.Decompiler.ILAst {
 		}
 
 		MethodDef methodDef;
+		uint methodCodeSize;
 		bool optimize;
 
 		// Virtual instructions to load exception on stack
 		readonly Dictionary<ExceptionHandler, ByteCode> ldexceptions = new Dictionary<ExceptionHandler, ILAstBuilder.ByteCode>();
 		readonly Dictionary<ExceptionHandler, ByteCode> ldfilters = new Dictionary<ExceptionHandler, ILAstBuilder.ByteCode>();
 
-		public List<ILVariable> Parameters = new List<ILVariable>();
+		public readonly List<ILVariable> Parameters = new List<ILVariable>();
 		DecompilerContext context;
 		readonly Dictionary<Instruction, ByteCode> instrToByteCode = new Dictionary<Instruction, ByteCode>();
 		readonly List<ByteCode> StackAnalysis_body = new List<ByteCode>();
@@ -266,6 +271,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 			if (methodDef.Body.Instructions.Count == 0) return new List<ILNode>();
 
+			methodCodeSize = (uint)methodDef.Body.GetCodeSize();
+
 			List<ByteCode> body = StackAnalysis(methodDef);
 
 			List<ILNode> ast = ConvertToAst(body, new HashSet<ExceptionHandler>(methodDef.Body.ExceptionHandlers));
@@ -289,8 +296,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			for (int i = 0; i < instructionsCount; i++) {
 				var next = i + 1 < instructionsCount ? instructions[i + 1] : null;
 				if (inst.OpCode.OpCodeType == OpCodeType.Prefix) {
-					if (prefixes == null)
-						prefixes = StackAnalysis_cachedPrefixes;
+					prefixes ??= StackAnalysis_cachedPrefixes;
 					prefixes.Add(inst);
 					inst = next;
 					continue;
@@ -305,7 +311,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				inst.CalculateStackUsage(methodHasReturnType, out int pushCount, out int popCount);
 				ByteCode byteCode = new ByteCode() {
 					Offset      = inst.Offset,
-					EndOffset   = next?.Offset ?? (uint)methodDef.Body.GetCodeSize(),
+					EndOffset   = next?.Offset ?? methodCodeSize,
 					Code        = code,
 					Operand     = operand,
 					PopCount    = popCount,
@@ -350,35 +356,32 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 			// Add known states
 			if(methodDef.Body.HasExceptionHandlers) {
-				foreach(ExceptionHandler ex in methodDef.Body.ExceptionHandlers) {
+				for (int i = 0; i < methodDef.Body.ExceptionHandlers.Count; i++) {
+					var ex = methodDef.Body.ExceptionHandlers[i];
 					if (ex.HandlerStart == null)
 						continue;
 					ByteCode handlerStart = instrToByteCode[ex.HandlerStart];
-					handlerStart.StackBefore = Array.Empty<StackSlot>();
 					handlerStart.VariablesBefore = VariableSlot.MakeUknownState(varCount);
 					if (ex.HandlerType == ExceptionHandlerType.Catch || ex.HandlerType == ExceptionHandlerType.Filter) {
 						// Catch and Filter handlers start with the exeption on the stack
 						ByteCode ldexception = new ByteCode() {
-							Code = ILCode.Ldexception,
-							Operand = ex.CatchType,
-							PopCount = 0,
-							PushCount = 1
+							Code = ILCode.Ldexception, Operand = ex.CatchType, PopCount = 0, PushCount = 1
 						};
 						ldexceptions[ex] = ldexception;
-						handlerStart.StackBefore = new StackSlot[] { new StackSlot(new [] { ldexception }, null) };
+						handlerStart.StackBefore = new StackSlot[] { new StackSlot(new[] { ldexception }, null) };
 					}
+					else
+						handlerStart.StackBefore = Array.Empty<StackSlot>();
+
 					agenda.Push(handlerStart);
 
 					if (ex.HandlerType == ExceptionHandlerType.Filter && ex.FilterStart != null) {
 						ByteCode filterStart = instrToByteCode[ex.FilterStart];
 						ByteCode ldexception = new ByteCode() {
-							Code = ILCode.Ldexception,
-							Operand = ex.CatchType,
-							PopCount = 0,
-							PushCount = 1
+							Code = ILCode.Ldexception, Operand = ex.CatchType, PopCount = 0, PushCount = 1
 						};
 						ldfilters[ex] = ldexception;
-						filterStart.StackBefore = new StackSlot[] { new StackSlot(new [] { ldexception }, null) };
+						filterStart.StackBefore = new StackSlot[] { new StackSlot(new[] { ldexception }, null) };
 						filterStart.VariablesBefore = VariableSlot.MakeUknownState(varCount);
 						agenda.Push(filterStart);
 					}
@@ -417,8 +420,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 					}
 				}
 				if (byteCode.Operand is IList<Instruction> instrsOperand) {
-					foreach(Instruction inst2 in instrsOperand) {
-						ByteCode target = instrToByteCode[inst2];
+					for (int i = 0; i < instrsOperand.Count; i++) {
+						ByteCode target = instrToByteCode[instrsOperand[i]];
 						branchTargets.Add(target);
 						// The target of a branch must have label
 						if (target.Label == null) {
@@ -435,20 +438,24 @@ namespace ICSharpCode.Decompiler.ILAst {
 				}
 
 				// Apply the state to successors
-				foreach (ByteCode branchTarget in branchTargets) {
+				for (int i = 0; i < branchTargets.Count; i++) {
+					var branchTarget = branchTargets[i];
 					if (branchTarget == null)
 						continue;
 					if (branchTarget.StackBefore == null && branchTarget.VariablesBefore == null) {
 						if (branchTargets.Count == 1) {
 							branchTarget.StackBefore = newStack;
 							branchTarget.VariablesBefore = newVariableState;
-						} else {
+						}
+						else {
 							// Do not share data for several bytecodes
 							branchTarget.StackBefore = StackSlot.ModifyStack(newStack, 0, 0, null);
 							branchTarget.VariablesBefore = VariableSlot.CloneVariableState(newVariableState);
 						}
+
 						agenda.Push(branchTarget);
-					} else {
+					}
+					else {
 						if (branchTarget.StackBefore.Length != newStack.Length) {
 							throw new Exception("Inconsistent stack size at " + byteCode.Name);
 						}
@@ -459,28 +466,29 @@ namespace ICSharpCode.Decompiler.ILAst {
 						bool modified = false;
 
 						// Merge stacks - modify the target
-						for (int i = 0; i < newStack.Length; i++) {
-							ByteCode[] oldDefs = branchTarget.StackBefore[i].Definitions;
-							ByteCode[] newDefs = Union(oldDefs, newStack[i].Definitions);
+						for (int j = 0; j < newStack.Length; j++) {
+							ByteCode[] oldDefs = branchTarget.StackBefore[j].Definitions;
+							ByteCode[] newDefs = Union(oldDefs, newStack[j].Definitions);
 							if (newDefs.Length > oldDefs.Length) {
-								branchTarget.StackBefore[i] = new StackSlot(newDefs, null);
+								branchTarget.StackBefore[j] = new StackSlot(newDefs, null);
 								modified = true;
 							}
 						}
 
 						// Merge variables - modify the target
-						for (int i = 0; i < newVariableState.Length; i++) {
-							VariableSlot oldSlot = branchTarget.VariablesBefore[i];
+						for (int j = 0; j < newVariableState.Length; j++) {
+							VariableSlot oldSlot = branchTarget.VariablesBefore[j];
 							if (!oldSlot.UnknownDefinition) {
-								VariableSlot newSlot = newVariableState[i];
+								VariableSlot newSlot = newVariableState[j];
 								if (newSlot.UnknownDefinition) {
-									branchTarget.VariablesBefore[i] = newSlot;
+									branchTarget.VariablesBefore[j] = newSlot;
 									modified = true;
-								} else {
+								}
+								else {
 									ByteCode[] oldDefs = oldSlot.Definitions;
 									ByteCode[] newDefs = Union(oldDefs, newSlot.Definitions);
 									if (newDefs.Length > oldDefs.Length) {
-										branchTarget.VariablesBefore[i] = new VariableSlot(newDefs, false);
+										branchTarget.VariablesBefore[j] = new VariableSlot(newDefs, false);
 										modified = true;
 									}
 								}
@@ -499,18 +507,26 @@ namespace ICSharpCode.Decompiler.ILAst {
 			StackAnalysis_body.RemoveAll(b => b.StackBefore == null);
 
 			// Generate temporary variables to replace stack
-			foreach(ByteCode byteCode in StackAnalysis_body) {
+			for (int i = 0; i < StackAnalysis_body.Count; i++) {
+				var byteCode = StackAnalysis_body[i];
 				int argIdx = 0;
-				int popCount = byteCode.PopCount >= 0 ? byteCode.PopCount : byteCode.StackBefore.Length;
-				for (int i = byteCode.StackBefore.Length - popCount; i < byteCode.StackBefore.Length; i++) {
-					ILVariable tmpVar = new ILVariable("arg_" + byteCode.Offset.ToString("X2") + "_" + argIdx.ToString()) { GeneratedByDecompiler = true };
-					byteCode.StackBefore[i] = new StackSlot(byteCode.StackBefore[i].Definitions, tmpVar);
-					foreach(ByteCode pushedBy in byteCode.StackBefore[i].Definitions) {
-						if (pushedBy.StoreTo == null) {
-							pushedBy.StoreTo = new List<ILVariable>(1);
-						}
+				int stackBeforeLength = byteCode.StackBefore.Length;
+				int popCount = byteCode.PopCount >= 0 ? byteCode.PopCount : stackBeforeLength;
+				for (int j = stackBeforeLength - popCount; j < stackBeforeLength; j++) {
+					ILVariable tmpVar =
+						new ILVariable("arg_" + byteCode.Offset.ToString("X2") + "_" + argIdx.ToString()) {
+							GeneratedByDecompiler = true
+						};
+
+					byteCode.StackBefore[j] = new StackSlot(byteCode.StackBefore[j].Definitions, tmpVar);
+					var stackSlot = byteCode.StackBefore[j];
+					for (int k = 0; k < stackSlot.Definitions.Length; k++) {
+						var pushedBy = stackSlot.Definitions[k];
+						pushedBy.StoreTo ??= new List<ILVariable>(1);
+
 						pushedBy.StoreTo.Add(tmpVar);
 					}
+
 					argIdx++;
 				}
 			}
@@ -521,21 +537,25 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 			// Try to use single temporary variable insted of several if possilbe (especially useful for dup)
 			// This has to be done after all temporary variables are assigned so we know about all loads
-			foreach (ByteCode byteCode in StackAnalysis_body) {
+			for (int i = 0; i < StackAnalysis_body.Count; i++) {
+				var byteCode = StackAnalysis_body[i];
 				if (byteCode.StoreTo != null && byteCode.StoreTo.Count > 1) {
 					var locVars = byteCode.StoreTo;
 
 					if (!dictInitd) {
 						dictInitd = true;
-						foreach (var bc in StackAnalysis_body) {
-							var storeTo = bc.StoreTo;
+						for (int j = 0; j < StackAnalysis_body.Count; j++) {
+							var storeTo = StackAnalysis_body[j].StoreTo;
 							if (storeTo == null)
 								continue;
-							foreach (var v in storeTo)
-								StackAnalysis_ILVariables_hash.Add(v);
+							for (int k = 0; k < storeTo.Count; k++)
+								StackAnalysis_ILVariables_hash.Add(storeTo[k]);
 						}
-						foreach (var bc in StackAnalysis_body) {
-							foreach (var s in bc.StackBefore) {
+
+						for (int j = 0; j < StackAnalysis_body.Count; j++) {
+							var bc = StackAnalysis_body[j];
+							for (int k = 0; k < bc.StackBefore.Length; k++) {
+								var s = bc.StackBefore[k];
 								var loadFrom = s.LoadFrom;
 								if (loadFrom == null)
 									continue;
@@ -552,29 +572,32 @@ namespace ICSharpCode.Decompiler.ILAst {
 					// For each of the variables, find the location where it is loaded - there should be preciesly one
 					StackAnalysis_Dict_ILVariable_Boolean.Clear();
 					bool singleStore = true;
-					for (int ii = 0; ii < locVars.Count; ii++) {
-						var locVar = locVars[ii];
+					for (int j = 0; j < locVars.Count; j++) {
+						var locVar = locVars[j];
 						StackAnalysis_Dict_ILVariable_Boolean[locVar] = true;
-						StackSlot? nss;
-						if (!(StackAnalysis_ILVariable_StackSlot_dict.TryGetValue(locVar, out nss) && nss != null && nss.Value.Definitions.Length == 1 && nss.Value.Definitions[0] == byteCode)) {
+						if (!(StackAnalysis_ILVariable_StackSlot_dict.TryGetValue(locVar, out var nss) && nss != null &&
+						      nss.Value.Definitions.Length == 1 && nss.Value.Definitions[0] == byteCode)) {
 							singleStore = false;
 							break;
 						}
 					}
+
 					// We now know that all the variables have a single load,
 					// Let's make sure that they have also a single store - us
 					if (singleStore) {
 						// Great - we can reduce everything into single variable
-						ILVariable tmpVar = new ILVariable("expr_" + byteCode.Offset.ToString("X2")) { GeneratedByDecompiler = true };
+						ILVariable tmpVar =
+							new ILVariable("expr_" + byteCode.Offset.ToString("X2")) { GeneratedByDecompiler = true };
 						locVars.Clear();
 						locVars.Add(tmpVar);
-						foreach(ByteCode bc in StackAnalysis_body) {
-							for (int i = 0; i < bc.StackBefore.Length; i++) {
+						for (int j = 0; j < StackAnalysis_body.Count; j++) {
+							var bc = StackAnalysis_body[j];
+							for (int k = 0; k < bc.StackBefore.Length; k++) {
 								// Is it one of the variable to be merged?
-								var key = bc.StackBefore[i].LoadFrom;
+								var key = bc.StackBefore[k].LoadFrom;
 								if (key != null && StackAnalysis_Dict_ILVariable_Boolean.ContainsKey(key)) {
 									// Replace with the new temp variable
-									bc.StackBefore[i] = new StackSlot(bc.StackBefore[i].Definitions, tmpVar);
+									bc.StackBefore[k] = new StackSlot(bc.StackBefore[k].Definitions, tmpVar);
 								}
 							}
 						}
@@ -586,13 +609,15 @@ namespace ICSharpCode.Decompiler.ILAst {
 			ConvertLocalVariables(StackAnalysis_body);
 
 			// Convert branch targets to labels
-			foreach (ByteCode byteCode in StackAnalysis_body) {
+			for (int i = 0; i < StackAnalysis_body.Count; i++) {
+				var byteCode = StackAnalysis_body[i];
 				if (byteCode.Operand is IList<Instruction> instrsOp) {
 					StackAnalysis_List_ILLabel.Clear();
-					for (int i = 0; i < instrsOp.Count; i++)
-						StackAnalysis_List_ILLabel.Add(instrToByteCode[instrsOp[i]].Label);
+					for (int j = 0; j < instrsOp.Count; j++)
+						StackAnalysis_List_ILLabel.Add(instrToByteCode[instrsOp[j]].Label);
 					byteCode.Operand = StackAnalysis_List_ILLabel.ToArray();
-				} else if (byteCode.Operand is Instruction instrOp) {
+				}
+				else if (byteCode.Operand is Instruction instrOp) {
 					byteCode.Operand = instrToByteCode[instrOp].Label;
 				}
 			}
@@ -620,10 +645,10 @@ namespace ICSharpCode.Decompiler.ILAst {
 					return a;
 			}
 			StackAnalysis_HashSet_ByteCode.Clear();
-			foreach (var x in a)
-				StackAnalysis_HashSet_ByteCode.Add(x);
-			foreach (var x in b)
-				StackAnalysis_HashSet_ByteCode.Add(x);
+			for (int j = 0; j < a.Length; j++)
+				StackAnalysis_HashSet_ByteCode.Add(a[j]);
+			for (int j = 0; j < b.Length; j++)
+				StackAnalysis_HashSet_ByteCode.Add(b[j]);
 			if (a.Length == b.Length && a.Length == StackAnalysis_HashSet_ByteCode.Count)
 				return a;
 			var ary = new ByteCode[StackAnalysis_HashSet_ByteCode.Count];
@@ -713,14 +738,14 @@ namespace ICSharpCode.Decompiler.ILAst {
 		/// If possible, separates local variables into several independent variables.
 		/// It should undo any compilers merging.
 		/// </summary>
-		void ConvertLocalVariables(List<ByteCode> body)
-		{
-			foreach(Local varDef in methodDef.Body.Variables) {
-
+		void ConvertLocalVariables(List<ByteCode> body) {
+			for (int i = 0; i < methodDef.Body.Variables.Count; i++) {
+				var varDef = methodDef.Body.Variables[i];
 				// Find all definitions and uses of this variable
 				var defs = new List<ByteCode>();
 				var uses = new List<ByteCode>();
-				foreach (var b in body) {
+				for (int j = 0; j < body.Count; j++) {
+					var b = body[j];
 					if (b.Operand == varDef) {
 						if (b.IsVariableDefinition)
 							defs.Add(b);
@@ -764,12 +789,14 @@ namespace ICSharpCode.Decompiler.ILAst {
 					// Remember to handle cases where one path inits the variable, but other does not.
 
 					// Add loads to the data structure; merge variables if necessary
-					foreach(ByteCode use in uses) {
+					for (int j = 0; j < uses.Count; j++) {
+						var use = uses[j];
 						ByteCode[] useDefs = use.VariablesBefore[varDef.Index].Definitions;
 						if (useDefs.Length == 1) {
 							VariableInfo newVar = newVars.Single(v => v.Defs.Contains(useDefs[0]));
 							newVar.Uses.Add(use);
-						} else {
+						}
+						else {
 							List<VariableInfo> mergeVars = newVars.Where(v => v.Defs.Intersect(useDefs).Any()).ToList();
 							VariableInfo mergedVar = new VariableInfo() {
 								Variable = mergeVars[0].Variable,
@@ -784,13 +811,13 @@ namespace ICSharpCode.Decompiler.ILAst {
 				}
 
 				// Set bytecode operands
-				foreach(VariableInfo newVar in newVars) {
-					foreach(ByteCode def in newVar.Defs) {
-						def.Operand = newVar.Variable;
-					}
-					foreach(ByteCode use in newVar.Uses) {
-						use.Operand = newVar.Variable;
-					}
+				for (int j = 0; j < newVars.Count; j++) {
+					var newVar = newVars[j];
+					for (int k = 0; k < newVar.Defs.Count; k++)
+						newVar.Defs[k].Operand = newVar.Variable;
+
+					for (int k = 0; k < newVar.Uses.Count; k++)
+						newVar.Uses[k].Operand = newVar.Variable;
 				}
 			}
 		}
@@ -809,9 +836,10 @@ namespace ICSharpCode.Decompiler.ILAst {
 			}
 			if (this.Parameters.Count > 0 && (methodDef.SemanticsAttributes & (MethodSemanticsAttributes.Setter | MethodSemanticsAttributes.AddOn | MethodSemanticsAttributes.RemoveOn)) != 0) {
 				// last parameter must be 'value', so rename it
-				this.Parameters.Last().Name = "value";
+				this.Parameters[this.Parameters.Count - 1].Name = "value";
 			}
-			foreach (ByteCode byteCode in body) {
+			for (int i = 0; i < body.Count; i++) {
+				var byteCode = body[i];
 				Parameter p;
 				switch (byteCode.Code) {
 					case ILCode.Ldarg:
@@ -839,14 +867,13 @@ namespace ICSharpCode.Decompiler.ILAst {
 		{
 			List<ILNode> ast = new List<ILNode>();
 
-			uint codeSize = (uint)methodDef.Body.GetCodeSize();
-			while (ehs.Any()) {
+			while (ehs.Count != 0) {
 				ILTryCatchBlock tryCatchBlock = new ILTryCatchBlock();
 
 				// Find the first and widest scope
 				uint tryStart = ehs.Min(eh => eh.TryStart.GetOffset());
-				uint tryEnd   = ehs.Where(eh => eh.TryStart.GetOffset() == tryStart).Max(eh => eh.TryEnd?.Offset ?? codeSize);
-				var handlers = ehs.Where(eh => eh.TryStart.GetOffset() == tryStart && (eh.TryEnd?.Offset ?? codeSize) == tryEnd).ToList();
+				uint tryEnd   = ehs.Where(eh => eh.TryStart.GetOffset() == tryStart).Max(eh => eh.TryEnd?.Offset ?? methodCodeSize);
+				var handlers = ehs.Where(eh => eh.TryStart.GetOffset() == tryStart && (eh.TryEnd?.Offset ?? methodCodeSize) == tryEnd).ToList();
 
 				// Remember that any part of the body migt have been removed due to unreachability
 
@@ -859,7 +886,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 				// Cut the try block
 				{
-					HashSet<ExceptionHandler> nestedEHs = new HashSet<ExceptionHandler>(ehs.Where(eh => (tryStart <= eh.TryStart.GetOffset() && (eh.TryEnd?.Offset ?? codeSize) < tryEnd) || (tryStart < eh.TryStart.GetOffset() && (eh.TryEnd?.Offset ?? codeSize) <= tryEnd)));
+					HashSet<ExceptionHandler> nestedEHs = new HashSet<ExceptionHandler>(ehs.Where(eh => (tryStart <= eh.TryStart.GetOffset() && (eh.TryEnd?.Offset ?? methodCodeSize) < tryEnd) || (tryStart < eh.TryStart.GetOffset() && (eh.TryEnd?.Offset ?? methodCodeSize) <= tryEnd)));
 					ehs.ExceptWith(nestedEHs);
 					int tryEndIdx = 0;
 					while (tryEndIdx < body.Count && body[tryEndIdx].Offset < tryEnd) tryEndIdx++;
@@ -868,15 +895,16 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 				// Cut all handlers
 				tryCatchBlock.CatchBlocks = new List<ILTryCatchBlock.CatchBlock>();
-				foreach(ExceptionHandler eh in handlers) {
+				for (int i = 0; i < handlers.Count; i++) {
+					var eh = handlers[i];
 					if (eh.HandlerStart is null)
 						throw new ArgumentNullException(nameof(eh.HandlerStart));
-					uint handlerEndOffset = eh.HandlerEnd?.Offset ?? codeSize;
+					uint handlerEndOffset = eh.HandlerEnd?.Offset ?? methodCodeSize;
 					int startIdx = 0;
 					while (startIdx < body.Count && body[startIdx].Offset < eh.HandlerStart.GetOffset()) startIdx++;
 					int endIdx = startIdx;
 					while (endIdx < body.Count && body[endIdx].Offset < handlerEndOffset) endIdx++;
-					HashSet<ExceptionHandler> nestedEHs = new HashSet<ExceptionHandler>(ehs.Where(e => (eh.HandlerStart.GetOffset() <= e.TryStart.GetOffset() && (e.TryEnd?.Offset ?? codeSize) < handlerEndOffset) || (eh.HandlerStart.GetOffset() < e.TryStart.GetOffset() && (e.TryEnd?.Offset ?? codeSize) <= handlerEndOffset)));
+					HashSet<ExceptionHandler> nestedEHs = new HashSet<ExceptionHandler>(ehs.Where(e => (eh.HandlerStart.GetOffset() <= e.TryStart.GetOffset() && (e.TryEnd?.Offset ?? methodCodeSize) < handlerEndOffset) || (eh.HandlerStart.GetOffset() < e.TryStart.GetOffset() && (e.TryEnd?.Offset ?? methodCodeSize) <= handlerEndOffset)));
 					ehs.ExceptWith(nestedEHs);
 					List<ILNode> handlerAst = ConvertToAst(body.CutRange(startIdx, endIdx - startIdx), nestedEHs);
 					if (eh.HandlerType == ExceptionHandlerType.Catch) {
@@ -906,7 +934,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 						endIdx = startIdx;
 						uint ehHandlerStart = eh.HandlerStart.GetOffset();
 						while (endIdx < body.Count && body[endIdx].Offset < ehHandlerStart) endIdx++;
-						nestedEHs = new HashSet<ExceptionHandler>(ehs.Where(e => (eh.FilterStart.GetOffset() <= e.TryStart.GetOffset() && (e.TryEnd?.Offset ?? codeSize) < ehHandlerStart) || (eh.FilterStart.GetOffset() < e.TryStart.GetOffset() && (e.TryEnd?.Offset ?? codeSize) <= ehHandlerStart)));
+						nestedEHs = new HashSet<ExceptionHandler>(ehs.Where(e => (eh.FilterStart.GetOffset() <= e.TryStart.GetOffset() && (e.TryEnd?.Offset ?? methodCodeSize) < ehHandlerStart) || (eh.FilterStart.GetOffset() < e.TryStart.GetOffset() && (e.TryEnd?.Offset ?? methodCodeSize) <= ehHandlerStart)));
 						ehs.ExceptWith(nestedEHs);
 						List<ILNode> filterAst = ConvertToAst(body.CutRange(startIdx, endIdx - startIdx), nestedEHs);
 						var filterBlock = new ILTryCatchBlock.FilterILBlock(context.CalculateILSpans, filterAst) {
@@ -935,11 +963,12 @@ namespace ICSharpCode.Decompiler.ILAst {
 				// Exception is not used
 				catchBlock.ExceptionVariable = null;
 			} else if (ldexception.StoreTo.Count == 1) {
-				ILExpression first = catchBlock.Body[0] as ILExpression;
-				if (first != null &&
-					first.Code == ILCode.Pop &&
-					first.Arguments[0].Code == ILCode.Ldloc &&
-					first.Arguments[0].Operand == ldexception.StoreTo[0])
+				var catchBlockExceptionVariable = ldexception.StoreTo[0];
+				var firstNode = catchBlock.Body[0];
+				if (firstNode is ILExpression first &&
+				    first.Code == ILCode.Pop &&
+				    first.Arguments[0].Code == ILCode.Ldloc &&
+				    first.Arguments[0].Operand == catchBlockExceptionVariable)
 				{
 					// The exception is just poped - optimize it all away;
 					if (context.Settings.AlwaysGenerateExceptionVariableForCatchBlocksUnlessTypeIsObject && (eh.CatchType != null && !eh.CatchType.IsSystemObject()))
@@ -947,17 +976,16 @@ namespace ICSharpCode.Decompiler.ILAst {
 					else
 						catchBlock.ExceptionVariable = null;
 					if (context.CalculateILSpans)
-						catchBlock.Body[0].AddSelfAndChildrenRecursiveILSpans(catchBlock.StlocILSpans);
+						firstNode.AddSelfAndChildrenRecursiveILSpans(catchBlock.StlocILSpans);
 					catchBlock.Body.RemoveAt(0);
 				} else {
-					catchBlock.ExceptionVariable = ldexception.StoreTo[0];
+					catchBlock.ExceptionVariable = catchBlockExceptionVariable;
 				}
 			} else {
 				ILVariable exTemp = new ILVariable("ex_" + eh.HandlerStart.GetOffset().ToString("X2")) { GeneratedByDecompiler = true };
 				catchBlock.ExceptionVariable = exTemp;
-				foreach (ILVariable storeTo in ldexception.StoreTo) {
-					catchBlock.Body.Insert(0, new ILExpression(ILCode.Stloc, storeTo, new ILExpression(ILCode.Ldloc, exTemp)));
-				}
+				for (int i = 0; i < ldexception.StoreTo.Count; i++)
+					catchBlock.Body.Insert(0, new ILExpression(ILCode.Stloc, ldexception.StoreTo[i], new ILExpression(ILCode.Ldloc, exTemp)));
 			}
 		}
 
@@ -967,7 +995,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 			// Add dup's bin spans to the next instruction
 			int dupStart = -1;
-			foreach(ByteCode byteCode in body) {
+			for (int i = 0; i < body.Count; i++) {
+				var byteCode = body[i];
 				if (byteCode.StackBefore == null) {
 					// Unreachable code
 					continue;
@@ -988,11 +1017,14 @@ namespace ICSharpCode.Decompiler.ILAst {
 						}
 					}
 				}
+
 				if (byteCode.Prefixes != null && byteCode.Prefixes.Length > 0) {
 					ILExpressionPrefix[] prefixes = new ILExpressionPrefix[byteCode.Prefixes.Length];
-					for (int i = 0; i < prefixes.Length; i++) {
-						prefixes[i] = new ILExpressionPrefix(ilCodeTranslation[byteCode.Prefixes[i].OpCode.Code], byteCode.Prefixes[i].Operand);
+					for (int j = 0; j < prefixes.Length; j++) {
+						var prefix = byteCode.Prefixes[j];
+						prefixes[j] = new ILExpressionPrefix(ilCodeTranslation[prefix.OpCode.Code], prefix.Operand);
 					}
+
 					expr.Prefixes = prefixes;
 				}
 
@@ -1002,23 +1034,24 @@ namespace ICSharpCode.Decompiler.ILAst {
 				}
 
 				// Reference arguments using temporary variables
-				int popCount = byteCode.PopCount >= 0 ? byteCode.PopCount : byteCode.StackBefore.Length;
-				for (int i = byteCode.StackBefore.Length - popCount; i < byteCode.StackBefore.Length; i++) {
-					StackSlot slot = byteCode.StackBefore[i];
-					expr.Arguments.Add(new ILExpression(ILCode.Ldloc, slot.LoadFrom));
-				}
+				int stackBeforeLength = byteCode.StackBefore.Length;
+				int popCount = byteCode.PopCount >= 0 ? byteCode.PopCount : stackBeforeLength;
+				for (int j = stackBeforeLength - popCount; j < stackBeforeLength; j++)
+					expr.Arguments.Add(new ILExpression(ILCode.Ldloc, byteCode.StackBefore[j].LoadFrom));
 
 				// Store the result to temporary variable(s) if needed
 				if ((byteCode.StoreTo?.Count ?? 0) == 0) {
 					ast.Add(expr);
-				} else if (byteCode.StoreTo.Count == 1) {
+				}
+				else if (byteCode.StoreTo.Count == 1) {
 					ast.Add(new ILExpression(ILCode.Stloc, byteCode.StoreTo[0], expr));
-				} else {
+				}
+				else {
 					ILVariable tmpVar = new ILVariable("expr_" + byteCode.Offset.ToString("X2")) { GeneratedByDecompiler = true };
 					ast.Add(new ILExpression(ILCode.Stloc, tmpVar, expr));
-					foreach(ILVariable storeTo in byteCode.StoreTo.AsEnumerable().Reverse()) {
-						ast.Add(new ILExpression(ILCode.Stloc, storeTo, new ILExpression(ILCode.Ldloc, tmpVar)));
-					}
+
+					for (int j = byteCode.StoreTo.Count - 1; j >= 0; j--)
+						ast.Add(new ILExpression(ILCode.Stloc, byteCode.StoreTo[j], new ILExpression(ILCode.Ldloc, tmpVar)));
 				}
 			}
 

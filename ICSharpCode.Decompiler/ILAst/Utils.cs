@@ -178,7 +178,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			var next = removedIndex + numRemoved < body.Count ? body[removedIndex + numRemoved] : null;
 
 			ILNode node = null;
-			if (node == null && next is ILExpression)
+			if (next is ILExpression)
 				node = next;
 			if (node == null && prev is ILExpression)
 				node = prev;
@@ -199,7 +199,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			var next = removedIndex + 1 < body.Count ? body[removedIndex + 1] : null;
 
 			ILNode node = null;
-			if (node == null && next is ILExpression)
+			if (next is ILExpression)
 				node = next;
 			if (node == null && prev is ILExpression)
 				node = prev;
@@ -221,7 +221,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					removed.AddSelfAndChildrenRecursiveILSpans(prev.EndILSpans);
 					return;
 				}
-				else if (nodeToAddTo != null && nodeToAddTo == next) {
+				else if (nodeToAddTo == next) {
 					removed.AddSelfAndChildrenRecursiveILSpans(next.ILSpans);
 					return;
 				}
@@ -237,7 +237,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					prev.EndILSpans.AddRange(ilSpans);
 					return;
 				}
-				else if (nodeToAddTo != null && nodeToAddTo == next) {
+				else if (nodeToAddTo == next) {
 					next.ILSpans.AddRange(ilSpans);
 					return;
 				}

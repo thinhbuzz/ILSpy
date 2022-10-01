@@ -25,6 +25,7 @@ using dnSpy.Contracts.Decompiler;
 namespace ICSharpCode.Decompiler.ILAst {
 	sealed class MonoAsyncDecompiler : AsyncDecompiler {
 		readonly List<ILExpression> expressionList = new List<ILExpression>();
+		readonly List<ILBlock> list_ILBlock = new List<ILBlock>();
 		readonly Dictionary<ILExpression, FieldDef> awaitExprInfos = new Dictionary<ILExpression, FieldDef>();
 		ILVariable cachedStateVar;
 		ILVariable disposeInFinallyVar;
@@ -201,7 +202,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		// Hack to prevent the awaiter fields from being converted to locals by the base class
 		void SaveAwaiterFields(List<ILNode> newBody) {
 			var list = expressionList;
-			foreach (var block in new ILBlock { Body = newBody }.GetSelfAndChildrenRecursive<ILBlock>()) {
+			foreach (var block in new ILBlock { Body = newBody }.GetSelfAndChildrenRecursive<ILBlock>(list_ILBlock)) {
 				var body = block.Body;
 				for (int i = 0; i < body.Count; i++) {
 					var expr = body[i] as ILExpression;
@@ -413,7 +414,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			body = ConvertBody(body, 0, body.Count, mapping, keepMappings: true);
 
 		protected override void Step2(ILBlock method) {
-			foreach (var block in method.GetSelfAndChildrenRecursive<ILBlock>()) {
+			foreach (var block in method.GetSelfAndChildrenRecursive<ILBlock>(list_ILBlock)) {
 				var body = block.Body;
 				for (int i = 0; i < body.Count; i++) {
 					var expr = body[i] as ILExpression;

@@ -87,16 +87,17 @@ namespace ICSharpCode.Decompiler.ILAst {
 			labelToCfNode.Clear();
 			Dictionary<ILNode, ControlFlowNode> astNodeToCfNode = new Dictionary<ILNode, ControlFlowNode>();
 			List<ILLabel> listLabels = null;
-			foreach(ILBasicBlock node in nodes) {
+			for (int i = 0; i < nodes.Count; i++) {
+				var node = (ILBasicBlock)nodes[i];
 				ControlFlowNode cfNode = new ControlFlowNode(index++, null, ControlFlowNodeType.Normal);
 				cfNodes.Add(cfNode);
 				astNodeToCfNode[node] = cfNode;
 				cfNode.UserData = node;
 
 				// Find all contained labels
-				foreach(ILLabel label in node.GetSelfAndChildrenRecursive<ILLabel>(listLabels ?? (listLabels = new List<ILLabel>()))) {
-					labelToCfNode[label] = cfNode;
-				}
+				var labelList = node.GetSelfAndChildrenRecursive<ILLabel>(listLabels ?? (listLabels = new List<ILLabel>()));
+				for (int j = 0; j < labelList.Count; j++)
+					labelToCfNode[labelList[j]] = cfNode;
 			}
 
 			// Entry endge
@@ -107,7 +108,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 			// Create edges
 			List<ILExpression> listExpressions = null;
-			foreach(ILBasicBlock node in nodes) {
+			for (int i = 0; i < nodes.Count; i++) {
+				var node = (ILBasicBlock)nodes[i];
 				ControlFlowNode source = astNodeToCfNode[node];
 
 				// Find all branches
@@ -224,9 +226,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 				}
 
 				// Using the dominator tree should ensure we find the the widest loop first
-				foreach(var child in node.DominatorTreeChildren) {
-					agenda.Enqueue(child);
-				}
+				for (int i = 0; i < node.DominatorTreeChildren.Count; i++)
+					agenda.Enqueue(node.DominatorTreeChildren[i]);
 			}
 
 			// Add whatever is left
@@ -295,13 +296,12 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 							HashSet<ControlFlowNode> frontiers = new HashSet<ControlFlowNode>();
 							if (fallTarget != null)
-								frontiers.UnionWith(fallTarget.DominanceFrontier.Except(new [] { fallTarget }));
+								frontiers.UnionWith(fallTarget.DominanceFrontier.Where(x => x != fallTarget));
 
-							foreach(ILLabel condLabel in caseLabels) {
-								ControlFlowNode condTarget;
-								labelToCfNode.TryGetValue(condLabel, out condTarget);
+							for (int i = 0; i < caseLabels.Length; i++) {
+								labelToCfNode.TryGetValue(caseLabels[i], out var condTarget);
 								if (condTarget != null)
-									frontiers.UnionWith(condTarget.DominanceFrontier.Except(new [] { condTarget }));
+									frontiers.UnionWith(condTarget.DominanceFrontier.Where(x => x != condTarget));
 							}
 
 							bool includedDefault = false;

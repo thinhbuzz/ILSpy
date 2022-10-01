@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -33,8 +33,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 			modified |= TransformDecimalCtorToConstant(expr);
 			modified |= SimplifyLdcI4ConvI8(expr);
 			modified |= RemoveConvIFromArrayCreation(expr);
-			foreach(ILExpression arg in expr.Arguments) {
-				modified |= TypeConversionSimplifications(block, null, arg, -1);
+			for (int i = 0; i < expr.Arguments.Count; i++) {
+				modified |= TypeConversionSimplifications(block, null, expr.Arguments[i], -1);
 			}
 			return modified;
 		}
@@ -65,8 +65,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 						expr.Operand = paramType == ElementType.I4 ? new decimal(val) : new decimal((uint)val);
 						expr.InferredType = r.DeclaringType.ToTypeSig();
 						if (context.CalculateILSpans) {
-							foreach (var arg in expr.Arguments)
-								arg.AddSelfAndChildrenRecursiveILSpans(expr.ILSpans);
+							for (int i = 0; i < expr.Arguments.Count; i++)
+								expr.Arguments[i].AddSelfAndChildrenRecursiveILSpans(expr.ILSpans);
 						}
 						expr.Arguments.Clear();
 						return true;
@@ -80,8 +80,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 						expr.Operand = paramType == ElementType.I8 ? new decimal(val64) : new decimal((ulong)val64);
 						expr.InferredType = r.DeclaringType.ToTypeSig();
 						if (context.CalculateILSpans) {
-							foreach (var arg in expr.Arguments)
-								arg.AddSelfAndChildrenRecursiveILSpans(expr.ILSpans);
+							for (int i = 0; i < expr.Arguments.Count; i++)
+								expr.Arguments[i].AddSelfAndChildrenRecursiveILSpans(expr.ILSpans);
 						}
 						expr.Arguments.Clear();
 						return true;
@@ -98,8 +98,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 						expr.Operand = new decimal(lo, mid, hi, isNegative != 0, (byte)Math.Min(28, (uint)scale));
 						expr.InferredType = r.DeclaringType.ToTypeSig();
 						if (context.CalculateILSpans) {
-							foreach (var arg in expr.Arguments)
-								arg.AddSelfAndChildrenRecursiveILSpans(expr.ILSpans);
+							for (int i = 0; i < expr.Arguments.Count; i++)
+								expr.Arguments[i].AddSelfAndChildrenRecursiveILSpans(expr.ILSpans);
 						}
 						expr.Arguments.Clear();
 						return true;
@@ -130,8 +130,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 						var ldcExpr = new ILExpression(ILCode.Ldc_Decimal, paramType == ElementType.I4 ? new decimal(val) : new decimal((uint)val));
 						ldcExpr.InferredType = r.DeclaringType.ToTypeSig();
 						if (context.CalculateILSpans) {
-							foreach (var arg in expr.Arguments)
-								arg.AddSelfAndChildrenRecursiveILSpans(expr.ILSpans);
+							for (int i = 0; i < expr.Arguments.Count; i++)
+								expr.Arguments[i].AddSelfAndChildrenRecursiveILSpans(expr.ILSpans);
 						}
 						expr.Code = ILCode.Stloc;
 						expr.Operand = v;
@@ -149,8 +149,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 						var ldcExpr = new ILExpression(ILCode.Ldc_Decimal, paramType == ElementType.I8 ? new decimal(val64) : new decimal((ulong)val64));
 						ldcExpr.InferredType = r.DeclaringType.ToTypeSig();
 						if (context.CalculateILSpans) {
-							foreach (var arg in expr.Arguments)
-								arg.AddSelfAndChildrenRecursiveILSpans(expr.ILSpans);
+							for (int i = 0; i < expr.Arguments.Count; i++)
+								expr.Arguments[i].AddSelfAndChildrenRecursiveILSpans(expr.ILSpans);
 						}
 						expr.Code = ILCode.Stloc;
 						expr.Operand = v;
@@ -171,8 +171,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 						var ldcExpr = new ILExpression(ILCode.Ldc_Decimal, new decimal(lo, mid, hi, isNegative != 0, (byte)Math.Min(28, (uint)scale)));
 						ldcExpr.InferredType = r.DeclaringType.ToTypeSig();
 						if (context.CalculateILSpans) {
-							foreach (var arg in expr.Arguments)
-								arg.AddSelfAndChildrenRecursiveILSpans(expr.ILSpans);
+							for (int i = 0; i < expr.Arguments.Count; i++)
+								expr.Arguments[i].AddSelfAndChildrenRecursiveILSpans(expr.ILSpans);
 						}
 						expr.Code = ILCode.Stloc;
 						expr.Operand = v;
@@ -228,8 +228,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 				expr.Code = ILCode.Ldc_I8;
 				expr.Operand = (long)val;
 				if (context.CalculateILSpans) {
-					foreach (var arg in expr.Arguments)
-						arg.AddSelfAndChildrenRecursiveILSpans(expr.ILSpans);
+					for (int i = 0; i < expr.Arguments.Count; i++)
+						expr.Arguments[i].AddSelfAndChildrenRecursiveILSpans(expr.ILSpans);
 				}
 				expr.Arguments.Clear();
 				return true;
@@ -358,7 +358,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 			if (followingNode != null && followingNode.GetSelfAndChildrenRecursive<ILExpression>(Optimize_List_ILExpression).Count(
 				e => e.Code == ILCode.Ldsfld && ((IField)e.Operand).ResolveFieldWithinSameModule() == field) == 1)
 			{
-				foreach (ILExpression parent in Optimize_List_ILExpression) {
+				for (int k = 0; k < Optimize_List_ILExpression.Count; k++) {
+					var parent = Optimize_List_ILExpression[k];
 					for (int j = 0; j < parent.Arguments.Count; j++) {
 						if (parent.Arguments[j].Code == ILCode.Ldsfld && ((IField)parent.Arguments[j].Operand).ResolveFieldWithinSameModule() == field) {
 							if (context.CalculateILSpans) {
@@ -433,7 +434,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				return;
 
 			ILNode followingNode = block.Body.ElementAtOrDefault(i + 1);
-			if (followingNode != null && followingNode.GetSelfAndChildrenRecursive<ILExpression>().Count(
+			if (followingNode != null && followingNode.GetSelfAndChildrenRecursive<ILExpression>(Optimize_List_ILExpression).Count(
 				e => e.Code == ILCode.Ldloc && (ILVariable)e.Operand == v) == 1)
 			{
 				ILInlining inlining = GetILInlining(method);
@@ -441,7 +442,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 					return;
 
 				// Find the store instruction that initializes the local to null:
-				foreach (ILBlock storeBlock in method.GetSelfAndChildrenRecursive<ILBlock>()) {
+				var blockList = method.GetSelfAndChildrenRecursive<ILBlock>(Optimize_List_ILBlock);
+				for (int k = 0; k < blockList.Count; k++) {
+					var storeBlock = blockList[k];
 					for (int j = 0; j < storeBlock.Body.Count; j++) {
 						ILVariable storedVar;
 						ILExpression storedExpr;
@@ -590,9 +593,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 			// Static fields and local variables are not handled here - those are expressions without side effects
 			// and get handled by ReplaceMethodCallsWithOperators
 			// (which does a reversible transform to the short operator form, as the introduction of checked/unchecked might have to revert to the long form).
-			foreach (ILExpression arg in expr.Arguments) {
-				modified |= MakeCompoundAssignments(block, null, arg, -1);
-			}
+			for (int i = 0; i < expr.Arguments.Count; i++)
+				modified |= MakeCompoundAssignments(block, null, expr.Arguments[i], -1);
+
 			if (modified && body != null)
 				GetILInlining(method).InlineInto(block, body, pos, aggressive: false);
 			return modified;
@@ -834,7 +837,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 			MethodDef setterDef = setter.Resolve();
 			if (getterDef == null || setterDef == null)
 				return false;
-			foreach (PropertyDef prop in getterDef.DeclaringType.Properties) {
+			for (int i = 0; i < getterDef.DeclaringType.Properties.Count; i++) {
+				var prop = getterDef.DeclaringType.Properties[i];
 				if (prop.GetMethod == getterDef)
 					return prop.SetMethod == setterDef;
 			}

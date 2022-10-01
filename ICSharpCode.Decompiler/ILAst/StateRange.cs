@@ -1,14 +1,14 @@
 ﻿// Copyright (c) 2012 AlphaSierraPapa for the SharpDevelop Team
-// 
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -60,7 +60,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 		}
 
 		public bool Contains(int val) {
-			foreach (Interval v in data) {
+			for (int i = 0; i < data.Count; i++) {
+				var v = data[i];
 				if (v.Start <= val && val <= v.End)
 					return true;
 			}
@@ -75,7 +76,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 		/// Unions this state range with (other intersect (minVal to maxVal))
 		/// </summary>
 		public void UnionWith(StateRange other, int minVal, int maxVal) {
-			foreach (Interval v in other.data) {
+			for (int i = 0; i < other.data.Count; i++) {
+				var v = other.data[i];
 				int start = Math.Max(v.Start, minVal);
 				int end = Math.Min(v.End, maxVal);
 				if (start <= end)

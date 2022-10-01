@@ -729,7 +729,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					block.Body.RemoveAt(0);
 			}
 			// Convert ret to endfinally
-			foreach (ILExpression expr in block.GetSelfAndChildrenRecursive<ILExpression>()) {
+			foreach (ILExpression expr in block.GetSelfAndChildrenRecursive<ILExpression>(list_ILExpression)) {
 				if (expr.Code == ILCode.Ret)
 					expr.Code = ILCode.Endfinally;
 			}

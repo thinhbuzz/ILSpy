@@ -27,6 +27,11 @@ namespace ICSharpCode.Decompiler.ILAst {
 		readonly Dictionary<ILNode, ILNode> parent = new Dictionary<ILNode, ILNode>();
 		readonly Dictionary<ILNode, ILNode> nextSibling = new Dictionary<ILNode, ILNode>();
 		readonly DecompilerContext context;
+		readonly List<ILNode> list_ILNode = new List<ILNode>();
+		readonly List<ILBlock> list_ILBlock = new List<ILBlock>();
+		readonly List<ILExpression> list_ILExpression = new List<ILExpression>();
+		readonly List<ILSwitch> list_ILSwitch = new List<ILSwitch>();
+		readonly List<ILWhileLoop> list_ILWhileLoop = new List<ILWhileLoop>();
 
 		public GotoRemoval(DecompilerContext context)
 		{
@@ -37,6 +42,11 @@ namespace ICSharpCode.Decompiler.ILAst {
 		{
 			this.parent.Clear();
 			this.nextSibling.Clear();
+			this.list_ILNode.Clear();
+			this.list_ILBlock.Clear();
+			this.list_ILExpression.Clear();
+			this.list_ILSwitch.Clear();
+			this.list_ILWhileLoop.Clear();
 		}
 
 		public static void RemoveGotos(DecompilerContext context, ILBlock method)
@@ -44,18 +54,30 @@ namespace ICSharpCode.Decompiler.ILAst {
 			var gr = context.Cache.GetGotoRemoval();
 			try {
 				gr.RemoveGotosCore(method);
+				gr.RemoveRedundantCodeCore(method);
 			}
 			finally {
 				context.Cache.Return(gr);
 			}
-			RemoveRedundantCode(method, context);
+		}
+
+		public static void RemoveRedundantCode(DecompilerContext context, ILBlock method) {
+			var gr = context.Cache.GetGotoRemoval();
+			try {
+				gr.RemoveRedundantCodeCore(method);
+			}
+			finally {
+				context.Cache.Return(gr);
+			}
 		}
 
 		void RemoveGotosCore(ILBlock method)
 		{
 			// Build the navigation data
 			parent[method] = null;
-			foreach (ILNode node in method.GetSelfAndChildrenRecursive<ILNode>()) {
+			var nodeList = method.GetSelfAndChildrenRecursive<ILNode>(list_ILNode);
+			for (int i = 0; i < nodeList.Count; i++) {
+				var node = nodeList[i];
 				ILNode previousChild = null;
 				foreach (ILNode child in node.GetChildren()) {
 					if (parent.ContainsKey(child))
@@ -65,6 +87,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 						nextSibling[previousChild] = child;
 					previousChild = child;
 				}
+
 				if (previousChild != null)
 					nextSibling[previousChild] = null;
 			}
@@ -73,7 +96,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			bool modified;
 			do {
 				modified = false;
-				var list = method.GetSelfAndChildrenRecursive<ILExpression>(e => e.Code == ILCode.Br || e.Code == ILCode.Leave);
+				var list = method.GetSelfAndChildrenRecursive<ILExpression>(list_ILExpression, e => e.Code == ILCode.Br || e.Code == ILCode.Leave);
 				for (int i = list.Count - 1; i >= 0; i--) {
 					var gotoExpr = list[i];
 					modified |= TrySimplifyGoto(gotoExpr);
@@ -81,11 +104,13 @@ namespace ICSharpCode.Decompiler.ILAst {
 			} while(modified);
 		}
 
-		public static void RemoveRedundantCode(ILBlock method, DecompilerContext context)
+		void RemoveRedundantCodeCore(ILBlock method)
 		{
 			// Remove dead lables and nops
-			HashSet<ILLabel> liveLabels = new HashSet<ILLabel>(method.GetSelfAndChildrenRecursive<ILExpression>(e => e.IsBranch()).SelectMany(e => e.GetBranchTargets()));
-			foreach (ILBlock block in method.GetSelfAndChildrenRecursive<ILBlock>()) {
+			HashSet<ILLabel> liveLabels = new HashSet<ILLabel>(method.GetSelfAndChildrenRecursive<ILExpression>(list_ILExpression, e => e.IsBranch()).SelectMany(e => e.GetBranchTargets()));
+			var blocks = method.GetSelfAndChildrenRecursive<ILBlock>(list_ILBlock);
+			for (int j = 0; j < blocks.Count; j++) {
+				var block = blocks[j];
 				var newBody = new List<ILNode>(block.Body.Count);
 				for (int i = 0; i < block.Body.Count; i++) {
 					var node = block.Body[i];
@@ -93,7 +118,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 						if (context.CalculateILSpans)
 							Utils.NopMergeILSpans(block, newBody, ref i);
 					}
-					else if (node is ILLabel && !liveLabels.Contains((ILLabel)node)) {
+					else if (node is ILLabel label && !liveLabels.Contains(label)) {
 						if (context.CalculateILSpans)
 							Utils.LabelMergeILSpans(block, newBody, i);
 					}
@@ -104,7 +129,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 			}
 
 			// Remove redundant continue
-			foreach(ILWhileLoop loop in method.GetSelfAndChildrenRecursive<ILWhileLoop>()) {
+			var loops = method.GetSelfAndChildrenRecursive<ILWhileLoop>(list_ILWhileLoop);
+			for (int j = 0; j < loops.Count; j++) {
+				var loop = loops[j];
 				var body = loop.BodyBlock.Body;
 				if (body.Count > 0 && body.Last().Match(ILCode.LoopContinue)) {
 					if (context.CalculateILSpans)
@@ -115,8 +142,11 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 			// Remove redundant break at the end of case
 			// Remove redundant case blocks altogether
-			foreach(ILSwitch ilSwitch in method.GetSelfAndChildrenRecursive<ILSwitch>()) {
-				foreach(ILBlock ilCase in ilSwitch.CaseBlocks) {
+			var switches = method.GetSelfAndChildrenRecursive<ILSwitch>(list_ILSwitch);
+			for (int j = 0; j < switches.Count; j++) {
+				var ilSwitch = switches[j];
+				for (int i = 0; i < ilSwitch.CaseBlocks.Count; i++) {
+					ILBlock ilCase = ilSwitch.CaseBlocks[i];
 					Debug.Assert(ilCase.EntryGoto == null);
 
 					int count = ilCase.Body.Count;
@@ -134,7 +164,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 				var defaultCase = ilSwitch.CaseBlocks.SingleOrDefault(cb => cb.Values == null);
 				// If there is no default block, remove empty case blocks
-				if (defaultCase == null || (defaultCase.Body.Count == 1 && defaultCase.Body.Single().Match(ILCode.LoopOrSwitchBreak))) {
+				if (defaultCase == null ||
+				    (defaultCase.Body.Count == 1 && defaultCase.Body.Single().Match(ILCode.LoopOrSwitchBreak))) {
 					for (int i = ilSwitch.CaseBlocks.Count - 1; i >= 0; i--) {
 						var caseBlock = ilSwitch.CaseBlocks[i];
 						if (caseBlock.Body.Count != 1 || !caseBlock.Body.Single().Match(ILCode.LoopOrSwitchBreak))
@@ -155,7 +186,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 			// Remove unreachable return statements
 			bool modified = false;
-			foreach(ILBlock block in method.GetSelfAndChildrenRecursive<ILBlock>()) {
+			blocks = method.GetSelfAndChildrenRecursive<ILBlock>(list_ILBlock);
+			for (int j = 0; j < blocks.Count; j++) {
+				var block = blocks[j];
 				for (int i = 0; i < block.Body.Count - 1;) {
 					if (block.Body[i].IsUnconditionalControlFlow() && block.Body[i+1].Match(ILCode.Ret)) {
 						modified = true;
@@ -169,7 +202,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 			}
 			if (modified) {
 				// More removals might be possible
-				RemoveGotos(context, method);
+				this.parent.Clear();
+				this.nextSibling.Clear();
+				RemoveGotosCore(method);
 			}
 		}
 
@@ -260,11 +295,13 @@ namespace ICSharpCode.Decompiler.ILAst {
 						// Check that the goto points to the start
 						ILTryCatchBlock current = dstTryBlock;
 						while(current != null) {
-							foreach(ILNode n in current.TryBlock.Body) {
+							for (int j = 0; j < current.TryBlock.Body.Count; j++) {
+								var n = current.TryBlock.Body[j];
 								if (n is ILLabel) {
 									if (n == target)
 										return dstTryBlock;
-								} else if (!n.Match(ILCode.Nop)) {
+								}
+								else if (!n.Match(ILCode.Nop)) {
 									current = n as ILTryCatchBlock;
 									break;
 								}

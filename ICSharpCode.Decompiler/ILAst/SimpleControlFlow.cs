@@ -1,14 +1,14 @@
 ﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
-// 
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -32,7 +32,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 		DecompilerContext context;
 		ICorLibTypes corLib;
-		
+
 		public SimpleControlFlow(DecompilerContext context, ILBlock method)
 		{
 			Initialize(context, method);
@@ -44,12 +44,18 @@ namespace ICSharpCode.Decompiler.ILAst {
 			this.labelToBasicBlock.Clear();
 			this.context = context;
 			this.corLib = context.CurrentMethod.Module.CorLibTypes;
-			
-			foreach (var e in method.GetSelfAndChildrenRecursive<ILExpression>(List_ILExpression, e => e.IsBranch())) {
-				foreach (var target in e.GetBranchTargets())
+
+			var expressionList = method.GetSelfAndChildrenRecursive<ILExpression>(List_ILExpression, e => e.IsBranch());
+			for (int i = 0; i < expressionList.Count; i++) {
+				var labels = expressionList[i].GetBranchTargets();
+				for (int j = 0; j < labels.Length; j++) {
+					var target = labels[j];
 					labelGlobalRefCount[target] = labelGlobalRefCount.GetOrDefault(target) + 1;
+				}
 			}
-			foreach(ILBasicBlock bb in method.GetSelfAndChildrenRecursive<ILBasicBlock>(List_ILBasicBlock)) {
+			var bbs = method.GetSelfAndChildrenRecursive<ILBasicBlock>(List_ILBasicBlock);
+			for (int i = 0; i < bbs.Count; i++) {
+				var bb = bbs[i];
 				int index = 0;
 				for (;;) {
 					var label = bb.GetNext(ref index) as ILLabel;
@@ -59,11 +65,11 @@ namespace ICSharpCode.Decompiler.ILAst {
 				}
 			}
 		}
-		
+
 		public bool SimplifyTernaryOperator(List<ILNode> body, ILBasicBlock head, int pos)
 		{
 			Debug.Assert(body.Contains(head));
-			
+
 			ILExpression condExpr;
 			ILLabel trueLabel;
 			ILLabel falseLabel;
@@ -74,7 +80,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			ILExpression falseExpr;
 			ILLabel falseFall;
 			object unused;
-			
+
 			if (head.MatchLastAndBr(ILCode.Brtrue, out trueLabel, out condExpr, out falseLabel) &&
 			    labelGlobalRefCount[trueLabel] == 1 &&
 			    labelGlobalRefCount[falseLabel] == 1 &&
@@ -130,15 +136,15 @@ namespace ICSharpCode.Decompiler.ILAst {
 					// Ternary operator tends to create long complicated return statements
 					if (opCode == ILCode.Ret)
 						return false;
-					
+
 					// Only simplify generated variables
 					if (opCode == ILCode.Stloc && !trueLocVar.GeneratedByDecompiler)
 						return false;
-					
+
 					// Create ternary expression
 					newExpr = new ILExpression(ILCode.TernaryOp, null, condExpr, trueExpr, falseExpr);
 				}
-				
+
 				var tail = head.Body.RemoveTail(ILCode.Brtrue, ILCode.Br);
 				if (context.CalculateILSpans) {
 					var listNodes = new List<ILNode>();
@@ -170,16 +176,16 @@ namespace ICSharpCode.Decompiler.ILAst {
 				head.Body.Add(new ILExpression(opCode, trueLocVar, newExpr));
 				if (isStloc)
 					head.Body.Add(new ILExpression(ILCode.Br, trueFall));
-				
+
 				// Remove the old basic blocks
 				body.RemoveOrThrow(labelToBasicBlock[trueLabel]);
 				body.RemoveOrThrow(labelToBasicBlock[falseLabel]);
-				
+
 				return true;
 			}
 			return false;
 		}
-		
+
 		public bool SimplifyNullCoalescing(List<ILNode> body, ILBasicBlock head, int pos)
 		{
 			// ...
@@ -195,7 +201,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			// ...
 			// v = NullCoalescing(ldloc(leftVar), rightExpr)
 			// br(endBBLabel)
-			
+
 			ILVariable v, v2;
 			ILExpression leftExpr, leftExpr2;
 			ILVariable leftVar;
@@ -238,29 +244,29 @@ namespace ICSharpCode.Decompiler.ILAst {
 					rightExpr.ILSpans.AddRange(rightBB.Body[1].ILSpans);      // stloc: no recursive add
 					rightBB.Body[2].AddSelfAndChildrenRecursiveILSpans(rightExpr.ILSpans);    // br
 				}
-				
+
 				body.RemoveOrThrow(labelToBasicBlock[rightBBLabel]);
 				return true;
 			}
 			return false;
 		}
-		
+
 		public bool SimplifyShortCircuit(List<ILNode> body, ILBasicBlock head, int pos)
 		{
 			Debug.Assert(body.Contains(head));
-			
+
 			ILExpression condExpr;
 			ILLabel trueLabel;
 			ILLabel falseLabel;
 			if(head.MatchLastAndBr(ILCode.Brtrue, out trueLabel, out condExpr, out falseLabel)) {
 				for (int pass = 0; pass < 2; pass++) {
-					
+
 					// On the second pass, swap labels and negate expression of the first branch
 					// It is slightly ugly, but much better then copy-pasting this whole block
 					ILLabel nextLabel   = (pass == 0) ? trueLabel  : falseLabel;
 					ILLabel otherLablel = (pass == 0) ? falseLabel : trueLabel;
 					bool    negate      = (pass == 1);
-					
+
 					ILBasicBlock nextBasicBlock = labelToBasicBlock[nextLabel];
 					ILExpression nextCondExpr;
 					ILLabel nextTrueLablel;
@@ -294,21 +300,21 @@ namespace ICSharpCode.Decompiler.ILAst {
 							brFalseLbl.ILSpans.AddRange(nextBasicBlock.EndILSpans);
 							tail[1].AddSelfAndChildrenRecursiveILSpans(brFalseLbl.ILSpans); // br
 						}
-						
+
 						// Remove the inlined branch from scope
 						body.RemoveOrThrow(nextBasicBlock);
-						
+
 						return true;
 					}
 				}
 			}
 			return false;
 		}
-		
+
 		public bool SimplifyCustomShortCircuit(List<ILNode> body, ILBasicBlock head, int pos)
 		{
 			Debug.Assert(body.Contains(head));
-			
+
 			// --- looking for the following pattern ---
 			// stloc(targetVar, leftVar)
 			// brtrue(exitLabel, call(op_False, leftVar)
@@ -318,21 +324,21 @@ namespace ICSharpCode.Decompiler.ILAst {
 			// stloc(targetVar, call(op_BitwiseAnd, leftVar, rightExpression))
 			// br(exitLabel)
 			// ---
-			
+
 			if (head.Body.Count < 3)
 				return false;
-			
+
 			// looking for:
 			// stloc(targetVar, leftVar)
 			ILVariable targetVar;
 			ILExpression targetVarInitExpr;
 			if (!head.Body[head.Body.Count - 3].Match(ILCode.Stloc, out targetVar, out targetVarInitExpr))
 				return false;
-			
+
 			ILVariable leftVar;
 			if (!targetVarInitExpr.Match(ILCode.Ldloc, out leftVar))
 				return false;
-			
+
 			// looking for:
 			// brtrue(exitLabel, call(op_False, leftVar)
 			// br(followingBlock)
@@ -341,24 +347,24 @@ namespace ICSharpCode.Decompiler.ILAst {
 			ILLabel followingBlock;
 			if(!head.MatchLastAndBr(ILCode.Brtrue, out exitLabel, out callExpr, out followingBlock))
 				return false;
-			
+
 			if (labelGlobalRefCount[followingBlock] > 1)
 				return false;
-			
+
 			IMethod opFalse;
 			ILExpression opFalseArg;
 			if (!callExpr.Match(ILCode.Call, out opFalse, out opFalseArg))
 				return false;
-			
+
 			// ignore operators other than op_False and op_True
 			if (opFalse.Name != "op_False" && opFalse.Name != "op_True")
 				return false;
-			
+
 			if (!opFalseArg.MatchLdloc(leftVar))
 				return false;
-			
+
 			ILBasicBlock followingBasicBlock = labelToBasicBlock[followingBlock];
-			
+
 			// FollowingBlock:
 			// stloc(targetVar, call(op_BitwiseAnd, leftVar, rightExpression))
 			// br(exitLabel)
@@ -367,47 +373,47 @@ namespace ICSharpCode.Decompiler.ILAst {
 			ILLabel _exitLabel;
 			if (!followingBasicBlock.MatchSingleAndBr(ILCode.Stloc, out _targetVar, out opBitwiseCallExpr, out _exitLabel))
 				return false;
-			
+
 			if (_targetVar != targetVar || exitLabel != _exitLabel)
 				return false;
-			
+
 			IMethod opBitwise;
 			ILExpression leftVarExpression;
 			ILExpression rightExpression;
 			if (!opBitwiseCallExpr.Match(ILCode.Call, out opBitwise, out leftVarExpression, out rightExpression))
 				return false;
-			
+
 			if (!leftVarExpression.MatchLdloc(leftVar))
 				return false;
-			
+
 			// ignore operators other than op_BitwiseAnd and op_BitwiseOr
 			if (opBitwise.Name != "op_BitwiseAnd" && opBitwise.Name != "op_BitwiseOr")
 				return false;
-			
+
 			// insert:
 			// stloc(targetVar, LogicAnd(C::op_BitwiseAnd, leftVar, rightExpression)
 			// br(exitLabel)
 			ILCode op = opBitwise.Name == "op_BitwiseAnd" ? ILCode.LogicAnd : ILCode.LogicOr;
-			
+
 			if (op == ILCode.LogicAnd && opFalse.Name != "op_False")
 				return false;
-			
+
 			if (op == ILCode.LogicOr && opFalse.Name != "op_True")
 				return false;
-			
+
 			ILExpression shortCircuitExpr = MakeLeftAssociativeShortCircuit(op, opFalseArg, rightExpression);
 			shortCircuitExpr.Operand = opBitwise;
-			
+
 			var tail = head.Body.RemoveTail(ILCode.Stloc, ILCode.Brtrue, ILCode.Br);
 			//TODO: Keep tail's ILSpans
 			//TODO: Keep ILSpans of other things that are removed by this method
 			head.Body.Add(new ILExpression(ILCode.Stloc, targetVar, shortCircuitExpr));
 			head.Body.Add(new ILExpression(ILCode.Br, exitLabel));
 			body.Remove(followingBasicBlock);
-			
+
 			return true;
 		}
-		
+
 		ILExpression MakeLeftAssociativeShortCircuit(ILCode code, ILExpression left, ILExpression right)
 		{
 			// Assuming that the inputs are already left associative
@@ -424,7 +430,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				return new ILExpression(code, null, left, right) { InferredType = corLib.Boolean };
 			}
 		}
-		
+
 		public bool JoinBasicBlocks(List<ILNode> body, ILBasicBlock head, int pos)
 		{
 			ILLabel nextLabel;
@@ -452,7 +458,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					head.EndILSpans.AddRange(nextBB.EndILSpans);
 				}
 				head.Body.AddRange(nextBB.Body);
-				
+
 				body.RemoveOrThrow(nextBB);
 				return true;
 			}

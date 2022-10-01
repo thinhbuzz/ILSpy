@@ -696,7 +696,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			return this.Operand is ILLabel || this.Operand is ILLabel[];
 		}
 
-		public IEnumerable<ILLabel> GetBranchTargets()
+		public ILLabel[] GetBranchTargets()
 		{
 			if (this.Operand is ILLabel) {
 				return new ILLabel[] { (ILLabel)this.Operand };

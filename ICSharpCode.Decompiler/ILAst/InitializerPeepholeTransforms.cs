@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -366,8 +366,8 @@ namespace ICSharpCode.Decompiler.ILAst
 				expr.Code = ILCode.Stloc;
 				expr.Operand = v;
 				if (context.CalculateILSpans) {
-					foreach (var arg in expr.Arguments)
-						arg.AddSelfAndChildrenRecursiveILSpans(initializer.ILSpans);
+					for (int i = 0; i < expr.Arguments.Count; i++)
+						expr.Arguments[i].AddSelfAndChildrenRecursiveILSpans(initializer.ILSpans);
 				}
 				expr.Arguments.Clear();
 				expr.Arguments.Add(initializer);
@@ -397,8 +397,8 @@ namespace ICSharpCode.Decompiler.ILAst
 				return false;
 			TypeDef td = tr.Resolve();
 			while (td != null) {
-				foreach (var ii in td.Interfaces) {
-					var i = ii.Interface;
+				for (int j = 0; j < td.Interfaces.Count; j++) {
+					var i = td.Interfaces[j].Interface;
 					if (i.Name == nameIEnumerable && i.Namespace == nameSystemCollections)
 						return true;
 				}
