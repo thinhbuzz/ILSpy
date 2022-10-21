@@ -125,13 +125,13 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			if (detectControlStructure && body.Instructions.Count > 0) {
 				int index = 0;
 				HashSet<uint> branchTargets = GetBranchTargets(body.Instructions);
-				WriteStructureBody(body, new ILStructure(body), branchTargets, ref index, builder, instructionOperandConverter, body.GetCodeSize(), baseRva, baseOffs, byteReader, pdbAsyncInfo, method);
+				WriteStructureBody(body, new ILStructure(body), branchTargets, ref index, builder, instructionOperandConverter, body.GetCodeSize(), baseOffs, byteReader, pdbAsyncInfo, method);
 			}
 			else {
 				var instructions = body.Instructions;
 				for (int i = 0; i < instructions.Count; i++) {
 					var inst = instructions[i];
-					inst.WriteTo(output, sb, options, baseRva, baseOffs, byteReader, method, instructionOperandConverter, pdbAsyncInfo, out int startLocation);
+					inst.WriteTo(output, sb, options, baseOffs, byteReader, method, instructionOperandConverter, pdbAsyncInfo, out int startLocation);
 
 					if (builder != null) {
 						var next = i + 1 < instructions.Count ? instructions[i + 1] : null;
@@ -233,7 +233,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			return bh;
 		}
 
-		void WriteStructureBody(CilBody body, ILStructure s, HashSet<uint> branchTargets, ref int index, MethodDebugInfoBuilder builder, InstructionOperandConverter instructionOperandConverter, int codeSize, uint baseRva, long baseOffs, IInstructionBytesReader byteReader, PdbAsyncMethodCustomDebugInfo pdbAsyncInfo, MethodDef method)
+		void WriteStructureBody(CilBody body, ILStructure s, HashSet<uint> branchTargets, ref int index, MethodDebugInfoBuilder builder, InstructionOperandConverter instructionOperandConverter, int codeSize, long baseOffs, IInstructionBytesReader byteReader, PdbAsyncMethodCustomDebugInfo pdbAsyncInfo, MethodDef method)
 		{
 			bool isFirstInstructionInStructure = true;
 			bool prevInstructionWasBranch = false;
@@ -247,14 +247,14 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				if (childIndex < s.Children.Count && s.Children[childIndex].StartOffset <= offset && offset < s.Children[childIndex].EndOffset) {
 					ILStructure child = s.Children[childIndex++];
 					var bh = WriteStructureHeader(child, method);
-					WriteStructureBody(body, child, branchTargets, ref index, builder, instructionOperandConverter, codeSize, baseRva, baseOffs, byteReader, pdbAsyncInfo, method);
+					WriteStructureBody(body, child, branchTargets, ref index, builder, instructionOperandConverter, codeSize, baseOffs, byteReader, pdbAsyncInfo, method);
 					WriteStructureFooter(child, bh);
 				} else {
 					if (!isFirstInstructionInStructure && (prevInstructionWasBranch || branchTargets.Contains(offset))) {
 						output.WriteLine(); // put an empty line after branches, and in front of branch targets
 					}
 
-					inst.WriteTo(output, sb, options, baseRva, baseOffs, byteReader, method, instructionOperandConverter, pdbAsyncInfo, out int startLocation);
+					inst.WriteTo(output, sb, options, baseOffs, byteReader, method, instructionOperandConverter, pdbAsyncInfo, out int startLocation);
 
 					if (builder != null) {
 						var next = index + 1 < instructions.Count ? instructions[index + 1] : null;

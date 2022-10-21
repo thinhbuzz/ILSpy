@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using dnlib.DotNet;
@@ -70,10 +71,10 @@ namespace ICSharpCode.Decompiler.Disassembler {
 		}
 	}
 
-	struct BracePairHelper {
+	readonly struct BracePairHelper {
 		readonly IDecompilerOutput output;
 		readonly CodeBracesRangeFlags flags;
-		int leftStart, leftEnd;
+		readonly int leftStart, leftEnd;
 
 		BracePairHelper(IDecompilerOutput output, int leftStart, int leftEnd, CodeBracesRangeFlags flags) {
 			this.output = output;
@@ -171,8 +172,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 		readonly NumberFormatter numberFormatter;
 		readonly StringBuilder sb;
 		bool isInType; // whether we are currently disassembling a whole type (-> defaultCollapsed for foldings)
-		MethodBodyDisassembler methodBodyDisassembler;
-		IMemberDef currentMember;
+		readonly MethodBodyDisassembler methodBodyDisassembler;
 
 		const DecompilerReferenceFlags numberFlags = DecompilerReferenceFlags.Local | DecompilerReferenceFlags.Hidden | DecompilerReferenceFlags.NoFollow;
 
@@ -255,9 +255,6 @@ namespace ICSharpCode.Decompiler.Disassembler {
 
 		public void DisassembleMethod(MethodDef method, bool addLineSep = true)
 		{
-			// set current member
-			currentMember = method;
-
 			// write method header
 			WriteXmlDocComment(method);
 			AddComment(method);
@@ -372,7 +369,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				output.Write(DisassemblerHelpers.Escape(method.Name), method, DecompilerReferenceFlags.Definition, CSharpMetadataTextColorProvider.Instance.GetColor(method));
 			}
 
-			WriteTypeParameters(output, method);
+			WriteTypeParameters(method);
 
 			//( params )
 			output.Write(" ", BoxedTextColor.Text);
@@ -395,7 +392,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			WriteFlags(method.ImplAttributes & ~(MethodImplAttributes.CodeTypeMask | MethodImplAttributes.ManagedMask), methodImpl);
 
 			output.DecreaseIndent();
-			var bh1 = OpenBlock(defaultCollapsed: isInType, flags: CodeBracesRangeFlags.MethodBraces);
+			var bh1 = OpenBlock(flags: CodeBracesRangeFlags.MethodBraces);
 			WriteAttributes(method.CustomAttributes);
 			if (method.HasOverrides) {
 				for (int i = 0; i < method.Overrides.Count; i++) {
@@ -424,15 +421,17 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			if (method.HasBody) {
 				instructionOperandConverter.Clear();
 				instructionOperandConverter.Add(method);
-				builder = new MethodDebugInfoBuilder(options.OptionsVersion, StateMachineKind.None, method, null, instructionOperandConverter.GetSourceLocals(), null, null);
-				builder.StartPosition = methodStartPosition;
+				var sourceParams = method.Parameters.SkipNonNormal().Select(parameter => new SourceParameter(parameter, parameter.Name, parameter.Type, SourceVariableFlags.None)).ToArray();
+				builder = new MethodDebugInfoBuilder(options.OptionsVersion, StateMachineKind.None, method, null, instructionOperandConverter.GetSourceLocals(), sourceParams, null) {
+					StartPosition = methodStartPosition
+				};
 				methodBodyDisassembler.Disassemble(method, builder, instructionOperandConverter);
 			}
 
 			int methodEndPosition = CloseBlock(bh1, addLineSep, "end of method " + DisassemblerHelpers.Escape(method.DeclaringType.Name) + "::" + DisassemblerHelpers.Escape(method.Name));
 
 			if (method.HasBody) {
-				builder.EndPosition = methodEndPosition;
+				builder!.EndPosition = methodEndPosition;
 				output.AddDebugInfo(builder.Create());
 			}
 		}
@@ -739,10 +738,8 @@ namespace ICSharpCode.Decompiler.Disassembler {
 						output.Write("iunknown", BoxedTextColor.Keyword);
 					else if (nativeType == NativeType.IDispatch)
 						output.Write("idispatch", BoxedTextColor.Keyword);
-					else if (nativeType == NativeType.IntF)
-						output.Write("interface", BoxedTextColor.Keyword);
 					else
-						throw new InvalidOperationException();
+						output.Write("interface", BoxedTextColor.Keyword);
 					var imti = marshalInfo as InterfaceMarshalType;
 					if (imti != null && imti.IsIidParamIndexValid) {
 						var bh2 = BracePairHelper.Create(output, "(", CodeBracesRangeFlags.Parentheses);
@@ -1270,9 +1267,6 @@ namespace ICSharpCode.Decompiler.Disassembler {
 
 		public void DisassembleProperty(PropertyDef property, bool full = true, bool addLineSep = true)
 		{
-			// set current member
-			currentMember = property;
-
 			WriteXmlDocComment(property);
 			AddComment(property);
 			output.Write(".property", BoxedTextColor.ILDirective);
@@ -1297,7 +1291,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			bh1.Write(")");
 
 			if (full) {
-				var bh2 = OpenBlock(false, CodeBracesRangeFlags.PropertyBraces);
+				var bh2 = OpenBlock(CodeBracesRangeFlags.PropertyBraces);
 				WriteAttributes(property.CustomAttributes);
 
 				for (int i = 0; i < property.GetMethods.Count; i++)
@@ -1350,9 +1344,6 @@ namespace ICSharpCode.Decompiler.Disassembler {
 
 		public void DisassembleEvent(EventDef ev, bool full = true, bool addLineSep = true)
 		{
-			// set current member
-			currentMember = ev;
-
 			WriteXmlDocComment(ev);
 			AddComment(ev);
 			output.Write(".event", BoxedTextColor.ILDirective);
@@ -1363,7 +1354,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			output.Write(DisassemblerHelpers.Escape(ev.Name), ev, DecompilerReferenceFlags.Definition, CSharpMetadataTextColorProvider.Instance.GetColor(ev));
 
 			if (full) {
-				var bh1 = OpenBlock(false, CodeBracesRangeFlags.EventBraces);
+				var bh1 = OpenBlock(CodeBracesRangeFlags.EventBraces);
 				WriteAttributes(ev.CustomAttributes);
 				WriteNestedMethod(".addon", ev.AddMethod);
 				WriteNestedMethod(".removeon", ev.RemoveMethod);
@@ -1435,7 +1426,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			{ TypeAttributes.HasSecurity, null },
 		};
 
-		void AddTokenComment(IMDTokenProvider member, string extra = null)
+		void AddTokenComment(IMDTokenProvider member)
 		{
 			if (!options.ShowTokenAndRvaComments)
 				return;
@@ -1463,7 +1454,6 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			uint rva;
 			long fileOffset;
 			member.GetRVA(out rva, out fileOffset);
-			string extra = string.Empty;
 			if (rva == 0)
 				return;
 
@@ -1514,7 +1504,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			WriteFlags(type.Attributes & ~masks, typeAttributes);
 
 			WriteTypeName(type);
-			WriteTypeParameters(output, type);
+			WriteTypeParameters(type);
 			output.WriteLine();
 
 			if (type.BaseType != null) {
@@ -1625,7 +1615,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			isInType = oldIsInType;
 		}
 
-		void WriteTypeParameters(IDecompilerOutput output, ITypeOrMethodDef p)
+		void WriteTypeParameters(ITypeOrMethodDef p)
 		{
 			if (p.HasGenericParameters) {
 				var bh2 = BracePairHelper.Create(output, "<", CodeBracesRangeFlags.AngleBrackets);
@@ -1709,7 +1699,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			bh1.Write(")");
 		}
 
-		BracePairHelper OpenBlock(bool defaultCollapsed, CodeBracesRangeFlags flags)
+		BracePairHelper OpenBlock(CodeBracesRangeFlags flags)
 		{
 			output.WriteLine();
 			var bh1 = BracePairHelper.Create(output, "{", flags);
@@ -1817,7 +1807,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				output.Write(" ", BoxedTextColor.Text);
 			}
 			output.Write(DisassemblerHelpers.Escape(asm.Name), BoxedTextColor.Text);
-			var bh1 = OpenBlock(false, CodeBracesRangeFlags.OtherBlockBraces);
+			var bh1 = OpenBlock(CodeBracesRangeFlags.OtherBlockBraces);
 			WriteAttributes(asm.CustomAttributes);
 			WriteSecurityDeclarations(asm);
 			if (asm.PublicKey != null && !asm.PublicKey.IsNullOrEmpty) {
@@ -1878,7 +1868,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 					output.Write(" ", BoxedTextColor.Text);
 				}
 				output.Write(DisassemblerHelpers.Escape(aref.Name), BoxedTextColor.Text);
-				var bh1 = OpenBlock(false, CodeBracesRangeFlags.OtherBlockBraces);
+				var bh1 = OpenBlock(CodeBracesRangeFlags.OtherBlockBraces);
 				if (!PublicKeyBase.IsNullOrEmpty2(aref.PublicKeyOrToken)) {
 					output.Write(".publickeytoken", BoxedTextColor.ILDirective);
 					output.Write(" ", BoxedTextColor.Text);
@@ -1925,7 +1915,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 						exportedTypeFullName = FullNameFactory.FullName(exportedType, false, null, sb);
 					}
 					output.Write(exportedTypeFullName, CSharpMetadataTextColorProvider.Instance.GetColor(exportedType));
-					var bh1 = OpenBlock(false, CodeBracesRangeFlags.OtherBlockBraces);
+					var bh1 = OpenBlock(CodeBracesRangeFlags.OtherBlockBraces);
 					if (exportedType.DeclaringType != null) {
 						output.Write(".class", BoxedTextColor.ILDirective);
 						output.Write(" ", BoxedTextColor.Text);

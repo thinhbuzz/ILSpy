@@ -95,13 +95,15 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			WriteOffsetReference(writer, exceptionHandler.HandlerEnd, method);
 		}
 
-		internal static void WriteTo(this Instruction instruction, IDecompilerOutput writer, StringBuilder sb, DisassemblerOptions options, uint baseRva, long baseOffs, IInstructionBytesReader byteReader, MethodDef method, InstructionOperandConverter instructionOperandConverter, PdbAsyncMethodCustomDebugInfo pdbAsyncInfo, out int startLocation)
+		internal static void WriteTo(this Instruction instruction, IDecompilerOutput writer, StringBuilder sb, DisassemblerOptions options, long baseOffs, IInstructionBytesReader byteReader, MethodDef method, InstructionOperandConverter instructionOperandConverter, PdbAsyncMethodCustomDebugInfo pdbAsyncInfo, out int startLocation)
 		{
 			var numberFormatter = NumberFormatter.GetCSharpInstance(hex: options.HexadecimalNumbers, upper: true);
 			if (options.ShowPdbInfo) {
 				var seqPoint = instruction.SequencePoint;
 				if (seqPoint != null) {
-					writer.Write("/* (", BoxedTextColor.Comment);
+					writer.Write("/* ", BoxedTextColor.Comment);
+					int leftStart = writer.NextPosition;
+					writer.Write("(", BoxedTextColor.Comment);
 					const int HIDDEN = 0xFEEFEE;
 					if (seqPoint.StartLine == HIDDEN)
 						writer.Write("hidden", BoxedTextColor.Comment);
@@ -110,7 +112,12 @@ namespace ICSharpCode.Decompiler.Disassembler {
 						writer.Write(",", BoxedTextColor.Comment);
 						writer.Write(seqPoint.StartColumn.ToString(), BoxedTextColor.Comment);
 					}
-					writer.Write(")-(", BoxedTextColor.Comment);
+					int start = writer.NextPosition;
+					writer.Write(")", BoxedTextColor.Comment);
+					writer.AddBracePair(new TextSpan(leftStart, 1), new TextSpan(start, 1), CodeBracesRangeFlags.Parentheses);
+					writer.Write("-", BoxedTextColor.Comment);
+					leftStart = writer.NextPosition;
+					writer.Write("(", BoxedTextColor.Comment);
 					if (seqPoint.EndLine == HIDDEN)
 						writer.Write("hidden", BoxedTextColor.Comment);
 					else {
@@ -118,7 +125,10 @@ namespace ICSharpCode.Decompiler.Disassembler {
 						writer.Write(",", BoxedTextColor.Comment);
 						writer.Write(seqPoint.EndColumn.ToString(), BoxedTextColor.Comment);
 					}
-					writer.Write(") ", BoxedTextColor.Comment);
+					start = writer.NextPosition;
+					writer.Write(")", BoxedTextColor.Comment);
+					writer.AddBracePair(new TextSpan(leftStart, 1), new TextSpan(start, 1), CodeBracesRangeFlags.Parentheses);
+					writer.Write(" ", BoxedTextColor.Comment);
 					writer.Write(seqPoint.Document.Url, BoxedTextColor.Comment);
 					writer.Write(" */", BoxedTextColor.Comment);
 					writer.WriteLine();
@@ -529,10 +539,8 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				bh1.Write(")");
 				writer.Write(" ", BoxedTextColor.Text);
 			}
-			else if (type is SentinelSig sentinelSig) {
+			else if (type is SentinelSig)
 				writer.Write("...", BoxedTextColor.Operator);
-				sentinelSig.Next.WriteTo(writer, sb, syntax, depth);
-			}
 			else if (type is FnPtrSig fnPtrSig) {
 				writer.Write("method", BoxedTextColor.Keyword);
 				writer.Write(" ", BoxedTextColor.Text);
@@ -556,6 +564,8 @@ namespace ICSharpCode.Decompiler.Disassembler {
 					isVT = ThreeState.No;
 				else if (tdrs is ValueTypeSig)
 					isVT = ThreeState.Yes;
+				else if (tdrs is CorLibTypeSig corLibTypeSig)
+					isVT = IsValueType(corLibTypeSig);
 				else
 					isVT = ThreeState.Unknown;
 				WriteTo(tdrs.TypeDefOrRef, writer, sb, syntax, isVT, depth);
@@ -661,19 +671,19 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			}
 
 			if (operand is SourceLocal variable) {
-				writer.Write(Escape(variable.Name), variable, DecompilerReferenceFlags.None, BoxedTextColor.Local);
+				writer.Write(Escape(variable.Name), variable, DecompilerReferenceFlags.Local, BoxedTextColor.Local);
 				return;
 			}
 
 			if (operand is Parameter paramRef) {
 				if (string.IsNullOrEmpty(paramRef.Name)) {
 					if (paramRef.IsHiddenThisParameter)
-						writer.Write("<hidden-this>", paramRef, DecompilerReferenceFlags.None, BoxedTextColor.Parameter);
+						writer.Write("<hidden-this>", paramRef, DecompilerReferenceFlags.Local, BoxedTextColor.Parameter);
 					else
-						writer.Write(paramRef.MethodSigIndex.ToString(), paramRef, DecompilerReferenceFlags.None, BoxedTextColor.Parameter);
+						writer.Write(paramRef.MethodSigIndex.ToString(), paramRef, DecompilerReferenceFlags.Local, BoxedTextColor.Parameter);
 				}
 				else
-					writer.Write(Escape(paramRef.Name), paramRef, DecompilerReferenceFlags.None, BoxedTextColor.Parameter);
+					writer.Write(Escape(paramRef.Name), paramRef, DecompilerReferenceFlags.Local, BoxedTextColor.Parameter);
 				return;
 			}
 
@@ -877,6 +887,34 @@ namespace ICSharpCode.Decompiler.Disassembler {
 					return "typedref";
 				default:
 					return null;
+			}
+		}
+
+		static ThreeState IsValueType(CorLibTypeSig corlib) {
+			switch (corlib.ElementType) {
+			case ElementType.Void:
+			case ElementType.Boolean:
+			case ElementType.Char:
+			case ElementType.I1:
+			case ElementType.U1:
+			case ElementType.I2:
+			case ElementType.U2:
+			case ElementType.I4:
+			case ElementType.U4:
+			case ElementType.I8:
+			case ElementType.U8:
+			case ElementType.R4:
+			case ElementType.R8:
+			case ElementType.TypedByRef:
+			case ElementType.I:
+			case ElementType.U:
+			case ElementType.R:
+				return ThreeState.Yes;
+			case ElementType.String:
+			case ElementType.Object:
+				return ThreeState.No;
+			default:
+				return ThreeState.Unknown;
 			}
 		}
 	}
