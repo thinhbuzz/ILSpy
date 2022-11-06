@@ -1452,9 +1452,14 @@ namespace ICSharpCode.Decompiler.Ast {
 				var type = ctor.DeclaringType;
 				if (!type.Compare(systemReflectionString, defaultMemberAttributeString))
 					continue;
-				indexerName = ca.ConstructorArguments[0].Value as UTF8String;
-				if (!UTF8String.IsNull(indexerName))
-					break;
+				object caValue = ca.ConstructorArguments[0].Value;
+				indexerName = caValue as UTF8String;
+				if (UTF8String.IsNull(indexerName)) {
+					if (caValue is not string str)
+						continue;
+					indexerName = str;
+				}
+				break;
 			}
 
 			if (UTF8String.IsNull(indexerName))

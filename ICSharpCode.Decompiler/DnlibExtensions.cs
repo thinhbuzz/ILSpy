@@ -350,14 +350,19 @@ namespace ICSharpCode.Decompiler {
 
 		public static string GetDefaultMemberName(this TypeDef type, out CustomAttribute defaultMemberAttribute)
 		{
-			if (type != null)
-				foreach (CustomAttribute ca in type.CustomAttributes.FindAll("System.Reflection.DefaultMemberAttribute"))
+			if (type != null) {
+				foreach (CustomAttribute ca in type.CustomAttributes.FindAll("System.Reflection.DefaultMemberAttribute")) {
 					if (ca.Constructor != null && ca.Constructor.FullName == @"System.Void System.Reflection.DefaultMemberAttribute::.ctor(System.String)" &&
-						ca.ConstructorArguments.Count == 1 &&
-						ca.ConstructorArguments[0].Value is UTF8String) {
-						defaultMemberAttribute = ca;
-						return (UTF8String)ca.ConstructorArguments[0].Value;
+					    ca.ConstructorArguments.Count == 1) {
+						var value = ca.ConstructorArguments[0].Value;
+						var memberName = (value as UTF8String)?.String ?? value as string;
+						if (memberName is not null) {
+							defaultMemberAttribute = ca;
+							return memberName;
+						}
 					}
+				}
+			}
 			defaultMemberAttribute = null;
 			return null;
 		}
