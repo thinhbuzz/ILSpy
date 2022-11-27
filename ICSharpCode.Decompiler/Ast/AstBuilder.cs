@@ -707,7 +707,7 @@ namespace ICSharpCode.Decompiler.Ast {
 		{
 			if (depth++ > MAX_CONVERTTYPE_DEPTH)
 				return AstType.Null;
-			type = type.RemovePinnedAndModifiers();
+			type = type.RemovePinned();
 			if (type == null) {
 				return AstType.Null;
 			}
@@ -749,6 +749,9 @@ namespace ICSharpCode.Decompiler.Ast {
 				return simpleType;
 			} else if (type is TypeDefOrRefSig) {
 				return ConvertType(((TypeDefOrRefSig)type).TypeDefOrRef, typeAttributes, ref typeIndex, options, depth, sb);
+			} else if (type is ModifierSig modifierSig) {
+				typeIndex++;
+				return ConvertType(modifierSig.Next, typeAttributes, ref typeIndex, options, depth, sb);
 			} else
 				return ConvertType(type.ToTypeDefOrRef(), typeAttributes, ref typeIndex, options, depth, sb);
 		}
