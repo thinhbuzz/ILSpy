@@ -497,7 +497,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				}
 
 				var blob = secdecl.GetBlob();
-				if ((char)blob[0] != '.') {
+				if (blob is not null && (char)blob[0] != '.') {
 					output.WriteLine();
 					output.IncreaseIndent();
 					output.Write("bytearray", BoxedTextColor.Keyword);
