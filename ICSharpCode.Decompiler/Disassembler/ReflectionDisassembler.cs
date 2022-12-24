@@ -189,7 +189,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 		}
 
 		#region Disassemble Method
-		EnumNameCollection<MethodAttributes> methodAttributeFlags = new EnumNameCollection<MethodAttributes>() {
+		readonly EnumNameCollection<MethodAttributes> methodAttributeFlags = new EnumNameCollection<MethodAttributes>() {
 			{ MethodAttributes.Final, "final" },
 			{ MethodAttributes.HideBySig, "hidebysig" },
 			{ MethodAttributes.SpecialName, "specialname" },
@@ -205,7 +205,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			{ MethodAttributes.HasSecurity, null }, // ?? also invisible in ILDasm
 		};
 
-		EnumNameCollection<MethodAttributes> methodVisibility = new EnumNameCollection<MethodAttributes>() {
+		readonly EnumNameCollection<MethodAttributes> methodVisibility = new EnumNameCollection<MethodAttributes>() {
 			{ MethodAttributes.Private, "private" },
 			{ MethodAttributes.FamANDAssem, "famandassem" },
 			{ MethodAttributes.Assembly, "assembly" },
@@ -214,7 +214,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			{ MethodAttributes.Public, "public" },
 		};
 
-		EnumNameCollection<CallingConvention> callingConvention = new EnumNameCollection<CallingConvention>() {
+		readonly EnumNameCollection<CallingConvention> callingConvention = new EnumNameCollection<CallingConvention>() {
 			{ CallingConvention.C, "unmanaged cdecl" },
 			{ CallingConvention.StdCall, "unmanaged stdcall" },
 			{ CallingConvention.ThisCall, "unmanaged thiscall" },
@@ -224,14 +224,14 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			{ CallingConvention.Generic, null },
 		};
 
-		EnumNameCollection<MethodImplAttributes> methodCodeType = new EnumNameCollection<MethodImplAttributes>() {
+		readonly EnumNameCollection<MethodImplAttributes> methodCodeType = new EnumNameCollection<MethodImplAttributes>() {
 			{ MethodImplAttributes.IL, "cil" },
 			{ MethodImplAttributes.Native, "native" },
 			{ MethodImplAttributes.OPTIL, "optil" },
 			{ MethodImplAttributes.Runtime, "runtime" },
 		};
 
-		EnumNameCollection<MethodImplAttributes> methodImpl = new EnumNameCollection<MethodImplAttributes>() {
+		readonly EnumNameCollection<MethodImplAttributes> methodImpl = new EnumNameCollection<MethodImplAttributes>() {
 			{ MethodImplAttributes.Synchronized, "synchronized" },
 			{ MethodImplAttributes.NoInlining, "noinlining" },
 			{ MethodImplAttributes.NoOptimization, "nooptimization" },
@@ -1150,7 +1150,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 		#endregion
 
 		#region Disassemble Field
-		EnumNameCollection<FieldAttributes> fieldVisibility = new EnumNameCollection<FieldAttributes>() {
+		readonly EnumNameCollection<FieldAttributes> fieldVisibility = new EnumNameCollection<FieldAttributes>() {
 			{ FieldAttributes.Private, "private" },
 			{ FieldAttributes.FamANDAssem, "famandassem" },
 			{ FieldAttributes.Assembly, "assembly" },
@@ -1159,7 +1159,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			{ FieldAttributes.Public, "public" },
 		};
 
-		EnumNameCollection<FieldAttributes> fieldAttributes = new EnumNameCollection<FieldAttributes>() {
+		readonly EnumNameCollection<FieldAttributes> fieldAttributes = new EnumNameCollection<FieldAttributes>() {
 			{ FieldAttributes.Static, "static" },
 			{ FieldAttributes.Literal, "literal" },
 			{ FieldAttributes.InitOnly, "initonly" },
@@ -1196,7 +1196,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				output.Write(" ", BoxedTextColor.Text);
 				output.Write("at", BoxedTextColor.Keyword);
 				output.Write(" ", BoxedTextColor.Text);
-				output.Write(string.Format("{1}_{0:x8}", (uint)field.RVA, sectionPrefix), field.InitialValue, DecompilerReferenceFlags.None, BoxedTextColor.Label);
+				output.Write(string.Format("{0}_{1:X8}", sectionPrefix, (uint)field.RVA), Tuple.Create(field, field.RVA), DecompilerReferenceFlags.None, BoxedTextColor.Label);
 			}
 			if (field.HasConstant) {
 				output.Write(" ", BoxedTextColor.Text);
@@ -1212,33 +1212,32 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			if (field.HasFieldRVA) {
 				var sectionHeader = field.Module.GetContainingSection(field.RVA);
 				if (sectionHeader is null) {
-					output.Write($"// RVA {(uint)field.RVA:X8} invalid (not in any section)", BoxedTextColor.Comment);
+					output.WriteLine($"// RVA {(uint)field.RVA:X8} invalid (not in any section)", BoxedTextColor.Comment);
 				}
 				else if (field.InitialValue is null) {
-					output.WriteLine($"// .data {sectionPrefix}_{(uint)field.RVA:X8} = null", BoxedTextColor.Comment);
+					output.Write("// .data ", BoxedTextColor.Comment);
+					output.Write(string.Format("{0}_{1:X8}", sectionPrefix, (uint)field.RVA), Tuple.Create(field, field.RVA), DecompilerReferenceFlags.Definition, BoxedTextColor.Comment);
+					output.WriteLine(" = null", BoxedTextColor.Comment);
 				}
-				else {
-					var initVal = field.InitialValue;
-					if (initVal.Length > 0) {
-						output.Write(".data", BoxedTextColor.ILDirective);
-						output.Write(" ", BoxedTextColor.Text);
-						if (sectionHeader.DisplayName == ".text") {
-							output.Write("cil", BoxedTextColor.Keyword);
-						} else if (sectionHeader.DisplayName == ".tls") {
-							output.Write("tls", BoxedTextColor.Keyword);
-						} else if (sectionHeader.DisplayName != ".data") {
-							output.Write($"/* {sectionHeader.DisplayName} */", BoxedTextColor.Comment);
-						}
-						output.Write(" ", BoxedTextColor.Text);
-						output.Write(string.Format("{1}_{0:x8}", (uint)field.RVA, sectionPrefix), initVal, DecompilerReferenceFlags.Definition | DecompilerReferenceFlags.IsWrite, BoxedTextColor.Label);
-						output.Write(" ", BoxedTextColor.Text);
-						output.Write("=", BoxedTextColor.Operator);
-						output.Write(" ", BoxedTextColor.Text);
-						output.Write("bytearray", BoxedTextColor.Keyword);
-						output.Write(" ", BoxedTextColor.Text);
-						WriteBlob(initVal);
-						output.WriteLine();
+				else if (field.InitialValue.Length > 0) {
+					output.Write(".data", BoxedTextColor.ILDirective);
+					output.Write(" ", BoxedTextColor.Text);
+					if (sectionHeader.DisplayName == ".text") {
+						output.Write("cil", BoxedTextColor.Keyword);
+					} else if (sectionHeader.DisplayName == ".tls") {
+						output.Write("tls", BoxedTextColor.Keyword);
+					} else if (sectionHeader.DisplayName != ".data") {
+						output.Write($"/* {sectionHeader.DisplayName} */", BoxedTextColor.Comment);
 					}
+					output.Write(" ", BoxedTextColor.Text);
+					output.Write(string.Format("{0}_{1:X8}", sectionPrefix, (uint)field.RVA), Tuple.Create(field, field.RVA), DecompilerReferenceFlags.Definition | DecompilerReferenceFlags.IsWrite, BoxedTextColor.Label);
+					output.Write(" ", BoxedTextColor.Text);
+					output.Write("=", BoxedTextColor.Operator);
+					output.Write(" ", BoxedTextColor.Text);
+					output.Write("bytearray", BoxedTextColor.Keyword);
+					output.Write(" ", BoxedTextColor.Text);
+					WriteBlob(field.InitialValue);
+					output.WriteLine();
 				}
 			}
 		}
@@ -1259,7 +1258,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 		#endregion
 
 		#region Disassemble Property
-		EnumNameCollection<PropertyAttributes> propertyAttributes = new EnumNameCollection<PropertyAttributes>() {
+		readonly EnumNameCollection<PropertyAttributes> propertyAttributes = new EnumNameCollection<PropertyAttributes>() {
 			{ PropertyAttributes.SpecialName, "specialname" },
 			{ PropertyAttributes.RTSpecialName, "rtspecialname" },
 			{ PropertyAttributes.HasDefault, "hasdefault" },
@@ -1337,7 +1336,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 		#endregion
 
 		#region Disassemble Event
-		EnumNameCollection<EventAttributes> eventAttributes = new EnumNameCollection<EventAttributes>() {
+		readonly EnumNameCollection<EventAttributes> eventAttributes = new EnumNameCollection<EventAttributes>() {
 			{ EventAttributes.SpecialName, "specialname" },
 			{ EventAttributes.RTSpecialName, "rtspecialname" },
 		};
@@ -1392,7 +1391,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 		#endregion
 
 		#region Disassemble Type
-		EnumNameCollection<TypeAttributes> typeVisibility = new EnumNameCollection<TypeAttributes>() {
+		readonly EnumNameCollection<TypeAttributes> typeVisibility = new EnumNameCollection<TypeAttributes>() {
 			{ TypeAttributes.Public, "public" },
 			{ TypeAttributes.NotPublic, "private" },
 			{ TypeAttributes.NestedPublic, "nested public" },
@@ -1403,19 +1402,19 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			{ TypeAttributes.NestedFamORAssem, "nested famorassem" },
 		};
 
-		EnumNameCollection<TypeAttributes> typeLayout = new EnumNameCollection<TypeAttributes>() {
+		readonly EnumNameCollection<TypeAttributes> typeLayout = new EnumNameCollection<TypeAttributes>() {
 			{ TypeAttributes.AutoLayout, "auto" },
 			{ TypeAttributes.SequentialLayout, "sequential" },
 			{ TypeAttributes.ExplicitLayout, "explicit" },
 		};
 
-		EnumNameCollection<TypeAttributes> typeStringFormat = new EnumNameCollection<TypeAttributes>() {
+		readonly EnumNameCollection<TypeAttributes> typeStringFormat = new EnumNameCollection<TypeAttributes>() {
 			{ TypeAttributes.AutoClass, "auto" },
 			{ TypeAttributes.AnsiClass, "ansi" },
 			{ TypeAttributes.UnicodeClass, "unicode" },
 		};
 
-		EnumNameCollection<TypeAttributes> typeAttributes = new EnumNameCollection<TypeAttributes>() {
+		readonly EnumNameCollection<TypeAttributes> typeAttributes = new EnumNameCollection<TypeAttributes>() {
 			{ TypeAttributes.Abstract, "abstract" },
 			{ TypeAttributes.Sealed, "sealed" },
 			{ TypeAttributes.SpecialName, "specialname" },
@@ -1781,20 +1780,11 @@ namespace ICSharpCode.Decompiler.Disassembler {
 		{
 			readonly List<KeyValuePair<long, string>> names = new List<KeyValuePair<long, string>>();
 
-			public void Add(T flag, string name)
-			{
-				this.names.Add(new KeyValuePair<long, string>(Convert.ToInt64(flag), name));
-			}
+			public void Add(T flag, string name) => names.Add(new KeyValuePair<long, string>(Convert.ToInt64(flag), name));
 
-			public IEnumerator<KeyValuePair<long, string>> GetEnumerator()
-			{
-				return names.GetEnumerator();
-			}
+			public IEnumerator<KeyValuePair<long, string>> GetEnumerator() => names.GetEnumerator();
 
-			System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator()
-			{
-				return names.GetEnumerator();
-			}
+			System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => names.GetEnumerator();
 		}
 		#endregion
 
