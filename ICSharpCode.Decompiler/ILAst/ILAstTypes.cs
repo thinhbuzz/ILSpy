@@ -210,7 +210,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				builder.Add(new SourceStatement(ilSpan, new TextSpan(startLoc, endLoc - startLoc)));
 		}
 
-		protected struct BraceInfo {
+		protected readonly struct BraceInfo {
 			public int Start { get; }
 			public BraceInfo(int start) {
 				Start = start;

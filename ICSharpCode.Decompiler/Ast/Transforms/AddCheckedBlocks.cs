@@ -59,7 +59,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 		 */
 
 		#region struct Cost
-		struct Cost
+		readonly struct Cost
 		{
 			// highest possible cost so that the Blocks+Expressions addition doesn't overflow
 			public static readonly Cost Infinite = new Cost(0x3fffffff, 0x3fffffff);

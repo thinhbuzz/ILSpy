@@ -31,7 +31,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 	public class ILAstBuilder
 	{
 		/// <summary> Immutable </summary>
-		struct StackSlot
+		readonly struct StackSlot
 		{
 			public readonly ByteCode[] Definitions;  // Reaching definitions of this stack slot
 			public readonly ILVariable LoadFrom;     // Variable used for storage of the value
@@ -57,7 +57,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		}
 
 		/// <summary> Immutable </summary>
-		struct VariableSlot
+		readonly struct VariableSlot
 		{
 			public readonly ByteCode[] Definitions;       // Reaching deinitions of this variable
 			public readonly bool       UnknownDefinition; // Used for initial state and exceptional control flow
