@@ -348,7 +348,7 @@ namespace ICSharpCode.Decompiler {
 			return false;
 		}
 
-		public static string GetDefaultMemberName(this TypeDef type, out CustomAttribute defaultMemberAttribute)
+		public static string GetDefaultMemberName(this TypeDef type)
 		{
 			if (type != null) {
 				foreach (CustomAttribute ca in type.CustomAttributes.FindAll("System.Reflection.DefaultMemberAttribute")) {
@@ -357,25 +357,16 @@ namespace ICSharpCode.Decompiler {
 						var value = ca.ConstructorArguments[0].Value;
 						var memberName = (value as UTF8String)?.String ?? value as string;
 						if (memberName is not null) {
-							defaultMemberAttribute = ca;
 							return memberName;
 						}
 					}
 				}
 			}
-			defaultMemberAttribute = null;
 			return null;
 		}
 
 		public static bool IsIndexer(this PropertyDef property)
 		{
-			CustomAttribute attr;
-			return property.IsIndexer(out attr);
-		}
-
-		static bool IsIndexer(this PropertyDef property, out CustomAttribute defaultMemberAttribute)
-		{
-			defaultMemberAttribute = null;
 			if (property != null && property.PropertySig.GetParamCount() > 0) {
 				var accessor = property.GetMethod ?? property.SetMethod;
 				PropertyDef basePropDef = property;
@@ -393,10 +384,8 @@ namespace ICSharpCode.Decompiler {
 					} else
 						return false;
 				}
-				CustomAttribute attr;
-				var defaultMemberName = basePropDef.DeclaringType.GetDefaultMemberName(out attr);
+				var defaultMemberName = basePropDef.DeclaringType.GetDefaultMemberName();
 				if (defaultMemberName == basePropDef.Name) {
-					defaultMemberAttribute = attr;
 					return true;
 				}
 			}
