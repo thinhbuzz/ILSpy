@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -308,18 +308,6 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			return true;
 		}
 
-		static bool HasTwoOrMoreMethods(TypeDef type, UTF8String name) {
-			int count = 0;
-			while (type != null) {
-				foreach (var m in type.Methods) {
-					if (m.Name == name && ++count >= 2)
-						return true;
-				}
-				type = type.BaseType.ResolveTypeDef();
-			}
-			return false;
-		}
-
 		internal static bool IsPotentialClosure(DecompilerContext context, TypeDef potentialDisplayClass)
 		{
 			if (potentialDisplayClass == null || !potentialDisplayClass.IsCompilerGeneratedOrIsInCompilerGeneratedClass())
@@ -395,11 +383,13 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 
 		public override object VisitAccessor(Accessor accessor, object data)
 		{
+			Debug.Assert(currentlyUsedVariableNames.Count == 0);
 			try {
-				currentlyUsedVariableNames.Add("value");
+				if (accessor.Role != PropertyDeclaration.GetterRole)
+					currentlyUsedVariableNames.Add("value");
 				return base.VisitAccessor(accessor, data);
 			} finally {
-				currentlyUsedVariableNames.RemoveAt(currentlyUsedVariableNames.Count - 1);
+				currentlyUsedVariableNames.Clear();
 			}
 		}
 
@@ -426,7 +416,6 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 
 		public override object VisitBlockStatement(BlockStatement blockStatement, object data)
 		{
-			int numberOfVariablesOutsideBlock = currentlyUsedVariableNames.Count;
 			base.VisitBlockStatement(blockStatement, data);
 			foreach (ExpressionStatement stmt in blockStatement.Statements.OfType<ExpressionStatement>().ToArray()) {
 				Match displayClassAssignmentMatch = displayClassAssignmentPattern.Match(stmt);
@@ -590,7 +579,6 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 					blockStatement.Statements.InsertBefore(insertionPoint, newVarDecl);
 				}
 			}
-			currentlyUsedVariableNames.RemoveRange(numberOfVariablesOutsideBlock, currentlyUsedVariableNames.Count - numberOfVariablesOutsideBlock);
 			return null;
 		}
 
