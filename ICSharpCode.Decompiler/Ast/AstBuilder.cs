@@ -880,7 +880,17 @@ namespace ICSharpCode.Decompiler.Ast {
 				ITypeDefOrRef type = mt.Annotation<ITypeDefOrRef>();
 				if (type != null) {
 					int typeParameterCount;
-					ICSharpCode.NRefactory.TypeSystem.ReflectionHelper.SplitTypeParameterCountFromReflectionName(type.Name, out typeParameterCount);
+					var td = type.ResolveTypeDef();
+					if (td is not null) {
+						if (td.DeclaringType is not null && td.DeclaringType.HasGenericParameters)
+							typeParameterCount = td.GenericParameters.Count - td.DeclaringType.GenericParameters.Count;
+						else
+							typeParameterCount = td.GenericParameters.Count;
+					}
+					else {
+						// Fallback to type.Name for unresolved type references since they do not store generic parameter information
+						typeParameterCount = GetTypeParameterCountFromReflectionName(type.Name);
+					}
 					if (typeParameterCount > typeArguments.Count)
 						typeParameterCount = typeArguments.Count;
 					mt.TypeArguments.AddRange(typeArguments.GetRange(typeArguments.Count - typeParameterCount, typeParameterCount));
@@ -891,6 +901,16 @@ namespace ICSharpCode.Decompiler.Ast {
 					mt.TypeArguments.AddRange(typeArguments);
 				}
 			}
+		}
+
+		static int GetTypeParameterCountFromReflectionName(string reflectionName)
+		{
+			int pos = reflectionName.LastIndexOf('`');
+			if (pos < 0)
+				return 0;
+			if (int.TryParse(reflectionName.Substring(pos + 1), out var typeParameterCount))
+				return typeParameterCount;
+			return 0;
 		}
 
 		static readonly UTF8String systemRuntimeCompilerServicesString = new UTF8String("System.Runtime.CompilerServices");
