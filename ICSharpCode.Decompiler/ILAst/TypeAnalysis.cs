@@ -375,7 +375,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				case ILCode.CallReadOnlySetter:
 					{
 						IMethod method = expr.Operand as IMethod;
-						var parameters = method == null ? null : method.MethodSig.GetParametersWithoutSentinel();
+						var parameters = method?.MethodSig.GetParametersWithoutSentinel();
 						if (forceInferChildren && parameters != null && method.MethodSig != null) {
 							for (int i = 0; i < expr.Arguments.Count; i++) {
 								if (i == 0 && method.MethodSig.HasThis) {
@@ -386,6 +386,21 @@ namespace ICSharpCode.Decompiler.ILAst {
 									int pi = method.MethodSig.HasThis ? i - 1 : i;
 									if (pi < parameters.Count)
 										InferTypeForExpression(expr.Arguments[i], SubstituteTypeArgs(parameters[pi], method: method));
+								}
+							}
+
+							// Special case for CallReadOnlySetter to properly infer the second argument
+							if (expr.Code == ILCode.CallReadOnlySetter && expr.Arguments.Count == 2 && method.MethodSig.HasThis && parameters.Count == 0) {
+								var resolved = method.ResolveMethodDef();
+								if (resolved is not null && resolved.IsGetter && resolved.DeclaringType is not null) {
+									foreach (var def in resolved.DeclaringType.Properties) {
+										if (def.GetMethod != resolved)
+											continue;
+										if (def.PropertySig?.RetType is null)
+											continue;
+										InferTypeForExpression(expr.Arguments[1], SubstituteTypeArgs(def.PropertySig.RetType, method: method));
+										break;
+									}
 								}
 							}
 						}
