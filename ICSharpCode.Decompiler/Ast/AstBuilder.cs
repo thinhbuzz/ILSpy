@@ -369,8 +369,8 @@ namespace ICSharpCode.Decompiler.Ast {
 			if (string.IsNullOrEmpty(name)) {
 				return null;
 			}
-			if (astNamespaces.ContainsKey(name)) {
-				return astNamespaces[name];
+			if (astNamespaces.TryGetValue(name, out var namespaceDeclaration)) {
+				return namespaceDeclaration;
 			} else {
 				// Create the namespace
 				NamespaceDeclaration astNamespace = new NamespaceDeclaration(name, asm);

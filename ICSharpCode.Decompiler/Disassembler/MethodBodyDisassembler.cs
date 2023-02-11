@@ -203,7 +203,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 								s.ExceptionHandler.CatchType.WriteTo(output, sb, ILNameSyntax.TypeName);
 							}
 							output.WriteLine();
-							bpk = s.ExceptionHandler.HandlerType == ExceptionHandlerType.Catch ? CodeBracesRangeFlags.CatchBraces : CodeBracesRangeFlags.FilterBraces;
+							bpk = CodeBracesRangeFlags.CatchBraces;
 							break;
 						case ExceptionHandlerType.Finally:
 							output.WriteLine("finally", BoxedTextColor.Keyword);
@@ -215,7 +215,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 							break;
 						default:
 							output.WriteLine(s.ExceptionHandler.HandlerType.ToString(), BoxedTextColor.Keyword);
-							bpk= CodeBracesRangeFlags.OtherBlockBraces;
+							bpk = CodeBracesRangeFlags.OtherBlockBraces;
 							break;
 					}
 					bh = BracePairHelper.Create(output, "{", bpk);
