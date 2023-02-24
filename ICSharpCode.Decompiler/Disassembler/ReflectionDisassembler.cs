@@ -1553,6 +1553,20 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				output.WriteLine();
 				output.WriteLine();
 			}
+
+			for (var i = 0; i < type.Interfaces.Count; i++) {
+				var iface = type.Interfaces[i];
+				if (iface.HasCustomAttributes) {
+					output.Write(".interfaceimpl", BoxedTextColor.ILDirective);
+					output.Write(" ", BoxedTextColor.Text);
+					output.Write("type", BoxedTextColor.Keyword);
+					output.Write(" ", BoxedTextColor.Text);
+					iface.Interface.WriteTo(output, sb, ILNameSyntax.TypeName);
+					output.WriteLine();
+					WriteAttributes(iface.CustomAttributes);
+				}
+			}
+
 			int membersLeft = type.NestedTypes.Count + type.Fields.Count + type.Methods.Count + type.Events.Count + type.Properties.Count;
 			if (type.HasNestedTypes) {
 				output.WriteLine("// Nested Types", BoxedTextColor.Comment);
