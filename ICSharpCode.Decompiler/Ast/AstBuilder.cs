@@ -412,19 +412,36 @@ namespace ICSharpCode.Decompiler.Ast {
 			if (text != null) {
 				creator.AddText("(");
 				creator.AddText(text);
-				creator.AddText(") ");
+				creator.AddText(")");
 			}
-			creator.AddText("Token: ");
-			creator.AddReference(ToHex(member.MDToken.Raw), new TokenReference(member));
-			creator.AddText(" RID: ");
-			creator.AddText(member.MDToken.Rid.ToString());
-			if (rva != 0) {
-				var mod = member.Module;
-				var filename = mod == null ? null : mod.Location;
-				creator.AddText(" RVA: ");
-				creator.AddReference(ToHex(rva), new AddressReference(filename, true, rva, 0));
-				creator.AddText(" File Offset: ");
-				creator.AddReference(ToHex((uint)fileOffset), new AddressReference(filename, false, (ulong)fileOffset, 0));
+			//creator.AddText("Token: ");
+			//creator.AddReference(ToHex(member.MDToken.Raw), new TokenReference(member));
+			//creator.AddText(" RID: ");
+			//creator.AddText(member.MDToken.Rid.ToString());
+			//if (rva != 0) {
+			//	var mod = member.Module;
+			//	var filename = mod == null ? null : mod.Location;
+			//	creator.AddText(" RVA: ");
+			//	creator.AddReference(ToHex(rva), new AddressReference(filename, true, rva, 0));
+			//	creator.AddText(" File Offset: ");
+			//	creator.AddReference(ToHex((uint)fileOffset), new AddressReference(filename, false, (ulong)fileOffset, 0));
+			//}
+			var customAttributes = member.GetCustomAttributes();
+			foreach (var customAttribute in customAttributes) {
+				if (!customAttribute.TypeFullName.EndsWith("AddressAttribute")) {
+					continue;
+				}
+				var namedArguments = customAttribute.NamedArguments;
+				foreach (var namedArgument in namedArguments) {
+					switch (namedArgument.Name) {
+					case "Slot":
+					case "ReturnTypeName":
+					case "MethodName":
+						creator.AddText(" (" + namedArgument.Name);
+						creator.AddText("=" + namedArgument.Value.ToString() + ")");
+						break;
+					}
+				}
 			}
 
 			var cmt = new Comment(creator.Text);
