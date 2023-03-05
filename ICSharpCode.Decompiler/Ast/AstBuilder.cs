@@ -408,12 +408,13 @@ namespace ICSharpCode.Decompiler.Ast {
 			member.GetRVA(out rva, out fileOffset);
 
 			var creator = new CommentReferencesCreator(stringBuilder);
-			creator.AddText(" ");
+			creator.AddText(" (");
 			if (text != null) {
-				creator.AddText("(");
 				creator.AddText(text);
-				creator.AddText(")");
+			} else {
+				creator.AddText("NA");
 			}
+			creator.AddText(")");
 			//creator.AddText("Token: ");
 			//creator.AddReference(ToHex(member.MDToken.Raw), new TokenReference(member));
 			//creator.AddText(" RID: ");
