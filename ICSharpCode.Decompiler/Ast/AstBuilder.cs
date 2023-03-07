@@ -1430,7 +1430,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			}
 			astProp.NameToken = Identifier.Create(CleanName(propDef.Name)).WithAnnotation(propDef);
 			astProp.ReturnType = ConvertType(propDef.PropertySig.GetRetType(), stringBuilder, propDef);
-			bool isRefReturnType = propDef.PropertySig.RetType.RemovePinnedAndModifiers().GetElementType() == ElementType.ByRef && UndoByRefToPointer(astProp.ReturnType);
+			bool isRefReturnType = propDef.PropertySig.GetRetType().RemovePinnedAndModifiers().GetElementType() == ElementType.ByRef && UndoByRefToPointer(astProp.ReturnType);
 
 			if (propDef.GetMethod != null) {
 				astProp.Getter = new Accessor();
@@ -1478,7 +1478,7 @@ namespace ICSharpCode.Decompiler.Ast {
 					SetNewModifier(member);
 			if (isRefReturnType)
 				astProp.Modifiers |= Modifiers.Ref;
-			if (DnlibExtensions.HasIsReadOnlyAttribute(accessor.Parameters.ReturnParameter.ParamDef))
+			if (accessor is not null && DnlibExtensions.HasIsReadOnlyAttribute(accessor.Parameters.ReturnParameter.ParamDef))
 				astProp.Modifiers |= Modifiers.Readonly;
 			if (propDef.SetMethod != null)
 				AddComment(astProp, propDef.SetMethod, "set");
