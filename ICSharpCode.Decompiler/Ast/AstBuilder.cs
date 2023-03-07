@@ -1953,12 +1953,12 @@ namespace ICSharpCode.Decompiler.Ast {
 
 				ParameterDeclaration astParam = new ParameterDeclaration();
 				astParam.AddAnnotation(paramDef);
-				var type = paramDef.Type.RemovePinnedAndModifiers();
-				if (!(isLambda && type.ContainsAnonymousType()))
-					astParam.Type = ConvertType(type, sb, paramDef.ParamDef);
+				var typeWithoutModifiers = paramDef.Type.RemovePinnedAndModifiers();
+				if (!(isLambda && typeWithoutModifiers.ContainsAnonymousType()))
+					astParam.Type = ConvertType(paramDef.Type, sb, paramDef.ParamDef);
 				astParam.NameToken = Identifier.Create(paramDef.Name).WithAnnotation(paramDef);
 
-				if (type is ByRefSig) {
+				if (typeWithoutModifiers is ByRefSig) {
 					var pd = paramDef.ParamDef;
 					if (pd == null)
 						astParam.ParameterModifier = ParameterModifier.Ref;
@@ -1976,7 +1976,7 @@ namespace ICSharpCode.Decompiler.Ast {
 						astParam.ParameterModifier = ParameterModifier.Params;
 				}
 				if (paramDef.HasParamDef && paramDef.ParamDef.IsOptional && TryGetConstant(paramDef.ParamDef, out var constant)) {
-					astParam.DefaultExpression = CreateExpressionForConstant(constant, type, sb);
+					astParam.DefaultExpression = CreateExpressionForConstant(constant, typeWithoutModifiers, sb);
 				}
 
 				ConvertCustomAttributes(metadataTextColorProvider, astParam, paramDef.ParamDef, settings, sb);
