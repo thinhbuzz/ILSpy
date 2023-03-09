@@ -780,7 +780,7 @@ namespace ICSharpCode.Decompiler.Ast {
 				if (ts != null)
 					name = DnlibExtensions.GetFnPtrName(ts.TypeSig as FnPtrSig);
 				if (name == null)
-					throw new InvalidOperationException("type.Name returned null. Type: " + type.ToString());
+					throw new InvalidOperationException("type.Name returned null. Type: " + type);
 
 				if (name == "Object" && ns == "System" && HasDynamicAttribute(typeAttributes, typeIndex)) {
 					return new PrimitiveType("dynamic");
@@ -1607,7 +1607,7 @@ namespace ICSharpCode.Decompiler.Ast {
 								throw;
 							}
 							catch (Exception ex) {
-								CreateBadMethod(context, method, ex, out body, out builder2);
+								CreateBadMethod(context, method, ex, stringBuilder, out body, out builder2);
 							}
 							Return(asyncState);
 							return new AsyncMethodBodyResult(methodNode, method, body, builder2, context.variableMap, context.CurrentMethodIsAsync, context.CurrentMethodIsYieldReturn);
@@ -1629,7 +1629,7 @@ namespace ICSharpCode.Decompiler.Ast {
 					throw;
 				}
 				catch (Exception ex) {
-					CreateBadMethod(context, method, ex, out bs, out builder3);
+					CreateBadMethod(context, method, ex, stringBuilder, out bs, out builder3);
 				}
 				methodNode.SetChildByRole(Roles.Body, bs);
 				methodNode.AddAnnotation(builder3);
@@ -1643,8 +1643,12 @@ namespace ICSharpCode.Decompiler.Ast {
 					if (baseCtor != null) {
 						var methodSig = GetMethodBaseSig(method.DeclaringType.BaseType, baseCtor.MethodSig);
 						var args = new List<Expression>(methodSig.Params.Count);
-						for (int i = 0; i < methodSig.Params.Count; i++)
-							args.Add(new DefaultValueExpression(ConvertType(methodSig.Params[i].RemovePinnedAndModifiers(), stringBuilder)));
+						for (var i = 0; i < baseCtor.Parameters.Count; i++) {
+							var parameter = baseCtor.Parameters[i];
+							if (parameter.IsHiddenThisParameter)
+								continue;
+							args.Add(new DefaultValueExpression(ConvertType(methodSig.Params[parameter.MethodSigIndex], stringBuilder, parameter.ParamDef)));
+						}
 						var stmt = new ExpressionStatement(new InvocationExpression(new MemberReferenceExpression(new BaseReferenceExpression(), method.Name), args));
 						bs.Statements.Add(stmt);
 					}
@@ -1653,7 +1657,7 @@ namespace ICSharpCode.Decompiler.Ast {
 							var field = method.DeclaringType.Fields[i];
 							if (field.IsStatic)
 								continue;
-							var defVal = new DefaultValueExpression(ConvertType(field.FieldType.RemovePinnedAndModifiers(), stringBuilder));
+							var defVal = new DefaultValueExpression(ConvertType(field.FieldType, stringBuilder, field));
 							var stmt = new ExpressionStatement(new AssignmentExpression(new MemberReferenceExpression(new ThisReferenceExpression(), field.Name), defVal));
 							bs.Statements.Add(stmt);
 						}
@@ -1664,22 +1668,25 @@ namespace ICSharpCode.Decompiler.Ast {
 						if (p.ParameterModifier != ParameterModifier.Out)
 							continue;
 						var parameter = p.Annotation<Parameter>();
-						var defVal = new DefaultValueExpression(ConvertType(parameter.Type.RemovePinnedAndModifiers().Next, stringBuilder));
+						var astType = ConvertType(parameter.Type, stringBuilder, parameter.ParamDef);
+						UndoByRefToPointer(astType);
+						var defVal = new DefaultValueExpression(astType);
 						var stmt = new ExpressionStatement(new AssignmentExpression(new IdentifierExpression(p.Name), defVal));
 						bs.Statements.Add(stmt);
 					}
 				}
-				if (method.MethodSig.GetRetType().RemovePinnedAndModifiers().GetElementType() != ElementType.Void) {
-					if (method.MethodSig.GetRetType().RemovePinnedAndModifiers().GetElementType() == ElementType.ByRef) {
+				var returnElementType = method.ReturnType.RemovePinnedAndModifiers().GetElementType();
+				if (returnElementType != ElementType.Void) {
+					if (returnElementType == ElementType.ByRef) {
 						var @throw = new ThrowStatement(new NullReferenceExpression());
 						bs.Statements.Add(@throw);
 					}
 					else {
-						var ret = new ReturnStatement(new DefaultValueExpression(ConvertType(method.MethodSig.GetRetType().RemovePinnedAndModifiers(), stringBuilder)));
+						var ret = new ReturnStatement(new DefaultValueExpression(ConvertType(method.ReturnType, stringBuilder, method.Parameters.ReturnParameter.ParamDef)));
 						bs.Statements.Add(ret);
 					}
 				}
-				if (method.IsVirtual && method.MethodSig.GetParamCount() == 0 && method.MethodSig.GetRetType().GetElementType() == ElementType.Void && method.Name == name_Finalize) {
+				if (method.IsVirtual && method.MethodSig.GetParamCount() == 0 && returnElementType == ElementType.Void && method.Name == name_Finalize) {
 					var dd = new DestructorDeclaration();
 					dd.AddAnnotation(methodNode.Annotation<MethodDef>());
 					methodNode.Attributes.MoveTo(dd.Attributes);
@@ -1702,17 +1709,23 @@ namespace ICSharpCode.Decompiler.Ast {
 		}
 		static readonly UTF8String name_Finalize = new UTF8String("Finalize");
 
-		public static void CreateBadMethod(DecompilerContext context, MethodDef method, Exception ex, out BlockStatement bs, out MethodDebugInfoBuilder builder) {
-			var msg = string.Format("{0}An exception occurred when decompiling this method ({1:X8}){0}{0}{2}{0}",
-					Environment.NewLine, method.MDToken.ToUInt32(), ex.ToString());
+		public static void CreateBadMethod(DecompilerContext context, MethodDef method, Exception ex, StringBuilder sb, out BlockStatement bs, out MethodDebugInfoBuilder builder) {
+			sb.Clear();
+			sb.AppendLine();
+			sb.Append("An exception occurred when decompiling this method (");
+			sb.Append(method.MDToken.ToString());
+			sb.AppendLine(")");
+			sb.AppendLine();
+			sb.Append(ex);
+			sb.AppendLine();
 
 			bs = new BlockStatement();
 			var emptyStmt = new EmptyStatement();
 			if (method.Body != null)
 				emptyStmt.AddAnnotation(new List<ILSpan>(1) { new ILSpan(0, (uint)method.Body.GetCodeSize()) });
 			bs.Statements.Add(emptyStmt);
-			bs.InsertChildAfter(null, new Comment(msg, CommentType.MultiLine), Roles.Comment);
-			builder = new MethodDebugInfoBuilder(context.SettingsVersion, StateMachineKind.None, method, null, method.Body.Variables.Select(a => new SourceLocal(a, CreateLocalName(a), a.Type, SourceVariableFlags.None)).ToArray(), null, null);
+			bs.InsertChildAfter(null, new Comment(sb.ToString(), CommentType.MultiLine), Roles.Comment);
+			builder = new MethodDebugInfoBuilder(context.SettingsVersion, StateMachineKind.None, method, null, method.Body?.Variables.Select(a => new SourceLocal(a, CreateLocalName(a), a.Type, SourceVariableFlags.None)).ToArray(), null, null);
 		}
 
 		static string CreateLocalName(Local local) {
