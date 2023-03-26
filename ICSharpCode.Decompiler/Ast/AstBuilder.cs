@@ -478,7 +478,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			ConvertAttributes(astType, typeDef);
 			astType.AddAnnotation(typeDef);
 			astType.Modifiers = ConvertModifiers(typeDef);
-			astType.NameToken = Identifier.Create(CleanName(typeDef.Name)).WithAnnotation(typeDef);
+			astType.NameToken = Identifier.Create(NRefactory.TypeSystem.ReflectionHelper.SplitTypeParameterCountFromReflectionName(typeDef.Name)).WithAnnotation(typeDef);
 
 			if (typeDef.IsEnum) {  // NB: Enum is value type
 				astType.ClassType = ClassType.Enum;
@@ -528,7 +528,7 @@ namespace ICSharpCode.Decompiler.Ast {
 						EnumMemberDeclaration enumMember = new EnumMemberDeclaration();
 						ConvertCustomAttributes(Context.MetadataTextColorProvider, enumMember, field, context.Settings, stringBuilder);
 						enumMember.AddAnnotation(field);
-						enumMember.NameToken = Identifier.Create(CleanName(field.Name)).WithAnnotation(field);
+						enumMember.NameToken = Identifier.Create(field.Name).WithAnnotation(field);
 						TryGetConstant(field, out var constant);
 						TypeCode c = constant == null ? TypeCode.Empty : Type.GetTypeCode(constant.GetType());
 						if (c < TypeCode.Char || c > TypeCode.Decimal)
@@ -620,20 +620,6 @@ namespace ICSharpCode.Decompiler.Ast {
 				return false;
 
 			return true;
-		}
-
-		internal static string CleanName(string name)
-		{
-			int pos = name.LastIndexOf('`');
-			if (pos >= 0)
-				name = name.Substring(0, pos);
-			// Could be a compiler-generated name, eg. "<.ctor>b__0_0"
-			if (name.Length == 0 || name[0] != '<') {
-				pos = name.LastIndexOf('.');
-				if (pos >= 0)
-					name = name.Substring(pos + 1);
-			}
-			return name;
 		}
 
 		#region Create TypeOf Expression
@@ -1241,7 +1227,13 @@ namespace ICSharpCode.Decompiler.Ast {
 			astMethod.AddAnnotation(methodDef);
 			astMethod.ReturnType = ConvertType(methodDef.ReturnType, stringBuilder, methodDef.Parameters.ReturnParameter.ParamDef);
 			bool isRefReturnType = methodDef.ReturnType.RemovePinnedAndModifiers().GetElementType() == ElementType.ByRef && UndoByRefToPointer(astMethod.ReturnType);
-			astMethod.NameToken = Identifier.Create(CleanName(methodDef.Name)).WithAnnotation(methodDef);
+			string name = methodDef.Name;
+			if (IsExplicitInterfaceImplementation(methodDef)) {
+				var lastDot = name.LastIndexOf('.');
+				if (lastDot >= 0)
+					name = name.Substring(lastDot + 1);
+			}
+			astMethod.NameToken = Identifier.Create(name).WithAnnotation(methodDef);
 			astMethod.TypeParameters.AddRange(MakeTypeParameters(methodDef.GenericParameters));
 			astMethod.Parameters.AddRange(MakeParameters(Context.MetadataTextColorProvider, methodDef, context.Settings, stringBuilder));
 			bool createMethodBody = false;
@@ -1325,7 +1317,7 @@ namespace ICSharpCode.Decompiler.Ast {
 				var gp = genericParameters[i];
 				TypeParameterDeclaration tp = new TypeParameterDeclaration();
 				tp.AddAnnotation(gp);
-				tp.NameToken = Identifier.Create(CleanName(gp.Name)).WithAnnotation(Context.MetadataTextColorProvider.GetColor(gp));
+				tp.NameToken = Identifier.Create(gp.Name).WithAnnotation(Context.MetadataTextColorProvider.GetColor(gp));
 				if (gp.IsContravariant)
 					tp.Variance = VarianceModifier.Contravariant;
 				else if (gp.IsCovariant)
@@ -1339,7 +1331,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			for (int i = 0; i < genericParameters.Count; i++) {
 				var gp = genericParameters[i];
 				Constraint c = new Constraint();
-				c.TypeParameter = new SimpleType(CleanName(gp.Name)).WithAnnotation(gp);
+				c.TypeParameter = new SimpleType(gp.Name).WithAnnotation(gp);
 				c.TypeParameter.IdentifierToken.WithAnnotation(gp);
 				// class/struct must be first
 				if (gp.HasReferenceTypeConstraint)
@@ -1373,7 +1365,7 @@ namespace ICSharpCode.Decompiler.Ast {
 				// don't show visibility for static ctors
 				astMethod.Modifiers &= ~Modifiers.VisibilityMask;
 			}
-			astMethod.NameToken = Identifier.Create(CleanName(methodDef.DeclaringType.Name)).WithAnnotation(methodDef.DeclaringType);
+			astMethod.NameToken = Identifier.Create(NRefactory.TypeSystem.ReflectionHelper.SplitTypeParameterCountFromReflectionName(methodDef.DeclaringType.Name)).WithAnnotation(methodDef.DeclaringType);
 			astMethod.Parameters.AddRange(MakeParameters(Context.MetadataTextColorProvider, methodDef, context.Settings, stringBuilder));
 			AddMethodBody(astMethod, out _, methodDef, astMethod.Parameters, false, MethodKind.Method);
 			if (methodDef.IsStatic && methodDef.DeclaringType.IsBeforeFieldInit) {
@@ -1403,9 +1395,13 @@ namespace ICSharpCode.Decompiler.Ast {
 			var accessor = propDef.GetMethod ?? propDef.SetMethod;
 			Modifiers getterModifiers = Modifiers.None;
 			Modifiers setterModifiers = Modifiers.None;
+			string name = propDef.Name;
 			if (IsExplicitInterfaceImplementation(accessor)) {
 				var methDecl = accessor.Overrides.First().MethodDeclaration;
 				astProp.PrivateImplementationType = ConvertType(methDecl == null ? null : methDecl.DeclaringType, stringBuilder);
+				var lastDot = name.LastIndexOf('.');
+				if (lastDot >= 0)
+					name = name.Substring(lastDot + 1);
 			} else if (!propDef.DeclaringType.IsInterface) {
 				getterModifiers = ConvertModifiers(propDef.GetMethod, true);
 				setterModifiers = ConvertModifiers(propDef.SetMethod, true);
@@ -1428,7 +1424,7 @@ namespace ICSharpCode.Decompiler.Ast {
 					// TODO: add some kind of notification (a comment?) about possible problems with decompiled code due to unresolved references.
 				}
 			}
-			astProp.NameToken = Identifier.Create(CleanName(propDef.Name)).WithAnnotation(propDef);
+			astProp.NameToken = Identifier.Create(name).WithAnnotation(propDef);
 			astProp.ReturnType = ConvertType(propDef.PropertySig.GetRetType(), stringBuilder, propDef);
 			bool isRefReturnType = propDef.PropertySig.GetRetType().RemovePinnedAndModifiers().GetElementType() == ElementType.ByRef && UndoByRefToPointer(astProp.ReturnType);
 
@@ -1508,7 +1504,14 @@ namespace ICSharpCode.Decompiler.Ast {
 				EventDeclaration astEvent = new EventDeclaration();
 				ConvertCustomAttributes(Context.MetadataTextColorProvider, astEvent, eventDef, context.Settings, stringBuilder);
 				astEvent.AddAnnotation(eventDef);
-				astEvent.Variables.Add(new VariableInitializer(eventDef, CleanName(eventDef.Name)));
+				MethodDef accessor = eventDef.AddMethod ?? eventDef.RemoveMethod;
+				string name = eventDef.Name;
+				if (IsExplicitInterfaceImplementation(accessor)) {
+					var lastDot = name.LastIndexOf('.');
+					if (lastDot >= 0)
+						name = name.Substring(lastDot + 1);
+				}
+				astEvent.Variables.Add(new VariableInitializer(eventDef, name));
 				astEvent.ReturnType = ConvertType(eventDef.EventType, stringBuilder, eventDef);
 				if (!eventDef.DeclaringType.IsInterface)
 					astEvent.Modifiers = ConvertModifiers(eventDef.AddMethod, true);
@@ -1522,7 +1525,14 @@ namespace ICSharpCode.Decompiler.Ast {
 				CustomEventDeclaration astEvent = new CustomEventDeclaration();
 				ConvertCustomAttributes(Context.MetadataTextColorProvider, astEvent, eventDef, context.Settings, stringBuilder);
 				astEvent.AddAnnotation(eventDef);
-				astEvent.NameToken = Identifier.Create(CleanName(eventDef.Name)).WithAnnotation(eventDef);
+				MethodDef accessor = eventDef.AddMethod ?? eventDef.RemoveMethod;
+				string name = eventDef.Name;
+				if (IsExplicitInterfaceImplementation(accessor)) {
+					var lastDot = name.LastIndexOf('.');
+					if (lastDot >= 0)
+						name = name.Substring(lastDot + 1);
+				}
+				astEvent.NameToken = Identifier.Create(name).WithAnnotation(eventDef);
 				astEvent.ReturnType = ConvertType(eventDef.EventType, stringBuilder, eventDef);
 				if (eventDef.AddMethod == null || !IsExplicitInterfaceImplementation(eventDef.AddMethod))
 					astEvent.Modifiers = ConvertModifiers(eventDef.AddMethod, true);
@@ -1539,7 +1549,6 @@ namespace ICSharpCode.Decompiler.Ast {
 					astEvent.RemoveAccessor = new Accessor().WithAnnotation(eventDef.RemoveMethod);
 					AddMethodBody(astEvent.RemoveAccessor, out _, eventDef.RemoveMethod, null, true, MethodKind.Event);
 				}
-				MethodDef accessor = eventDef.AddMethod ?? eventDef.RemoveMethod;
 				if (accessor != null && accessor.IsVirtual == accessor.IsNewSlot) {
 					SetNewModifier(astEvent);
 				}
@@ -1691,7 +1700,7 @@ namespace ICSharpCode.Decompiler.Ast {
 					dd.AddAnnotation(methodNode.Annotation<MethodDef>());
 					methodNode.Attributes.MoveTo(dd.Attributes);
 					dd.Modifiers = methodNode.Modifiers & ~(Modifiers.Protected | Modifiers.Override);
-					dd.NameToken = Identifier.Create(AstBuilder.CleanName(context.CurrentType.Name));
+					dd.NameToken = Identifier.Create(NRefactory.TypeSystem.ReflectionHelper.SplitTypeParameterCountFromReflectionName(context.CurrentType.Name));
 					updatedNode = dd;
 					methodNode = dd;
 				}
@@ -1866,7 +1875,7 @@ namespace ICSharpCode.Decompiler.Ast {
 		{
 			FieldDeclaration astField = new FieldDeclaration();
 			astField.AddAnnotation(fieldDef);
-			VariableInitializer initializer = new VariableInitializer(fieldDef, CleanName(fieldDef.Name));
+			VariableInitializer initializer = new VariableInitializer(fieldDef, fieldDef.Name);
 			astField.AddChild(initializer, Roles.Variable);
 			astField.ReturnType = ConvertType(fieldDef.FieldType, stringBuilder, fieldDef);
 			astField.Modifiers = ConvertModifiers(fieldDef);
