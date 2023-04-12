@@ -29,7 +29,7 @@ using dnSpy.Contracts.Text;
 using ICSharpCode.NRefactory;
 
 namespace ICSharpCode.Decompiler.Disassembler {
-	sealed class InstructionOperandConverter {
+	public sealed class InstructionOperandConverter {
 		readonly Dictionary<object, object> dict;
 		readonly List<SourceLocal> sourceLocals;
 
@@ -184,6 +184,30 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			this.options = options;
 			sb = new StringBuilder();
 			this.methodBodyDisassembler = new MethodBodyDisassembler(output, detectControlStructure, options, sb);
+			this.instructionOperandConverter = new InstructionOperandConverter();
+			numberFormatter = NumberFormatter.GetCSharpInstance(hex: options.HexadecimalNumbers, upper: true);
+		}
+
+		public ReflectionDisassembler(IDecompilerOutput output, bool detectControlStructure, DisassemblerOptions options, StringBuilder sb)
+		{
+			if (output == null)
+				throw new ArgumentNullException("output");
+			this.output = output;
+			this.options = options;
+			this.sb = sb;
+			this.methodBodyDisassembler = new MethodBodyDisassembler(output, detectControlStructure, options, sb);
+			this.instructionOperandConverter = new InstructionOperandConverter();
+			numberFormatter = NumberFormatter.GetCSharpInstance(hex: options.HexadecimalNumbers, upper: true);
+		}
+
+		public ReflectionDisassembler(IDecompilerOutput output, DisassemblerOptions options, MethodBodyDisassembler methodBodyDisassembler, StringBuilder sb)
+		{
+			if (output == null)
+				throw new ArgumentNullException("output");
+			this.output = output;
+			this.options = options;
+			this.sb = sb;
+			this.methodBodyDisassembler = methodBodyDisassembler;
 			this.instructionOperandConverter = new InstructionOperandConverter();
 			numberFormatter = NumberFormatter.GetCSharpInstance(hex: options.HexadecimalNumbers, upper: true);
 		}
