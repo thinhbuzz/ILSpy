@@ -331,9 +331,9 @@ namespace ICSharpCode.Decompiler.Ast {
 			if (!transformationsHaveRun)
 				RunTransformations();
 
-			syntaxTree.AcceptVisitor(new InsertParenthesesVisitor { InsertParenthesesForReadability = true });
+			syntaxTree.AcceptVisitor(new InsertParenthesesVisitor { InsertParenthesesForReadability = context.Settings.InsertParenthesesForReadability });
 			GenericGrammarAmbiguityVisitor.ResolveAmbiguities(syntaxTree);
-			var outputFormatter = new TextTokenWriter(output, context) { FoldBraces = false };
+			var outputFormatter = new TextTokenWriter(output, context) ;
 			var formattingPolicy = context.Settings.CSharpFormattingOptions;
 			syntaxTree.AcceptVisitor(new CSharpOutputVisitor(outputFormatter, formattingPolicy, context.CancellationToken));
 		}

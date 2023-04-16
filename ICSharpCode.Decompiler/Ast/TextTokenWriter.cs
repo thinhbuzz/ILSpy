@@ -35,8 +35,6 @@ namespace ICSharpCode.Decompiler.Ast {
 		readonly Stack<AstNode> nodeStack = new Stack<AstNode>();
 		int braceLevelWithinType = -1;
 
-		public bool FoldBraces = false;
-
 		public TextTokenWriter(IDecompilerOutput output, DecompilerContext context)
 		{
 			if (output == null)
