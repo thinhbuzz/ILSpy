@@ -22,7 +22,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 namespace ICSharpCode.Decompiler.ILAst {
-	public class GotoRemoval
+	public sealed class GotoRemoval
 	{
 		readonly Dictionary<ILNode, ILNode> parent = new Dictionary<ILNode, ILNode>();
 		readonly Dictionary<ILNode, ILNode> nextSibling = new Dictionary<ILNode, ILNode>();

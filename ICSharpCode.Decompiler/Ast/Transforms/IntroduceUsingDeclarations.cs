@@ -30,7 +30,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 	/// <summary>
 	/// Introduces using declarations.
 	/// </summary>
-	public class IntroduceUsingDeclarations : IAstTransformPoolObject
+	public sealed class IntroduceUsingDeclarations : IAstTransformPoolObject
 	{
 		DecompilerContext context;
 		readonly StringBuilder stringBuilder;
@@ -73,7 +73,9 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 
 			if (context.Settings.UsingDeclarations) {
 				// Now add using declarations for those namespaces:
-				foreach (var ns in GetNamespacesInReverseOrder()) {
+				var nses = GetNamespacesInReverseOrder();
+				for (int index = 0; index < nses.Count; index++) {
+					var ns = nses[index];
 					// we go backwards (OrderByDescending) through the list of namespaces because we insert them backwards
 					// (always inserting at the start of the list)
 					string[] parts = ns.Namespace.Split(namespaceSep);
@@ -82,14 +84,21 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 					var nsAsm = ns.Assembly;
 					SimpleType simpleType;
 					AstType nsType = simpleType = new SimpleType(parts[0]).WithAnnotation(BoxedTextColor.Namespace);
-					simpleType.IdentifierToken.WithAnnotation(BoxedTextColor.Namespace).WithAnnotation(new NamespaceReference(nsAsm, parts[0]));
+					simpleType.IdentifierToken.WithAnnotation(BoxedTextColor.Namespace)
+						.WithAnnotation(new NamespaceReference(nsAsm, parts[0]));
 					for (int i = 1; i < parts.Length; i++) {
 						stringBuilder.Append('.');
 						stringBuilder.Append(parts[i]);
 						var nsPart = stringBuilder.ToString();
-						nsType = new MemberType { Target = nsType, MemberNameToken = Identifier.Create(parts[i]).WithAnnotation(BoxedTextColor.Namespace).WithAnnotation(new NamespaceReference(nsAsm, nsPart)) }.WithAnnotation(BoxedTextColor.Namespace);
+						nsType = new MemberType {
+							Target = nsType,
+							MemberNameToken = Identifier.Create(parts[i]).WithAnnotation(BoxedTextColor.Namespace)
+								.WithAnnotation(new NamespaceReference(nsAsm, nsPart))
+						}.WithAnnotation(BoxedTextColor.Namespace);
 					}
-					compilationUnit.InsertChildAfter(null, new UsingDeclaration { Import = nsType }, SyntaxTree.MemberRole);
+
+					compilationUnit.InsertChildAfter(null, new UsingDeclaration { Import = nsType },
+						SyntaxTree.MemberRole);
 				}
 			}
 
@@ -121,8 +130,9 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 						typesWithNamespace_allAsms_list.Add(dict);
 					}
 				}
-				foreach (var dict in typesWithNamespace_allAsms_list) {
-					FindAmbiguousTypeNames(dict, IsFriendAssemblyOf);
+
+				for (int i = 0; i < typesWithNamespace_allAsms_list.Count; i++) {
+					FindAmbiguousTypeNames(typesWithNamespace_allAsms_list[i], IsFriendAssemblyOf);
 				}
 			}
 
@@ -197,9 +207,12 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			}
 
 			var types = new HashSet<TypeDef>(new TypeEqualityComparer(SigComparerOptions.DontCompareTypeScope));
-			foreach (var asm in asms) {
-				foreach (var mod in asm.Modules) {
-					foreach (var type in mod.Types) {
+			for (int i = 0; i < asms.Count; i++) {
+				var asm = asms[i];
+				for (int j = 0; j < asm.Modules.Count; j++) {
+					var mod = asm.Modules[j];
+					for (int k = 0; k < mod.Types.Count; k++) {
+						var type = mod.Types[k];
 						if (types.Add(type))
 							continue;
 						if (!type.IsPublic)
@@ -210,6 +223,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 					}
 				}
 			}
+
 			return types;
 		}
 
@@ -322,7 +336,8 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			foreach (var ns in importedOrDeclaredNamespaces) {
 				if (!dict.TryGetValue(ns, out var list))
 					continue;
-				foreach (var type in list) {
+				for (int i = 0; i < list.Count; i++) {
+					var type = list[i];
 					if (!type.IsPublic && !internalsVisible(type.Module.Assembly))
 						continue;
 					string name = type.Name;
@@ -368,27 +383,32 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				bool privateMembersVisible = true;
 				ModuleDef internalMembersVisibleInModule = typeDef?.Module;
 				while (typeDef != null) {
-					foreach (GenericParam gp in typeDef.GenericParameters) {
-						currentMemberTypes.Add(gp.Name);
-					}
-					foreach (TypeDef t in typeDef.NestedTypes) {
+					for (int i = 0; i < typeDef.GenericParameters.Count; i++)
+						currentMemberTypes.Add(typeDef.GenericParameters[i].Name);
+					for (int i = 0; i < typeDef.NestedTypes.Count; i++) {
+						var t = typeDef.NestedTypes[i];
 						if (privateMembersVisible || IsVisible(t, internalMembersVisibleInModule))
 							currentMemberTypes.Add(t.Name.Substring(t.Name.LastIndexOf('+') + 1));
 					}
-
-					foreach (MethodDef method in typeDef.Methods) {
+					for (int i = 0; i < typeDef.Methods.Count; i++) {
+						var method = typeDef.Methods[i];
 						if (privateMembersVisible || IsVisible(method, internalMembersVisibleInModule))
 							AddCurrentMember(method);
 					}
-					foreach (PropertyDef property in typeDef.Properties) {
-						if (privateMembersVisible || IsVisible(property.GetMethod, internalMembersVisibleInModule) || IsVisible(property.SetMethod, internalMembersVisibleInModule))
+					for (int i = 0; i < typeDef.Properties.Count; i++) {
+						var property = typeDef.Properties[i];
+						if (privateMembersVisible || IsVisible(property.GetMethod, internalMembersVisibleInModule) ||
+							IsVisible(property.SetMethod, internalMembersVisibleInModule))
 							AddCurrentMember(property);
 					}
-					foreach (EventDef ev in typeDef.Events) {
-						if (privateMembersVisible || IsVisible(ev.AddMethod, internalMembersVisibleInModule) || IsVisible(ev.RemoveMethod, internalMembersVisibleInModule))
+					for (int i = 0; i < typeDef.Events.Count; i++) {
+						var ev = typeDef.Events[i];
+						if (privateMembersVisible || IsVisible(ev.AddMethod, internalMembersVisibleInModule) ||
+							IsVisible(ev.RemoveMethod, internalMembersVisibleInModule))
 							AddCurrentMember(ev);
 					}
-					foreach (FieldDef f in typeDef.Fields) {
+					for (int i = 0; i < typeDef.Fields.Count; i++) {
+						var f = typeDef.Fields[i];
 						if (privateMembersVisible || IsVisible(f, internalMembersVisibleInModule))
 							AddCurrentMember(f);
 					}

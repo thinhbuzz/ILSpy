@@ -28,7 +28,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 	/// <summary>
 	/// Converts stack-based bytecode to variable-based bytecode by calculating use-define chains
 	/// </summary>
-	public class ILAstBuilder
+	public sealed class ILAstBuilder
 	{
 		/// <summary> Immutable </summary>
 		readonly struct StackSlot

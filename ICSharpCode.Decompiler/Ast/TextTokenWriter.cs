@@ -28,7 +28,7 @@ using ICSharpCode.NRefactory;
 using ICSharpCode.NRefactory.CSharp;
 
 namespace ICSharpCode.Decompiler.Ast {
-	public class TextTokenWriter : TokenWriter
+	public sealed class TextTokenWriter : TokenWriter
 	{
 		readonly IDecompilerOutput output;
 		readonly DecompilerContext context;
@@ -395,8 +395,8 @@ namespace ICSharpCode.Decompiler.Ast {
 
 			if (node.Annotation<MethodDebugInfoBuilder>() != null) {
 				if (context.CalculateILSpans) {
-					foreach (var ns in context.UsingNamespaces)
-						currentMethodDebugInfoBuilder.Scope.Imports.Add(ImportInfo.CreateNamespace(ns));
+					for (int i = 0; i < context.UsingNamespaces.Count; i++)
+						currentMethodDebugInfoBuilder.Scope.Imports.Add(ImportInfo.CreateNamespace(context.UsingNamespaces[i]));
 				}
 				if (parentMethodDebugInfoBuilder.Peek() != currentMethodDebugInfoBuilder)
 					output.AddDebugInfo(currentMethodDebugInfoBuilder.Create());
@@ -406,8 +406,9 @@ namespace ICSharpCode.Decompiler.Ast {
 			if (mms != null) {
 				Debug.Assert(mms == multiMappings);
 				if (mms == multiMappings) {
-					foreach (var mm in mms)
-						output.AddDebugInfo(mm.Item1.Create());
+					for (int i = 0; i < mms.Count; i++)
+						output.AddDebugInfo(mms[i].Item1.Create());
+
 					multiMappings = null;
 				}
 			}
@@ -450,26 +451,31 @@ namespace ICSharpCode.Decompiler.Ast {
 		{
 			var state = debugStack.Pop();
 			if (currentMethodDebugInfoBuilder != null) {
-				foreach (var ilSpan in ILSpan.OrderAndCompact(GetILSpans(state)))
-					currentMethodDebugInfoBuilder.Add(new SourceStatement(ilSpan, new TextSpan(state.StartSpan, (end ?? output.NextPosition) - state.StartSpan)));
+				var list = ILSpan.OrderAndCompact(GetILSpans(state));
+				for (int i = 0; i < list.Count; i++) {
+					currentMethodDebugInfoBuilder.Add(new SourceStatement(list[i], new TextSpan(state.StartSpan, (end ?? output.NextPosition) - state.StartSpan)));
+				}
 			}
 			else if (multiMappings != null) {
-				foreach (var mm in multiMappings) {
-					foreach (var ilSpan in ILSpan.OrderAndCompact(mm.Item2))
-						mm.Item1.Add(new SourceStatement(ilSpan, new TextSpan(state.StartSpan, (end ?? output.NextPosition) - state.StartSpan)));
+				for (int i = 0; i < multiMappings.Count; i++) {
+					var mm = multiMappings[i];
+					var list = ILSpan.OrderAndCompact(mm.Item2);
+					for (int j = 0; j < list.Count; j++) {
+						mm.Item1.Add(new SourceStatement(list[j], new TextSpan(state.StartSpan, (end ?? output.NextPosition) - state.StartSpan)));
+					}
 				}
 			}
 		}
 
-		static IEnumerable<ILSpan> GetILSpans(DebugState state)
-		{
-			foreach (var node in state.Nodes) {
+		static IEnumerable<ILSpan> GetILSpans(DebugState state) {
+			for (int i = 0; i < state.Nodes.Count; i++) {
+				var node = state.Nodes[i];
 				foreach (var ann in node.Annotations) {
-					var list = ann as IList<ILSpan>;
-					if (list == null)
+					if (ann is not IList<ILSpan> list)
 						continue;
-					foreach (var ilSpan in list)
-						yield return ilSpan;
+					for (int j = 0; j < list.Count; j++) {
+						yield return list[j];
+					}
 				}
 			}
 		}

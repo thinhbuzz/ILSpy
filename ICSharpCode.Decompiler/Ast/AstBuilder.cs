@@ -68,7 +68,7 @@ namespace ICSharpCode.Decompiler.Ast {
 		Event,
 	}
 
-	public class AstBuilder
+	public sealed class AstBuilder
 	{
 		public DecompilerContext Context {
 			get { return context; }
@@ -2238,6 +2238,7 @@ namespace ICSharpCode.Decompiler.Ast {
 						}
 						if (customAttribute.HasNamedArguments) {
 							TypeDef resolvedAttributeType = attributeType.ResolveTypeDef();
+							// TODO: use actual order!
 							foreach (var propertyNamedArg in customAttribute.Properties) {
 								var propertyReference = GetProperty(resolvedAttributeType, propertyNamedArg.Name);
 								var propertyName = IdentifierExpression.Create(propertyNamedArg.Name, metadataTextColorProvider.GetColor((object)propertyReference ?? BoxedTextColor.InstanceProperty), true).WithAnnotation(propertyReference);

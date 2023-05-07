@@ -2,7 +2,7 @@
 using ICSharpCode.NRefactory.CSharp;
 
 namespace ICSharpCode.Decompiler.Ast.Transforms {
-	class FlattenSwitchBlocks : IAstTransformPoolObject
+	sealed class FlattenSwitchBlocks : IAstTransformPoolObject
 	{
 		public void Reset(DecompilerContext context)
 		{

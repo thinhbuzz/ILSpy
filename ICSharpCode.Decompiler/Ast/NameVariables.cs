@@ -26,7 +26,7 @@ using System.Text;
 using System.Globalization;
 
 namespace ICSharpCode.Decompiler.Ast {
-	public class NameVariables
+	public sealed class NameVariables
 	{
 		static readonly Dictionary<string, string> typeNameToVariableNameDict = new Dictionary<string, string> {
 			{ "System.Boolean", "flag" },
@@ -62,10 +62,10 @@ namespace ICSharpCode.Decompiler.Ast {
 			nv.context = context;
 			nv.fieldNamesInCurrentType = context.CurrentType.Fields.Select(f => f.Name.String).ToList();
 			// First mark existing variable names as reserved.
-			foreach (string name in context.ReservedVariableNames)
-				nv.AddExistingName(name);
-			foreach (var p in parameters)
-				nv.AddExistingName(p.Name);
+			for (int i = 0; i < context.ReservedVariableNames.Count; i++)
+				nv.AddExistingName(context.ReservedVariableNames[i]);
+			for (int i = 0; i < parameters.Count; i++)
+				nv.AddExistingName(parameters[i].Name);
 			foreach (var l in variables) {
 				if (l.Renamed)
 					nv.AddExistingName(l.Name);
@@ -82,7 +82,9 @@ namespace ICSharpCode.Decompiler.Ast {
 			}
 
 			// Gather possible names for all variables in the body based on stloc and ldloc instructions.
-			foreach (var ilExpression in methodBody.GetSelfAndChildrenRecursive<ILExpression>()) {
+			var list = methodBody.GetSelfAndChildrenRecursive<ILExpression>();
+			for (int index = 0; index < list.Count; index++) {
+				var ilExpression = list[index];
 				if (ilExpression.Code == ILCode.Stloc && ilExpression.Operand is ILVariable storedVar) {
 					var name = nv.GetNameFromExpression(ilExpression.Arguments.Single());
 					if (nv.fieldNamesInCurrentType.Contains(name))
@@ -91,6 +93,7 @@ namespace ICSharpCode.Decompiler.Ast {
 						storeNames = nv.proposedStoreNames[storedVar] = new List<string>();
 					storeNames.Add(name);
 				}
+
 				for (int i = 0; i < ilExpression.Arguments.Count; i++) {
 					var argument = ilExpression.Arguments[i];
 					if (argument.Code == ILCode.Ldloc && ilExpression.Operand is ILVariable loadedVar) {
@@ -105,13 +108,15 @@ namespace ICSharpCode.Decompiler.Ast {
 			}
 
 			// Now generate names:
-			foreach (ILVariable p in parameters) {
+			for (int i = 0; i < parameters.Count; i++) {
+				var p = parameters[i];
 				if (p.Renamed)
 					continue;
 				p.Renamed = true;
 				if (string.IsNullOrEmpty(p.Name))
 					p.Name = nv.GenerateNameForVariable(p, methodBody);
 			}
+
 			foreach (ILVariable varDef in variables) {
 				if (varDef.Renamed)
 					continue;
@@ -293,28 +298,32 @@ namespace ICSharpCode.Decompiler.Ast {
 			if (string.IsNullOrEmpty(proposedName) && new SigComparer().Equals(variable.GetVariableType(), context.CurrentType.Module.CorLibTypes.Int32)) {
 				// test whether the variable might be a loop counter
 				bool isLoopCounter = false;
-				foreach (ILWhileLoop loop in methodBody.GetSelfAndChildrenRecursive(GenerateNameForVariable_Loops)) {
+				var loops = methodBody.GetSelfAndChildrenRecursive(GenerateNameForVariable_Loops);
+				for (int i = 0; i < loops.Count; i++) {
+					var loop = loops[i];
 					ILExpression expr = loop.Condition;
 					while (expr != null && expr.Code == ILCode.LogicNot)
 						expr = expr.Arguments[0];
 					if (expr != null) {
 						switch (expr.Code) {
-							case ILCode.Clt:
-							case ILCode.Clt_Un:
-							case ILCode.Cgt:
-							case ILCode.Cgt_Un:
-							case ILCode.Cle:
-							case ILCode.Cle_Un:
-							case ILCode.Cge:
-							case ILCode.Cge_Un:
-								ILVariable loadVar;
-								if (expr.Arguments[0].Match(ILCode.Ldloc, out loadVar) && loadVar == variable) {
-									isLoopCounter = true;
-								}
-								break;
+						case ILCode.Clt:
+						case ILCode.Clt_Un:
+						case ILCode.Cgt:
+						case ILCode.Cgt_Un:
+						case ILCode.Cle:
+						case ILCode.Cle_Un:
+						case ILCode.Cge:
+						case ILCode.Cge_Un:
+							ILVariable loadVar;
+							if (expr.Arguments[0].Match(ILCode.Ldloc, out loadVar) && loadVar == variable) {
+								isLoopCounter = true;
+							}
+
+							break;
 						}
 					}
 				}
+
 				if (isLoopCounter) {
 					// For loop variables, use i,j,k,l,m,n
 					for (char c = 'i'; c <= maxLoopVariableName; c++) {

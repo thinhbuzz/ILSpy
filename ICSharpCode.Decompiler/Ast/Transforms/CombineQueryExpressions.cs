@@ -30,7 +30,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 	/// <summary>
 	/// Combines query expressions and removes transparent identifiers.
 	/// </summary>
-	public class CombineQueryExpressions : IAstTransformPoolObject
+	public sealed class CombineQueryExpressions : IAstTransformPoolObject
 	{
 		DecompilerContext context;
 

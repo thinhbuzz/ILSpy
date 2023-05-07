@@ -30,7 +30,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 	/// Replaces method calls with the appropriate operator expressions.
 	/// Also simplifies "x = x op y" into "x op= y" where possible.
 	/// </summary>
-	public class ReplaceMethodCallsWithOperators : DepthFirstAstVisitor<object, object>, IAstTransformPoolObject
+	public sealed class ReplaceMethodCallsWithOperators : DepthFirstAstVisitor<object, object>, IAstTransformPoolObject
 	{
 		static readonly MemberReferenceExpression typeHandleOnTypeOfPattern = new MemberReferenceExpression {
 			Target = new Choice {

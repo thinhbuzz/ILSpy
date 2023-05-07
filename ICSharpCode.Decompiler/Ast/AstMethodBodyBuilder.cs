@@ -34,7 +34,7 @@ namespace ICSharpCode.Decompiler.Ast {
 	using dnSpy.Contracts.Text;
 	using Ast = ICSharpCode.NRefactory.CSharp;
 
-	public class AstMethodBodyBuilder
+	public sealed class AstMethodBodyBuilder
 	{
 		StringBuilder stringBuilder;
 		MethodDef methodDef;

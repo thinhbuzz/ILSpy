@@ -105,8 +105,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 		{
 			bool modified = false;
 			ILInlining i = GetILInlining(method);
-			foreach (ILBlock block in method.GetSelfAndChildrenRecursive<ILBlock>(list_ILBlock))
-				modified |= i.InlineAllInBlock(block);
+			var list = method.GetSelfAndChildrenRecursive<ILBlock>(list_ILBlock);
+			for (int index = 0; index < list.Count; index++)
+				modified |= i.InlineAllInBlock(list[index]);
 			return modified;
 		}
 
@@ -457,10 +458,14 @@ namespace ICSharpCode.Decompiler.ILAst {
 						// abort, inlining is not possible
 						return false;
 					}
-					foreach (ILExpression potentialStore in expressionBeingMoved.GetSelfAndChildrenRecursive<ILExpression>(list_ILExpression)) {
+
+					var list = expressionBeingMoved.GetSelfAndChildrenRecursive<ILExpression>(list_ILExpression);
+					for (int i = 0; i < list.Count; i++) {
+						var potentialStore = list[i];
 						if (potentialStore.Code == ILCode.Stloc && potentialStore.Operand == loadedVar)
 							return false;
 					}
+
 					// the expression is loading a non-forbidden variable
 					return true;
 				case ILCode.Ldloca:

@@ -1,14 +1,14 @@
 ﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
-// 
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -21,7 +21,7 @@ using ICSharpCode.NRefactory.CSharp;
 using ICSharpCode.NRefactory.PatternMatching;
 
 namespace ICSharpCode.Decompiler.Ast.Transforms {
-	public class PushNegation: DepthFirstAstVisitor<object, object>, IAstTransformPoolObject
+	public sealed class PushNegation: DepthFirstAstVisitor<object, object>, IAstTransformPoolObject
 	{
 		sealed class LiftedOperator { }
 		/// <summary>
@@ -49,7 +49,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				unary.ReplaceWith(newNode.WithAnnotation(unary.GetAllILSpans()));
 				return newNode.AcceptVisitor(this, data);
 			}
-			
+
 			// Push through binary operation
 			// !((a) op (b))
 			BinaryOperatorExpression binaryOp = unary.Expression as BinaryOperatorExpression;
@@ -82,7 +82,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 					unary.ReplaceWith(binaryOp.WithAnnotation(unary.GetAllILSpans()));
 					return binaryOp.AcceptVisitor(this, data);
 				}
-				
+
 				successful = true;
 				switch (binaryOp.Operator) {
 					case BinaryOperatorType.ConditionalAnd:
@@ -104,19 +104,19 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			}
 			return base.VisitUnaryOperatorExpression(unary, data);
 		}
-		
+
 		readonly static AstNode asCastIsNullPattern = new BinaryOperatorExpression(
 			new AnyNode("expr").ToExpression().CastAs(new AnyNode("type")),
 			BinaryOperatorType.Equality,
 			new NullReferenceExpression()
 		);
-		
+
 		readonly static AstNode asCastIsNotNullPattern = new BinaryOperatorExpression(
 			new AnyNode("expr").ToExpression().CastAs(new AnyNode("type")),
 			BinaryOperatorType.InEquality,
 			new NullReferenceExpression()
 		);
-		
+
 		public override object VisitBinaryOperatorExpression(BinaryOperatorExpression binaryOperatorExpression, object data)
 		{
 			// lifted operators can't be transformed
