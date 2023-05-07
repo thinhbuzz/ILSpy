@@ -79,7 +79,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		None
 	}
 
-	public partial class ILAstOptimizer
+	public sealed partial class ILAstOptimizer
 	{
 		int nextLabelIndex = 0;
 
@@ -265,66 +265,69 @@ namespace ICSharpCode.Decompiler.ILAst {
 					do {
 						modified = false;
 
-						if (abortBeforeStep == ILAstOptimizationStep.SimplifyShortCircuit) return;
+						if (abortBeforeStep == ILAstOptimizationStep.SimplifyShortCircuit) continue;
 						modified |= block.RunOptimization(GetSimpleControlFlow(context, method).SimplifyShortCircuit);
 
-						if (abortBeforeStep == ILAstOptimizationStep.SimplifyTernaryOperator) return;
+						if (abortBeforeStep == ILAstOptimizationStep.SimplifyTernaryOperator) continue;
 						modified |= block.RunOptimization(GetSimpleControlFlow(context, method).SimplifyTernaryOperator);
 
-						if (abortBeforeStep == ILAstOptimizationStep.SimplifyNullCoalescing) return;
+						if (abortBeforeStep == ILAstOptimizationStep.SimplifyNullCoalescing) continue;
 						modified |= block.RunOptimization(GetSimpleControlFlow(context, method).SimplifyNullCoalescing);
 
-						if (abortBeforeStep == ILAstOptimizationStep.JoinBasicBlocks) return;
+						if (abortBeforeStep == ILAstOptimizationStep.JoinBasicBlocks) continue;
 						modified |= block.RunOptimization(GetSimpleControlFlow(context, method).JoinBasicBlocks);
 
-						if (abortBeforeStep == ILAstOptimizationStep.SimplifyLogicNot) return;
+						if (abortBeforeStep == ILAstOptimizationStep.SimplifyLogicNot) continue;
 						modified |= block.RunOptimization(SimplifyLogicNot);
 
-						if (abortBeforeStep == ILAstOptimizationStep.SimplifyShiftOperators) return;
+						if (abortBeforeStep == ILAstOptimizationStep.SimplifyShiftOperators) continue;
 						modified |= block.RunOptimization(SimplifyShiftOperators);
 
-						if (abortBeforeStep == ILAstOptimizationStep.TypeConversionSimplifications) return;
+						if (abortBeforeStep == ILAstOptimizationStep.TypeConversionSimplifications) continue;
 						modified |= block.RunOptimization(TypeConversionSimplifications);
 
-						if (abortBeforeStep == ILAstOptimizationStep.SimplifyLdObjAndStObj) return;
+						if (abortBeforeStep == ILAstOptimizationStep.SimplifyLdObjAndStObj) continue;
 						modified |= block.RunOptimization(SimplifyLdObjAndStObj);
 
-						if (abortBeforeStep == ILAstOptimizationStep.SimplifyCustomShortCircuit) return;
+						if (abortBeforeStep == ILAstOptimizationStep.SimplifyCustomShortCircuit) continue;
 						modified |= block.RunOptimization(GetSimpleControlFlow(context, method).SimplifyCustomShortCircuit);
 
-						if (abortBeforeStep == ILAstOptimizationStep.SimplifyLiftedOperators) return;
+						if (abortBeforeStep == ILAstOptimizationStep.SimplifyLiftedOperators) continue;
 						modified |= block.RunOptimization(SimplifyLiftedOperators);
 
-						if (abortBeforeStep == ILAstOptimizationStep.TransformArrayInitializers) return;
+						if (abortBeforeStep == ILAstOptimizationStep.TransformArrayInitializers) continue;
 						modified |= block.RunOptimization(TransformArrayInitializers);
 
-						if (abortBeforeStep == ILAstOptimizationStep.TransformMultidimensionalArrayInitializers) return;
+						if (abortBeforeStep == ILAstOptimizationStep.TransformMultidimensionalArrayInitializers) continue;
 						modified |= block.RunOptimization(TransformMultidimensionalArrayInitializers);
 
-						if (abortBeforeStep == ILAstOptimizationStep.TransformObjectInitializers) return;
+						if (abortBeforeStep == ILAstOptimizationStep.TransformObjectInitializers) continue;
 						modified |= block.RunOptimization(TransformObjectInitializers);
 
-						if (abortBeforeStep == ILAstOptimizationStep.MakeAssignmentExpression) return;
+						if (abortBeforeStep == ILAstOptimizationStep.MakeAssignmentExpression) continue;
 						if (context.Settings.MakeAssignmentExpressions) {
 							modified |= block.RunOptimization(MakeAssignmentExpression);
 						}
 						modified |= block.RunOptimization(MakeCompoundAssignments);
 
-						if (abortBeforeStep == ILAstOptimizationStep.IntroducePostIncrement) return;
+						if (abortBeforeStep == ILAstOptimizationStep.IntroducePostIncrement) continue;
 						if (context.Settings.IntroduceIncrementAndDecrement) {
 							modified |= block.RunOptimization(IntroducePostIncrement);
 						}
 
-						if (abortBeforeStep == ILAstOptimizationStep.InlineExpressionTreeParameterDeclarations) return;
+						if (abortBeforeStep == ILAstOptimizationStep.InlineExpressionTreeParameterDeclarations) continue;
 						if (context.Settings.ExpressionTrees) {
 							modified |= block.RunOptimization(InlineExpressionTreeParameterDeclarations);
 						}
 
-						if (abortBeforeStep == ILAstOptimizationStep.InlineVariables2) return;
+						if (abortBeforeStep == ILAstOptimizationStep.InlineVariables2) continue;
 						modified |= GetILInlining(method).InlineAllInBlock(block);
 						GetILInlining(method).CopyPropagation(Optimize_List_ILNode);
 					} while (modified);
 				}
+
+				if (abortBeforeStep < ILAstOptimizationStep.FindLoops)
+					return;
 
 				if (abortBeforeStep == ILAstOptimizationStep.FindLoops) return;
 				blockList = method.GetSelfAndChildrenRecursive<ILBlock>(Optimize_List_ILBlock);
