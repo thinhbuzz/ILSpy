@@ -2238,19 +2238,22 @@ namespace ICSharpCode.Decompiler.Ast {
 						}
 						if (customAttribute.HasNamedArguments) {
 							TypeDef resolvedAttributeType = attributeType.ResolveTypeDef();
-							// TODO: use actual order!
-							foreach (var propertyNamedArg in customAttribute.Properties) {
-								var propertyReference = GetProperty(resolvedAttributeType, propertyNamedArg.Name);
-								var propertyName = IdentifierExpression.Create(propertyNamedArg.Name, metadataTextColorProvider.GetColor((object)propertyReference ?? BoxedTextColor.InstanceProperty), true).WithAnnotation(propertyReference);
-								var argumentValue = ConvertArgumentValue(propertyNamedArg.Argument, sb);
-								attribute.Arguments.Add(new AssignmentExpression(propertyName, argumentValue));
-							}
 
-							foreach (var fieldNamedArg in customAttribute.Fields) {
-								var fieldReference = GetField(resolvedAttributeType, fieldNamedArg.Name);
-								var fieldName = IdentifierExpression.Create(fieldNamedArg.Name, metadataTextColorProvider.GetColor((object)fieldReference ?? BoxedTextColor.InstanceField), true).WithAnnotation(fieldReference);
-								var argumentValue = ConvertArgumentValue(fieldNamedArg.Argument, sb);
-								attribute.Arguments.Add(new AssignmentExpression(fieldName, argumentValue));
+							for (var i = 0; i < customAttribute.NamedArguments.Count; i++) {
+								var namedArgument = customAttribute.NamedArguments[i];
+
+								IdentifierExpression memberName;
+								if (namedArgument.IsField) {
+									var fieldReference = GetField(resolvedAttributeType, namedArgument.Name);
+									memberName = IdentifierExpression.Create(namedArgument.Name, metadataTextColorProvider.GetColor((object)fieldReference ?? BoxedTextColor.InstanceField), true).WithAnnotation(fieldReference);
+								}
+								else {
+									var propertyReference = GetProperty(resolvedAttributeType, namedArgument.Name);
+									memberName = IdentifierExpression.Create(namedArgument.Name, metadataTextColorProvider.GetColor((object)propertyReference ?? BoxedTextColor.InstanceProperty), true).WithAnnotation(propertyReference);
+								}
+
+								var argumentValue = ConvertArgumentValue(namedArgument.Argument, sb);
+								attribute.Arguments.Add(new AssignmentExpression(memberName, argumentValue));
 							}
 						}
 					}
