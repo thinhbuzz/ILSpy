@@ -80,7 +80,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				return clone;
 			}
 
-			public static VariableSlot[] MakeUknownState(int varCount)
+			public static VariableSlot[] MakeUnknownState(int varCount)
 			{
 				if (varCount == 0)
 					return Array.Empty<VariableSlot>();
@@ -226,6 +226,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		readonly List<Instruction> StackAnalysis_cachedPrefixes = new List<Instruction>(1);
 		readonly Dictionary<ILVariable, StackSlot?> StackAnalysis_ILVariable_StackSlot_dict = new Dictionary<ILVariable, StackSlot?>();
 		readonly HashSet<ILVariable> StackAnalysis_ILVariables_hash = new HashSet<ILVariable>();
+		readonly List<ByteCode> StackAnalysis_BranchTargets = new List<ByteCode>();
 
 		static readonly Dictionary<Code, ILCode> ilCodeTranslation =
 			OpCodes.OneByteOpCodes
@@ -260,6 +261,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			StackAnalysis_cachedPrefixes.Clear();
 			StackAnalysis_ILVariable_StackSlot_dict.Clear();
 			StackAnalysis_ILVariables_hash.Clear();
+			StackAnalysis_BranchTargets.Clear();
 			nullByteCodeDummy.Next = null;
 		}
 
@@ -361,7 +363,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					if (ex.HandlerStart == null)
 						continue;
 					ByteCode handlerStart = instrToByteCode[ex.HandlerStart];
-					handlerStart.VariablesBefore = VariableSlot.MakeUknownState(varCount);
+					handlerStart.VariablesBefore = VariableSlot.MakeUnknownState(varCount);
 					if (ex.HandlerType == ExceptionHandlerType.Catch || ex.HandlerType == ExceptionHandlerType.Filter) {
 						// Catch and Filter handlers start with the exeption on the stack
 						ByteCode ldexception = new ByteCode() {
@@ -382,14 +384,14 @@ namespace ICSharpCode.Decompiler.ILAst {
 						};
 						ldfilters[ex] = ldexception;
 						filterStart.StackBefore = new StackSlot[] { new StackSlot(new[] { ldexception }, null) };
-						filterStart.VariablesBefore = VariableSlot.MakeUknownState(varCount);
+						filterStart.VariablesBefore = VariableSlot.MakeUnknownState(varCount);
 						agenda.Push(filterStart);
 					}
 				}
 			}
 
 			firstByteCode.StackBefore = Array.Empty<StackSlot>();
-			firstByteCode.VariablesBefore = VariableSlot.MakeUknownState(varCount);
+			firstByteCode.VariablesBefore = VariableSlot.MakeUnknownState(varCount);
 			agenda.Push(firstByteCode);
 
 			// Process agenda
@@ -403,26 +405,27 @@ namespace ICSharpCode.Decompiler.ILAst {
 				// Calculate new variable state
 				// After the leave, finally block might have touched the variables
 				var newVariableState = byteCode.Code == ILCode.Leave
-					? VariableSlot.MakeUknownState(varCount)
+					? VariableSlot.MakeUnknownState(varCount)
 					: VariableSlot.CloneVariableState(byteCode.VariablesBefore);
 
 				if (byteCode.IsVariableDefinition && byteCode.Operand is Local local)
 					newVariableState[local.Index] = new VariableSlot(new[] { byteCode }, false);
 
 				// Find all successors
-				List<ByteCode> branchTargets = new List<ByteCode>();
+				StackAnalysis_BranchTargets.Clear();
 				if (!byteCode.Code.IsUnconditionalControlFlow()) {
 					if (exceptionHandlerStarts.Contains(byteCode.Next)) {
 						// Do not fall though down to exception handler
 						// It is invalid IL as per ECMA-335 §12.4.2.8.1, but some obfuscators produce it
 					} else {
-						branchTargets.Add(byteCode.Next);
+						StackAnalysis_BranchTargets.Add(byteCode.Next);
 					}
 				}
 				if (byteCode.Operand is IList<Instruction> instrsOperand) {
+					StackAnalysis_BranchTargets.EnsureCapacity(instrsOperand.Count);
 					for (int i = 0; i < instrsOperand.Count; i++) {
 						ByteCode target = instrToByteCode[instrsOperand[i]];
-						branchTargets.Add(target);
+						StackAnalysis_BranchTargets.Add(target);
 						// The target of a branch must have label
 						if (target.Label == null) {
 							target.Label = new ILLabel() { Name = target.Name, Offset = target.Offset };
@@ -430,7 +433,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					}
 				} else if (byteCode.Operand is Instruction instrOperand) {
 					ByteCode target = instrToByteCode[instrOperand];
-					branchTargets.Add(target);
+					StackAnalysis_BranchTargets.Add(target);
 					// The target of a branch must have label
 					if (target.Label == null) {
 						target.Label = new ILLabel() { Name = target.Name, Offset = target.Offset };
@@ -438,12 +441,12 @@ namespace ICSharpCode.Decompiler.ILAst {
 				}
 
 				// Apply the state to successors
-				for (int i = 0; i < branchTargets.Count; i++) {
-					var branchTarget = branchTargets[i];
+				for (int i = 0; i < StackAnalysis_BranchTargets.Count; i++) {
+					var branchTarget = StackAnalysis_BranchTargets[i];
 					if (branchTarget == null)
 						continue;
 					if (branchTarget.StackBefore == null && branchTarget.VariablesBefore == null) {
-						if (branchTargets.Count == 1) {
+						if (StackAnalysis_BranchTargets.Count == 1) {
 							branchTarget.StackBefore = newStack;
 							branchTarget.VariablesBefore = newVariableState;
 						}
@@ -514,7 +517,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				int popCount = byteCode.PopCount >= 0 ? byteCode.PopCount : stackBeforeLength;
 				for (int j = stackBeforeLength - popCount; j < stackBeforeLength; j++) {
 					ILVariable tmpVar =
-						new ILVariable("arg_" + byteCode.Offset.ToString("X2") + "_" + argIdx.ToString()) {
+						new ILVariable($"arg_{byteCode.Offset:X2}_{argIdx}") {
 							GeneratedByDecompiler = true
 						};
 
@@ -587,7 +590,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					if (singleStore) {
 						// Great - we can reduce everything into single variable
 						ILVariable tmpVar =
-							new ILVariable("expr_" + byteCode.Offset.ToString("X2")) { GeneratedByDecompiler = true };
+							new ILVariable($"expr_{byteCode.Offset:X2}") { GeneratedByDecompiler = true };
 						locVars.Clear();
 						locVars.Add(tmpVar);
 						for (int j = 0; j < StackAnalysis_body.Count; j++) {
@@ -613,6 +616,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				var byteCode = StackAnalysis_body[i];
 				if (byteCode.Operand is IList<Instruction> instrsOp) {
 					StackAnalysis_List_ILLabel.Clear();
+					StackAnalysis_List_ILLabel.EnsureCapacity(instrsOp.Count);
 					for (int j = 0; j < instrsOp.Count; j++)
 						StackAnalysis_List_ILLabel.Add(instrToByteCode[instrsOp[j]].Label);
 					byteCode.Operand = StackAnalysis_List_ILLabel.ToArray();
@@ -761,7 +765,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				// If any of the uses is ldloca with a nondeterministic usage pattern, use  single variable
 				if (!optimize || varDef.Type is PinnedSig || uses.Any(b => b.VariablesBefore[varDef.Index].UnknownDefinition || (b.Code == ILCode.Ldloca && !IsDeterministicLdloca(b)))) {
 					newVars = new List<VariableInfo>(1) { new VariableInfo() {
-						Variable = new ILVariable(string.IsNullOrEmpty(varDef.Name) ? "var_" + varDef.Index : varDef.Name) {
+						Variable = new ILVariable(string.IsNullOrEmpty(varDef.Name) ? $"var_{varDef.Index}" : varDef.Name) {
 							Type = varDef.Type is PinnedSig ? ((PinnedSig)varDef.Type).Next : varDef.Type,
 							OriginalVariable = varDef
 						},
@@ -771,7 +775,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				} else {
 					// Create a new variable for each definition
 					newVars = defs.Select(def => new VariableInfo() {
-						Variable = new ILVariable((string.IsNullOrEmpty(varDef.Name) ? "var_" + varDef.Index : varDef.Name) + "_" + def.Offset.ToString("X2")) {
+						Variable = new ILVariable((string.IsNullOrEmpty(varDef.Name) ? $"var_{varDef.Index}" : varDef.Name) + "_" + def.Offset.ToString("X2")) {
 							Type = varDef.Type,
 							OriginalVariable = varDef
 					    },
@@ -832,7 +836,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				thisParameter.OriginalParameter = methodDef.Parameters[0];
 			}
 			foreach (Parameter p in methodDef.Parameters.SkipNonNormal()) {
-				this.Parameters.Add(new ILVariable(string.IsNullOrEmpty(p.Name) ? "A_" + p.Index.ToString() : p.Name) { Type = p.Type, OriginalParameter = p });
+				this.Parameters.Add(new ILVariable(string.IsNullOrEmpty(p.Name) ? $"A_{p.Index}" : p.Name) { Type = p.Type, OriginalParameter = p });
 			}
 			if (this.Parameters.Count > 0 && (methodDef.SemanticsAttributes & (MethodSemanticsAttributes.Setter | MethodSemanticsAttributes.AddOn | MethodSemanticsAttributes.RemoveOn)) != 0) {
 				// last parameter must be 'value', so rename it
@@ -972,7 +976,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				{
 					// The exception is just poped - optimize it all away;
 					if (context.Settings.AlwaysGenerateExceptionVariableForCatchBlocksUnlessTypeIsObject && (eh.CatchType != null && !eh.CatchType.IsSystemObject()))
-						catchBlock.ExceptionVariable = new ILVariable("ex_" + eh.HandlerStart.GetOffset().ToString("X2")) { GeneratedByDecompiler = true };
+						catchBlock.ExceptionVariable = new ILVariable($"ex_{eh.HandlerStart.GetOffset():X2}") { GeneratedByDecompiler = true };
 					else
 						catchBlock.ExceptionVariable = null;
 					if (context.CalculateILSpans)
@@ -982,8 +986,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 					catchBlock.ExceptionVariable = catchBlockExceptionVariable;
 				}
 			} else {
-				ILVariable exTemp = new ILVariable("ex_" + eh.HandlerStart.GetOffset().ToString("X2")) { GeneratedByDecompiler = true };
+				ILVariable exTemp = new ILVariable($"ex_{eh.HandlerStart.GetOffset():X2}") { GeneratedByDecompiler = true };
 				catchBlock.ExceptionVariable = exTemp;
+				catchBlock.Body.EnsureCapacity(ldexception.StoreTo.Count);
 				for (int i = 0; i < ldexception.StoreTo.Count; i++)
 					catchBlock.Body.Insert(0, new ILExpression(ILCode.Stloc, ldexception.StoreTo[i], new ILExpression(ILCode.Ldloc, exTemp)));
 			}
@@ -1047,7 +1052,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					ast.Add(new ILExpression(ILCode.Stloc, byteCode.StoreTo[0], expr));
 				}
 				else {
-					ILVariable tmpVar = new ILVariable("expr_" + byteCode.Offset.ToString("X2")) { GeneratedByDecompiler = true };
+					ILVariable tmpVar = new ILVariable($"expr_{byteCode.Offset:X2}") { GeneratedByDecompiler = true };
 					ast.Add(new ILExpression(ILCode.Stloc, tmpVar, expr));
 
 					for (int j = byteCode.StoreTo.Count - 1; j >= 0; j--)

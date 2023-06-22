@@ -1193,7 +1193,7 @@ namespace ICSharpCode.Decompiler.Ast {
 					return AstBuilder.MakePrimitive(0, typeDef, stringBuilder);
 				else if (!DnlibExtensions.IsValueType(typeDef))
 					return new NullReferenceExpression();
-				switch (typeDef.FullName) {
+				switch (FullNameFactory.FullName(typeDef, false, null, stringBuilder.Clear())) {
 					case "System.Nullable`1":
 						return new NullReferenceExpression();
 					case "System.Single":
@@ -1346,7 +1346,7 @@ namespace ICSharpCode.Decompiler.Ast {
 						}
 					}
 				}
-			} else if (methodDef != null && methodDef.Name == nameInvoke && methodDef.DeclaringType.BaseType != null && methodDef.DeclaringType.BaseType.FullName == "System.MulticastDelegate") {
+			} else if (methodDef != null && methodDef.Name == nameInvoke && methodDef.DeclaringType.BaseType != null && FullNameFactory.FullName(methodDef.DeclaringType.BaseType, false, null, stringBuilder.Clear()) == "System.MulticastDelegate") {
 				AdjustArgumentsForMethodCall(method, methodArgs);
 				return target.Invoke(methodArgs).WithAnnotation(method);
 			}
@@ -1581,7 +1581,9 @@ namespace ICSharpCode.Decompiler.Ast {
 					Expression = new UnaryOperatorExpression(UnaryOperatorType.Dereference, expr)
 				};
 			} else if (actualType is PtrSig && reqType is PtrSig) {
-				if (actualType.FullName != reqType.FullName)
+				var actualTypeName = FullNameFactory.FullName(actualType, false, null, null, null, stringBuilder.Clear());
+				var reqTypeName = FullNameFactory.FullName(actualType, false, null, null, null, stringBuilder.Clear());
+				if (actualTypeName != reqTypeName)
 					return expr.CastTo(AstBuilder.ConvertType(reqType, stringBuilder));
 				else
 					return expr;

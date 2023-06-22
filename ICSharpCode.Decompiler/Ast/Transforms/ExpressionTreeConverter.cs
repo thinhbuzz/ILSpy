@@ -69,7 +69,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			InvocationExpression invocation = expr as InvocationExpression;
 			if (invocation != null) {
 				IMethod mr = invocation.Annotation<IMethod>();
-				if (mr != null && mr.DeclaringType != null && mr.DeclaringType.FullName == "System.Linq.Expressions.Expression") {
+				if (mr != null && mr.DeclaringType != null && FullNameFactory.FullName(mr.DeclaringType, false, null, stringBuilder.Clear()) == "System.Linq.Expressions.Expression") {
 					switch (mr.Name) {
 						case "Add":
 							return ConvertBinaryOperator(invocation, BinaryOperatorType.Add, false);

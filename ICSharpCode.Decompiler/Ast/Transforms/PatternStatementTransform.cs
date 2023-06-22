@@ -1481,7 +1481,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			var combineMethod = m.Get<AstNode>("delegateCombine").Single().Parent.Annotation<IMethod>();
 			if (combineMethod == null || combineMethod.Name != (isAddAccessor ? "Combine" : "Remove"))
 				return false;
-			return combineMethod.DeclaringType != null && combineMethod.DeclaringType.FullName == "System.Delegate";
+			return combineMethod.DeclaringType != null && FullNameFactory.FullName(combineMethod.DeclaringType, false, null, stringBuilder.Clear()) == "System.Delegate";
 		}
 
 		EventDeclaration TransformAutomaticEvents(CustomEventDeclaration ev)

@@ -75,7 +75,10 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 		static readonly UTF8String systemString = new UTF8String("System");
 		static readonly UTF8String typeString = new UTF8String("Type");
 		static readonly UTF8String decimalString = new UTF8String("Decimal");
-		static readonly UTF8String activatortring = new UTF8String("Activator");
+		static readonly UTF8String activatorString = new UTF8String("Activator");
+		static readonly UTF8String createInstanceString = new UTF8String("CreateInstance");
+		static readonly UTF8String stringString = new UTF8String("String");
+		static readonly UTF8String concatString = new UTF8String("Concat");
 		static readonly UTF8String systemReflectionString = new UTF8String("System.Reflection");
 		static readonly UTF8String fieldInfoString = new UTF8String("FieldInfo");
 
@@ -88,7 +91,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			var arguments = invocationExpression.Arguments.ToArray();
 
 			// Reduce "String.Concat(a, b)" to "a + b"
-			if (methodRef.Name == "Concat" && methodRef.DeclaringType != null && arguments.Length >= 2 && methodRef.DeclaringType.FullName == "System.String")
+			if (methodRef.Name == concatString && methodRef.DeclaringType != null && arguments.Length >= 2 && CheckType(methodRef.DeclaringType, systemString, stringString))
 			{
 				invocationExpression.Arguments.Clear(); // detach arguments from invocationExpression
 				Expression expr = arguments[0];
@@ -102,7 +105,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				return;
 			}
 
-			if (methodRef.Name == "CreateInstance" && CheckType(methodRef.DeclaringType, systemString, activatortring) &&
+			if (methodRef.Name == createInstanceString && CheckType(methodRef.DeclaringType, systemString, activatorString) &&
 				arguments.Length == 0 && methodRef is MethodSpec spec && methodRef.NumberOfGenericParameters > 0 &&
 				spec.GenericInstMethodSig.GenericArguments[0] is GenericSig genSig &&
 				genSig.GenericParam.HasDefaultConstructorConstraint) {

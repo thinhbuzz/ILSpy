@@ -516,7 +516,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			if (typeDef.IsEnum) {
 				long expectedEnumMemberValue = 0;
 				bool forcePrintingInitializers = IsFlagsEnum(typeDef);
-				var enumType = typeDef.Fields.FirstOrDefault(f => !f.IsStatic);
+				var enumType = typeDef.GetEnumUnderlyingType();
 				for (int i = 0; i < typeDef.Fields.Count; i++) {
 					var field = typeDef.Fields[i];
 					if (!field.IsStatic) {
@@ -535,7 +535,7 @@ namespace ICSharpCode.Decompiler.Ast {
 							continue;
 						long memberValue = (long)CSharpPrimitiveCast.Cast(TypeCode.Int64, constant, false);
 						if (forcePrintingInitializers || memberValue != expectedEnumMemberValue) {
-							enumMember.AddChild(new PrimitiveExpression(ConvertConstant(enumType == null ? null : enumType.FieldSig.GetFieldType(), constant)), EnumMemberDeclaration.InitializerRole);
+							enumMember.AddChild(new PrimitiveExpression(ConvertConstant(enumType, constant)), EnumMemberDeclaration.InitializerRole);
 						}
 						expectedEnumMemberValue = memberValue + 1;
 						astType.AddChild(enumMember, Roles.TypeMemberRole);
@@ -595,15 +595,6 @@ namespace ICSharpCode.Decompiler.Ast {
 		static readonly UTF8String defaultMemberAttributeString = new UTF8String("DefaultMemberAttribute");
 		static readonly UTF8String systemString = new UTF8String("System");
 		static readonly UTF8String multicastDelegateString = new UTF8String("MulticastDelegate");
-
-		static void RemoveFirst<T>(IList<T> collection, int count) {
-			if (collection is List<T> list)
-				list.RemoveRange(0, count);
-			else {
-				for (int i = count - 1; i >= 0; i--)
-					collection.RemoveAt(i);
-			}
-		}
 
 		bool IsNormalDelegate(TypeDef td)
 		{
