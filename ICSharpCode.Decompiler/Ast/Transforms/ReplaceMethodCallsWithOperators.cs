@@ -90,8 +90,10 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			var builder = invocationExpression.Annotation<MethodDebugInfoBuilder>();
 			var arguments = invocationExpression.Arguments.ToArray();
 
+			bool isPartOfLdtoken = invocationExpression.Parent.Annotation<LdTokenAnnotation>() is not null;
+
 			// Reduce "String.Concat(a, b)" to "a + b"
-			if (methodRef.Name == concatString && methodRef.DeclaringType != null && arguments.Length >= 2 && CheckType(methodRef.DeclaringType, systemString, stringString) && invocationExpression.Annotation<LdTokenAnnotation>() is null)
+			if (methodRef.Name == concatString && methodRef.DeclaringType != null && arguments.Length >= 2 && CheckType(methodRef.DeclaringType, systemString, stringString) && !isPartOfLdtoken)
 			{
 				invocationExpression.Arguments.Clear(); // detach arguments from invocationExpression
 				Expression expr = arguments[0];
@@ -108,7 +110,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			if (methodRef.Name == createInstanceString && CheckType(methodRef.DeclaringType, systemString, activatorString) &&
 				arguments.Length == 0 && methodRef is MethodSpec spec && methodRef.NumberOfGenericParameters > 0 &&
 				spec.GenericInstMethodSig.GenericArguments[0] is GenericSig genSig &&
-				genSig.GenericParam.HasDefaultConstructorConstraint) {
+				genSig.GenericParam.HasDefaultConstructorConstraint && !isPartOfLdtoken) {
 				invocationExpression.ReplaceWith(
 					new ObjectCreateExpression(AstBuilder.ConvertType(spec.GenericInstMethodSig.GenericArguments[0], sb)).WithAnnotation(invocationExpression
 						.GetAllRecursiveILSpans()));
@@ -155,6 +157,9 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 
 					break;
 			}
+
+			if (isPartOfLdtoken)
+				return;
 
 			BinaryOperatorType? bop = GetBinaryOperatorTypeFromMetadataName(methodRef.Name);
 			if (bop != null && arguments.Length == 2) {
