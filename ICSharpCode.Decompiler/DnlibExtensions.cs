@@ -137,7 +137,7 @@ namespace ICSharpCode.Decompiler {
 					return instr.Operand is MemberRef memberRef && memberRef.Name == "Address" &&
 						   memberRef.DeclaringType is TypeSpec typeSpec && typeSpec.TypeSig.RemoveModifiers() is ArraySigBase;
 				}
-				return prefix == Code.Tailcall;
+				return prefix == Code.Constrained || prefix == Code.Tailcall;
 			case Code.Calli:
 				return prefix == Code.Tailcall;
 			case Code.Ldelema:
