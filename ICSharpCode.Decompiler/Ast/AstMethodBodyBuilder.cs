@@ -1582,7 +1582,7 @@ namespace ICSharpCode.Decompiler.Ast {
 				};
 			} else if (actualType is PtrSig && reqType is PtrSig) {
 				var actualTypeName = FullNameFactory.FullName(actualType, false, null, null, null, stringBuilder.Clear());
-				var reqTypeName = FullNameFactory.FullName(actualType, false, null, null, null, stringBuilder.Clear());
+				var reqTypeName = FullNameFactory.FullName(reqType, false, null, null, null, stringBuilder.Clear());
 				if (actualTypeName != reqTypeName)
 					return expr.CastTo(AstBuilder.ConvertType(reqType, stringBuilder));
 				else
