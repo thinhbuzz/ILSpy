@@ -91,7 +91,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			var arguments = invocationExpression.Arguments.ToArray();
 
 			// Reduce "String.Concat(a, b)" to "a + b"
-			if (methodRef.Name == concatString && methodRef.DeclaringType != null && arguments.Length >= 2 && CheckType(methodRef.DeclaringType, systemString, stringString))
+			if (methodRef.Name == concatString && methodRef.DeclaringType != null && arguments.Length >= 2 && CheckType(methodRef.DeclaringType, systemString, stringString) && invocationExpression.Annotation<LdTokenAnnotation>() is null)
 			{
 				invocationExpression.Arguments.Clear(); // detach arguments from invocationExpression
 				Expression expr = arguments[0];
