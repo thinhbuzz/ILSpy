@@ -23,7 +23,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 	/// <summary>
 	/// Add checked/unchecked blocks.
 	/// </summary>
-	public class AddCheckedBlocks : IAstTransformPoolObject
+	public sealed class AddCheckedBlocks : IAstTransformPoolObject
 	{
 		#region Annotation
 		sealed class CheckedUncheckedAnnotation {

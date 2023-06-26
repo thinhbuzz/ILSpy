@@ -68,7 +68,7 @@ namespace ICSharpCode.Decompiler.Ast {
 		Event,
 	}
 
-	public class AstBuilder
+	public sealed class AstBuilder
 	{
 		public DecompilerContext Context {
 			get { return context; }
@@ -331,9 +331,9 @@ namespace ICSharpCode.Decompiler.Ast {
 			if (!transformationsHaveRun)
 				RunTransformations();
 
-			syntaxTree.AcceptVisitor(new InsertParenthesesVisitor { InsertParenthesesForReadability = true });
+			syntaxTree.AcceptVisitor(new InsertParenthesesVisitor { InsertParenthesesForReadability = context.Settings.InsertParenthesesForReadability });
 			GenericGrammarAmbiguityVisitor.ResolveAmbiguities(syntaxTree);
-			var outputFormatter = new TextTokenWriter(output, context) { FoldBraces = false };
+			var outputFormatter = new TextTokenWriter(output, context) ;
 			var formattingPolicy = context.Settings.CSharpFormattingOptions;
 			syntaxTree.AcceptVisitor(new CSharpOutputVisitor(outputFormatter, formattingPolicy, context.CancellationToken));
 		}
@@ -534,7 +534,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			if (typeDef.IsEnum) {
 				long expectedEnumMemberValue = 0;
 				bool forcePrintingInitializers = IsFlagsEnum(typeDef);
-				var enumType = typeDef.Fields.FirstOrDefault(f => !f.IsStatic);
+				var enumType = typeDef.GetEnumUnderlyingType();
 				for (int i = 0; i < typeDef.Fields.Count; i++) {
 					var field = typeDef.Fields[i];
 					if (!field.IsStatic) {
@@ -553,7 +553,7 @@ namespace ICSharpCode.Decompiler.Ast {
 							continue;
 						long memberValue = (long)CSharpPrimitiveCast.Cast(TypeCode.Int64, constant, false);
 						if (forcePrintingInitializers || memberValue != expectedEnumMemberValue) {
-							enumMember.AddChild(new PrimitiveExpression(ConvertConstant(enumType == null ? null : enumType.FieldSig.GetFieldType(), constant)), EnumMemberDeclaration.InitializerRole);
+							enumMember.AddChild(new PrimitiveExpression(ConvertConstant(enumType, constant)), EnumMemberDeclaration.InitializerRole);
 						}
 						expectedEnumMemberValue = memberValue + 1;
 						astType.AddChild(enumMember, Roles.TypeMemberRole);
@@ -613,15 +613,6 @@ namespace ICSharpCode.Decompiler.Ast {
 		static readonly UTF8String defaultMemberAttributeString = new UTF8String("DefaultMemberAttribute");
 		static readonly UTF8String systemString = new UTF8String("System");
 		static readonly UTF8String multicastDelegateString = new UTF8String("MulticastDelegate");
-
-		static void RemoveFirst<T>(IList<T> collection, int count) {
-			if (collection is List<T> list)
-				list.RemoveRange(0, count);
-			else {
-				for (int i = count - 1; i >= 0; i--)
-					collection.RemoveAt(i);
-			}
-		}
 
 		bool IsNormalDelegate(TypeDef td)
 		{
@@ -716,27 +707,19 @@ namespace ICSharpCode.Decompiler.Ast {
 				return AstType.Null;
 			}
 
-			if (type is ByRefSig) {
+			if (type is ByRefSig byRefSig) {
 				typeIndex++;
-				// by reference type cannot be represented in C#; so we'll represent it as a pointer instead
-				return ConvertType((type as ByRefSig).Next, typeAttributes, ref typeIndex, options, depth, sb)
-					.MakePointerType();
-			} else if (type is PtrSig) {
+				return ConvertType(byRefSig.Next, typeAttributes, ref typeIndex, options, depth, sb).MakeRefType();
+			} else if (type is PtrSig ptrSig) {
 				typeIndex++;
-				return ConvertType((type as PtrSig).Next, typeAttributes, ref typeIndex, options, depth, sb)
-					.MakePointerType();
-			} else if (type is ArraySigBase) {
+				return ConvertType(ptrSig.Next, typeAttributes, ref typeIndex, options, depth, sb).MakePointerType();
+			} else if (type is ArraySigBase arraySig) {
 				typeIndex++;
-				return ConvertType((type as ArraySigBase).Next, typeAttributes, ref typeIndex, options, depth, sb)
-					.MakeArrayType((int)(type as ArraySigBase).Rank);
-			} else if (type is GenericInstSig) {
-				GenericInstSig gType = (GenericInstSig)type;
+				return ConvertType(arraySig.Next, typeAttributes, ref typeIndex, options, depth, sb).MakeArrayType((int)arraySig.Rank);
+			} else if (type is GenericInstSig gType) {
 				if (gType.GenericType != null && gType.GenericArguments.Count == 1 && gType.GenericType.IsSystemNullable()) {
 					typeIndex++;
-					return new ComposedType {
-						BaseType = ConvertType(gType.GenericArguments[0], typeAttributes, ref typeIndex, options, depth, sb),
-						HasNullableSpecifier = true
-					};
+					return ConvertType(gType.GenericArguments[0], typeAttributes, ref typeIndex, options, depth, sb).MakeNullableType();
 				}
 				AstType baseType = ConvertType(gType.GenericType?.TypeDefOrRef, typeAttributes, ref typeIndex, options & ~ConvertTypeOptions.IncludeTypeParameterDefinitions, depth, sb);
 				List<AstType> typeArguments = new List<AstType>(gType.GenericArguments.Count);
@@ -746,13 +729,12 @@ namespace ICSharpCode.Decompiler.Ast {
 				}
 				ApplyTypeArgumentsTo(baseType, typeArguments);
 				return baseType;
-			} else if (type is GenericSig) {
-				var sig = (GenericSig)type;
-				var simpleType = new SimpleType(sig.GetName(sb)).WithAnnotation(sig.GenericParam).WithAnnotation(type);
-				simpleType.IdentifierToken.WithAnnotation(sig.GenericParam).WithAnnotation(type);
+			} else if (type is GenericSig sig) {
+				var simpleType = new SimpleType(sig.GetName(sb)).WithAnnotation(sig.GenericParam).WithAnnotation(sig);
+				simpleType.IdentifierToken.WithAnnotation(sig.GenericParam).WithAnnotation(sig);
 				return simpleType;
-			} else if (type is TypeDefOrRefSig) {
-				return ConvertType(((TypeDefOrRefSig)type).TypeDefOrRef, typeAttributes, ref typeIndex, options, depth, sb);
+			} else if (type is TypeDefOrRefSig typeDefOrRefSig) {
+				return ConvertType(typeDefOrRefSig.TypeDefOrRef, typeAttributes, ref typeIndex, options, depth, sb);
 			} else if (type is ModifierSig modifierSig) {
 				typeIndex++;
 				return ConvertType(modifierSig.Next, typeAttributes, ref typeIndex, options, depth, sb);
@@ -1244,7 +1226,6 @@ namespace ICSharpCode.Decompiler.Ast {
 			EntityDeclaration returnValue = astMethod;
 			astMethod.AddAnnotation(methodDef);
 			astMethod.ReturnType = ConvertType(methodDef.ReturnType, stringBuilder, methodDef.Parameters.ReturnParameter.ParamDef);
-			bool isRefReturnType = methodDef.ReturnType.RemovePinnedAndModifiers().GetElementType() == ElementType.ByRef && UndoByRefToPointer(astMethod.ReturnType);
 			string name = methodDef.Name;
 			if (IsExplicitInterfaceImplementation(methodDef)) {
 				var lastDot = name.LastIndexOf('.');
@@ -1311,8 +1292,6 @@ namespace ICSharpCode.Decompiler.Ast {
 				AddComment(op, methodDef);
 				return op;
 			}
-			if (isRefReturnType)
-				astMethod.Modifiers |= Modifiers.Ref;
 			if (DnlibExtensions.HasIsReadOnlyAttribute(methodDef.Parameters.ReturnParameter.ParamDef))
 				astMethod.Modifiers |= Modifiers.Readonly;
 			AddComment(returnValue, methodDef);
@@ -1444,7 +1423,6 @@ namespace ICSharpCode.Decompiler.Ast {
 			}
 			astProp.NameToken = Identifier.Create(name).WithAnnotation(propDef);
 			astProp.ReturnType = ConvertType(propDef.PropertySig.GetRetType(), stringBuilder, propDef);
-			bool isRefReturnType = propDef.PropertySig.GetRetType().RemovePinnedAndModifiers().GetElementType() == ElementType.ByRef && UndoByRefToPointer(astProp.ReturnType);
 
 			if (propDef.GetMethod != null) {
 				astProp.Getter = new Accessor();
@@ -1490,8 +1468,6 @@ namespace ICSharpCode.Decompiler.Ast {
 			if(accessor != null && !accessor.HasOverrides && accessor.DeclaringType != null && !accessor.DeclaringType.IsInterface)
 				if (accessor.IsVirtual == accessor.IsNewSlot)
 					SetNewModifier(member);
-			if (isRefReturnType)
-				astProp.Modifiers |= Modifiers.Ref;
 			if (accessor is not null && DnlibExtensions.HasIsReadOnlyAttribute(accessor.Parameters.ReturnParameter.ParamDef))
 				astProp.Modifiers |= Modifiers.Readonly;
 			if (propDef.SetMethod != null)
@@ -1696,7 +1672,7 @@ namespace ICSharpCode.Decompiler.Ast {
 							continue;
 						var parameter = p.Annotation<Parameter>();
 						var astType = ConvertType(parameter.Type, stringBuilder, parameter.ParamDef);
-						UndoByRefToPointer(astType);
+						UndoRefSpecifier(astType);
 						var defVal = new DefaultValueExpression(astType);
 						var stmt = new ExpressionStatement(new AssignmentExpression(new IdentifierExpression(p.Name), defVal));
 						bs.Statements.Add(stmt);
@@ -1902,8 +1878,51 @@ namespace ICSharpCode.Decompiler.Ast {
 			}
 			ConvertAttributes(Context.MetadataTextColorProvider, astField, fieldDef, context.Settings, stringBuilder);
 			SetNewModifier(astField);
+
+			if (fieldDef.HasFieldRVA) {
+				var c = GetInitialValueConstant(fieldDef);
+				string commentText = c is not null
+					? $" Note: this field is marked with 'hasfieldrva' and has an initial value of '{c}'."
+					: " Note: this field is marked with 'hasfieldrva'.";
+				astField.InsertChildAfter(null, new Comment(commentText), Roles.Comment);
+			}
+
 			AddComment(astField, fieldDef);
 			return astField;
+		}
+
+		static object GetInitialValueConstant(FieldDef fld) {
+			byte[] initVal = fld.InitialValue;
+			if (initVal is null)
+				return null;
+			switch (fld.FieldType.RemovePinnedAndModifiers().GetElementType()) {
+			case ElementType.Boolean when initVal.Length == 1:
+				return initVal[0] != 0;
+			case ElementType.Char when initVal.Length == 2:
+				return BitConverter.ToChar(initVal, 0);
+			case ElementType.I1 when initVal.Length == 1:
+				return (sbyte)initVal[0];
+			case ElementType.U1 when initVal.Length == 1:
+				return initVal[0];
+			case ElementType.I2 when initVal.Length == 2:
+				return BitConverter.ToInt16(initVal, 0);
+			case ElementType.U2 when initVal.Length == 2:
+				return BitConverter.ToUInt16(initVal, 0);
+			case ElementType.I4 when initVal.Length == 4:
+				return BitConverter.ToInt32(initVal, 0);
+			case ElementType.U4 when initVal.Length == 4:
+				return BitConverter.ToUInt32(initVal, 0);
+			case ElementType.I8 when initVal.Length == 8:
+				return BitConverter.ToInt64(initVal, 0);
+			case ElementType.U8 when initVal.Length == 8:
+				return BitConverter.ToUInt64(initVal, 0);
+			case ElementType.R4 when initVal.Length == 4:
+				return BitConverter.ToSingle(initVal, 0);
+			case ElementType.R8 when initVal.Length == 8:
+				return BitConverter.ToDouble(initVal, 0);
+			default:
+				return null;
+			}
 		}
 
 		static object ConvertConstant(TypeSig type, object constant)
@@ -1976,13 +1995,9 @@ namespace ICSharpCode.Decompiler.Ast {
 			}
 		}
 
-		internal static bool UndoByRefToPointer(AstType type) {
-			var ct = type as ComposedType;
-			if (ct != null && ct.PointerRank > 0) {
-				ct.PointerRank--;
-				return true;
-			}
-			return false;
+		internal static void UndoRefSpecifier(AstType type) {
+			if (type is ComposedType ct && ct.HasRefSpecifier)
+				ct.HasRefSpecifier = false;
 		}
 
 		static IEnumerable<ParameterDeclaration> MakeParameters(MetadataTextColorProvider metadataTextColorProvider, IList<Parameter> paramCol, DecompilerSettings settings, StringBuilder sb, bool isLambda = false) {
@@ -2008,7 +2023,7 @@ namespace ICSharpCode.Decompiler.Ast {
 						astParam.ParameterModifier = ParameterModifier.In;
 					else
 						astParam.ParameterModifier = ParameterModifier.Ref;
-					UndoByRefToPointer(astParam.Type);
+					UndoRefSpecifier(astParam.Type);
 				}
 
 				if (paramDef.HasParamDef) {
@@ -2213,18 +2228,22 @@ namespace ICSharpCode.Decompiler.Ast {
 						}
 						if (customAttribute.HasNamedArguments) {
 							TypeDef resolvedAttributeType = attributeType.ResolveTypeDef();
-							foreach (var propertyNamedArg in customAttribute.Properties) {
-								var propertyReference = GetProperty(resolvedAttributeType, propertyNamedArg.Name);
-								var propertyName = IdentifierExpression.Create(propertyNamedArg.Name, metadataTextColorProvider.GetColor((object)propertyReference ?? BoxedTextColor.InstanceProperty), true).WithAnnotation(propertyReference);
-								var argumentValue = ConvertArgumentValue(propertyNamedArg.Argument, sb);
-								attribute.Arguments.Add(new AssignmentExpression(propertyName, argumentValue));
-							}
 
-							foreach (var fieldNamedArg in customAttribute.Fields) {
-								var fieldReference = GetField(resolvedAttributeType, fieldNamedArg.Name);
-								var fieldName = IdentifierExpression.Create(fieldNamedArg.Name, metadataTextColorProvider.GetColor((object)fieldReference ?? BoxedTextColor.InstanceField), true).WithAnnotation(fieldReference);
-								var argumentValue = ConvertArgumentValue(fieldNamedArg.Argument, sb);
-								attribute.Arguments.Add(new AssignmentExpression(fieldName, argumentValue));
+							for (var i = 0; i < customAttribute.NamedArguments.Count; i++) {
+								var namedArgument = customAttribute.NamedArguments[i];
+
+								IdentifierExpression memberName;
+								if (namedArgument.IsField) {
+									var fieldReference = GetField(resolvedAttributeType, namedArgument.Name);
+									memberName = IdentifierExpression.Create(namedArgument.Name, metadataTextColorProvider.GetColor((object)fieldReference ?? BoxedTextColor.InstanceField), true).WithAnnotation(fieldReference);
+								}
+								else {
+									var propertyReference = GetProperty(resolvedAttributeType, namedArgument.Name);
+									memberName = IdentifierExpression.Create(namedArgument.Name, metadataTextColorProvider.GetColor((object)propertyReference ?? BoxedTextColor.InstanceProperty), true).WithAnnotation(propertyReference);
+								}
+
+								var argumentValue = ConvertArgumentValue(namedArgument.Argument, sb);
+								attribute.Arguments.Add(new AssignmentExpression(memberName, argumentValue));
 							}
 						}
 					}

@@ -57,9 +57,10 @@ namespace ICSharpCode.Decompiler.ILAst {
 			get { return false; }
 		}
 
-		public IEnumerable<ILSpan> GetSelfAndChildrenRecursiveILSpans()
-		{
-			foreach (var node in GetSelfAndChildrenRecursive<ILNode>()) {
+		public IEnumerable<ILSpan> GetSelfAndChildrenRecursiveILSpans() {
+			var list = GetSelfAndChildrenRecursive<ILNode>();
+			for (int i = 0; i < list.Count; i++) {
+				var node = list[i];
 				long index = 0;
 				bool done = false;
 				for (;;) {
@@ -71,9 +72,10 @@ namespace ICSharpCode.Decompiler.ILAst {
 			}
 		}
 
-		public void AddSelfAndChildrenRecursiveILSpans(List<ILSpan> coll)
-		{
-			foreach (var a in GetSelfAndChildrenRecursive<ILNode>()) {
+		public void AddSelfAndChildrenRecursiveILSpans(List<ILSpan> coll) {
+			var list = GetSelfAndChildrenRecursive<ILNode>();
+			for (int i = 0; i < list.Count; i++) {
+				var a = list[i];
 				long index = 0;
 				bool done = false;
 				for (;;) {
@@ -129,9 +131,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 		public bool HasChildren {
 			get {
-				foreach (var c in GetChildren())
-					return true;
-				return false;
+				int index = 0;
+				return GetNext(ref index) is not null;
 			}
 		}
 
@@ -197,7 +198,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		{
 			var output = new StringBuilderDecompilerOutput();
 			WriteTo(output, null);
-			return output.ToString().Replace("\r\n", "; ");
+			return output.ToString();
 		}
 
 		public abstract void WriteTo(IDecompilerOutput output, MethodDebugInfoBuilder builder);
@@ -206,8 +207,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 		{
 			if (builder == null)
 				return;
-			foreach (var ilSpan in ILSpan.OrderAndCompact(ranges))
-				builder.Add(new SourceStatement(ilSpan, new TextSpan(startLoc, endLoc - startLoc)));
+			var list = ILSpan.OrderAndCompact(ranges);
+			for (int i = 0; i < list.Count; i++)
+				builder.Add(new SourceStatement(list[i], new TextSpan(startLoc, endLoc - startLoc)));
 		}
 
 		protected readonly struct BraceInfo {
@@ -344,12 +346,12 @@ namespace ICSharpCode.Decompiler.ILAst {
 	}
 
 	// Body has to start with a label and end with unconditional control flow
-	public class ILBasicBlock: ILBlockBase
+	public sealed class ILBasicBlock: ILBlockBase
 	{
 		protected override CodeBracesRangeFlags CodeBracesRangeFlags => CodeBracesRangeFlags.OtherBlockBraces;
 	}
 
-	public class ILLabel: ILNode
+	public sealed class ILLabel: ILNode
 	{
 		public string Name;
 		public uint Offset = uint.MaxValue;
@@ -369,7 +371,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		}
 	}
 
-	public class ILTryCatchBlock: ILNode
+	public sealed class ILTryCatchBlock: ILNode
 	{
 		public abstract class CatchBlockBase: ILBlock {
 			public TypeSig ExceptionType;
@@ -394,7 +396,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				return default(ILSpan);
 			}
 		}
-		public class CatchBlock: CatchBlockBase
+		public sealed class CatchBlock: CatchBlockBase
 		{
 			public FilterILBlock FilterBlock;
 			protected override CodeBracesRangeFlags CodeBracesRangeFlags => CodeBracesRangeFlags.CatchBraces;
@@ -428,7 +430,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 				base.WriteTo(output, builder);
 			}
 		}
-		public class FilterILBlock: CatchBlockBase
+		public sealed class FilterILBlock: CatchBlockBase
 		{
 			protected override CodeBracesRangeFlags CodeBracesRangeFlags => CodeBracesRangeFlags.FilterBraces;
 			public FilterILBlock(bool calculateILSpans, List<ILNode> body) : base(calculateILSpans, body)
@@ -491,9 +493,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 			output.Write(".try", BoxedTextColor.Keyword);
 			output.Write(" ", BoxedTextColor.Text);
 			TryBlock.WriteTo(output, builder, ILSpans);
-			foreach (CatchBlock block in CatchBlocks) {
-				block.WriteTo(output, builder);
-			}
+			for (int i = 0; i < CatchBlocks.Count; i++)
+				CatchBlocks[i].WriteTo(output, builder);
 			if (FaultBlock != null) {
 				output.Write("fault", BoxedTextColor.Keyword);
 				output.Write(" ", BoxedTextColor.Text);
@@ -507,7 +508,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		}
 	}
 
-	public class ILVariable
+	public sealed class ILVariable
 	{
 		[Flags]
 		enum Flags : byte {
@@ -586,7 +587,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		}
 	}
 
-	public class ILExpressionPrefix
+	public sealed class ILExpressionPrefix
 	{
 		public readonly ILCode Code;
 		public readonly object Operand;
@@ -598,7 +599,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		}
 	}
 
-	public class ILExpression : ILNode
+	public sealed class ILExpression : ILNode
 	{
 		public ILCode Code { get; set; }
 		public object Operand { get; set; }
@@ -799,21 +800,24 @@ namespace ICSharpCode.Decompiler.ILAst {
 				}
 				first = false;
 			}
-			foreach (ILExpression arg in this.Arguments) {
+
+			for (int i = 0; i < this.Arguments.Count; i++) {
 				if (!first) {
 					output.Write(",", BoxedTextColor.Punctuation);
 					output.Write(" ", BoxedTextColor.Text);
 				}
-				arg.WriteTo(output, null);
+
+				this.Arguments[i].WriteTo(output, null);
 				first = false;
 			}
+
 			output.Write(")", BoxedTextColor.Punctuation);
 			output.AddBracePair(new TextSpan(parenStart, 1), new TextSpan(output.Length - 1, 1), CodeBracesRangeFlags.Parentheses);
 			UpdateDebugInfo(builder, startLoc, output.NextPosition, this.GetSelfAndChildrenRecursiveILSpans());
 		}
 	}
 
-	public class ILWhileLoop : ILNode
+	public sealed class ILWhileLoop : ILNode
 	{
 		public ILExpression Condition;
 		public ILBlock      BodyBlock;
@@ -853,7 +857,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		}
 	}
 
-	public class ILCondition : ILNode
+	public sealed class ILCondition : ILNode
 	{
 		public ILExpression Condition;
 		public ILBlock TrueBlock;   // Branch was taken
@@ -902,7 +906,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		}
 	}
 
-	public class ILSwitch: ILNode
+	public sealed class ILSwitch: ILNode
 	{
 		public class CaseBlock: ILBlock
 		{
@@ -912,10 +916,10 @@ namespace ICSharpCode.Decompiler.ILAst {
 			public override void WriteTo(IDecompilerOutput output, MethodDebugInfoBuilder builder)
 			{
 				if (this.Values != null) {
-					foreach (int i in this.Values) {
+					for (int i = 0; i < this.Values.Count; i++) {
 						output.Write("case", BoxedTextColor.Keyword);
 						output.Write(" ", BoxedTextColor.Text);
-						output.Write(string.Format("{0}", i), BoxedTextColor.Number);
+						output.Write(string.Format("{0}", this.Values[i]), BoxedTextColor.Number);
 						output.WriteLine(":", BoxedTextColor.Punctuation);
 					}
 				} else {
@@ -977,14 +981,13 @@ namespace ICSharpCode.Decompiler.ILAst {
 			UpdateDebugInfo(builder, startLoc, output.NextPosition, ilSpans);
 			output.Write(" ", BoxedTextColor.Text);
 			var info = WriteHiddenStart(output, builder);
-			foreach (CaseBlock caseBlock in this.CaseBlocks) {
-				caseBlock.WriteTo(output, builder);
-			}
+			for (int i = 0; i < this.CaseBlocks.Count; i++)
+				this.CaseBlocks[i].WriteTo(output, builder);
 			WriteHiddenEnd(output, builder, info, CodeBracesRangeFlags.SwitchBraces);
 		}
 	}
 
-	public class ILFixedStatement : ILNode
+	public sealed class ILFixedStatement : ILNode
 	{
 		public List<ILExpression> Initializers = new List<ILExpression>(1);
 		public ILBlock      BodyBlock;
@@ -1018,8 +1021,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 			output.Write(")", BoxedTextColor.Punctuation);
 			output.AddBracePair(new TextSpan(parenStart, 1), new TextSpan(output.Length - 1, 1), CodeBracesRangeFlags.Parentheses);
 			var ilSpans = new List<ILSpan>(ILSpans);
-			foreach (var i in Initializers)
-				i.AddSelfAndChildrenRecursiveILSpans(ilSpans);
+			for (int i = 0; i < Initializers.Count; i++)
+				Initializers[i].AddSelfAndChildrenRecursiveILSpans(ilSpans);
 			UpdateDebugInfo(builder, startLoc, output.NextPosition, ilSpans);
 			output.Write(" ", BoxedTextColor.Text);
 			this.BodyBlock.WriteTo(output, builder);

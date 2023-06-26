@@ -21,7 +21,7 @@ using dnlib.DotNet;
 using ICSharpCode.NRefactory.CSharp;
 
 namespace ICSharpCode.Decompiler.Ast.Transforms {
-	public class IntroduceUnsafeModifier : DepthFirstAstVisitor<object, bool>, IAstTransformPoolObject
+	public sealed class IntroduceUnsafeModifier : DepthFirstAstVisitor<object, bool>, IAstTransformPoolObject
 	{
 		public static readonly object PointerArithmeticAnnotation = new PointerArithmetic();
 

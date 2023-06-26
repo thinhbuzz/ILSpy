@@ -34,7 +34,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 	/// For anonymous methods, creates an AnonymousMethodExpression.
 	/// Also gets rid of any "Display Classes" left over after inlining an anonymous method.
 	/// </summary>
-	public class DelegateConstruction : ContextTrackingVisitor<object>, IAstTransformPoolObject
+	public sealed class DelegateConstruction : ContextTrackingVisitor<object>, IAstTransformPoolObject
 	{
 		internal sealed class Annotation
 		{
@@ -187,11 +187,11 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 		{
 			if (method.ReturnType.ContainsAnonymousType())
 				return true;
-			foreach (var p in method.Parameters)
-			{
-				if (p.Type.ContainsAnonymousType())
+			for (int i = 0; i < method.Parameters.Count; i++) {
+				if (method.Parameters[i].Type.ContainsAnonymousType())
 					return true;
 			}
+
 			return false;
 		}
 
@@ -417,7 +417,9 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 		public override object VisitBlockStatement(BlockStatement blockStatement, object data)
 		{
 			base.VisitBlockStatement(blockStatement, data);
-			foreach (ExpressionStatement stmt in blockStatement.Statements.OfType<ExpressionStatement>().ToArray()) {
+			var expressionStatements = blockStatement.Statements.OfType<ExpressionStatement>().ToArray();
+			for (int i = 0; i < expressionStatements.Length; i++) {
+				ExpressionStatement stmt = expressionStatements[i];
 				Match displayClassAssignmentMatch = displayClassAssignmentPattern.Match(stmt);
 				if (!displayClassAssignmentMatch.Success)
 					continue;
@@ -525,23 +527,24 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 
 				// Now create variables for all fields of the display class (except for those that we already handled as parameters)
 				List<Tuple<AstType, ILVariable>> variablesToDeclare = new List<Tuple<AstType, ILVariable>>();
-				foreach (FieldDef field in type.Fields) {
+				for (int j = 0; j < type.Fields.Count; j++) {
+					var field = type.Fields[j];
 					if (field.IsStatic)
 						continue; // skip static fields
 					if (dict.ContainsKey(field)) // skip field if it already was handled as parameter
 						continue;
 					string capturedVariableName = field.Name;
-					if (capturedVariableName.StartsWith("$VB$Local_", StringComparison.Ordinal) && capturedVariableName.Length > 10)
+					if (capturedVariableName.StartsWith("$VB$Local_", StringComparison.Ordinal) &&
+						capturedVariableName.Length > 10)
 						capturedVariableName = capturedVariableName.Substring(10);
 					EnsureVariableNameIsAvailable(blockStatement, capturedVariableName);
 					currentlyUsedVariableNames.Add(capturedVariableName);
-					ILVariable ilVar = new ILVariable(capturedVariableName)
-					{
-						GeneratedByDecompiler = true,
-						Type = field.FieldType,
-					};
-					variablesToDeclare.Add(Tuple.Create(AstBuilder.ConvertType(field.FieldType, stringBuilder, field), ilVar));
-					dict[field] = IdentifierExpression.Create(capturedVariableName, BoxedTextColor.Local).WithAnnotation(ilVar);
+					ILVariable ilVar =
+						new ILVariable(capturedVariableName) { GeneratedByDecompiler = true, Type = field.FieldType, };
+					variablesToDeclare.Add(Tuple.Create(AstBuilder.ConvertType(field.FieldType, stringBuilder, field),
+						ilVar));
+					dict[field] = IdentifierExpression.Create(capturedVariableName, BoxedTextColor.Local)
+						.WithAnnotation(ilVar);
 				}
 
 				// Now figure out where the closure was accessed and use the simpler replacement expression there:
@@ -572,7 +575,8 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				}
 				// Now insert the variable declarations (we can do this after the replacements only so that the scope detection works):
 				Statement insertionPoint = blockStatement.Statements.FirstOrDefault();
-				foreach (var tuple in variablesToDeclare) {
+				for (int j = 0; j < variablesToDeclare.Count; j++) {
+					var tuple = variablesToDeclare[j];
 					var newVarDecl = new VariableDeclarationStatement(tuple.Item2.IsParameter ? BoxedTextColor.Parameter : BoxedTextColor.Local, tuple.Item1, tuple.Item2.Name);
 					newVarDecl.Variables.Single().AddAnnotation(CapturedVariableAnnotation.Instance);
 					newVarDecl.Variables.Single().AddAnnotation(tuple.Item2);
@@ -592,8 +596,8 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			// Naming conflict. Let's rename the existing variable so that the field keeps the name from metadata.
 			NameVariables nv = new NameVariables(stringBuilder);
 			// Add currently used variable and parameter names
-			foreach (string nameInUse in currentlyUsedVariableNames)
-				nv.AddExistingName(nameInUse);
+			for (int i = 0; i < currentlyUsedVariableNames.Count; i++)
+				nv.AddExistingName(currentlyUsedVariableNames[i]);
 			// variables declared in child nodes of this block
 			foreach (VariableInitializer vi in currentNode.Descendants.OfType<VariableInitializer>())
 				nv.AddExistingName(vi.Name);

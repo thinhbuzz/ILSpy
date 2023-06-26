@@ -137,7 +137,7 @@ namespace ICSharpCode.Decompiler {
 					return instr.Operand is MemberRef memberRef && memberRef.Name == "Address" &&
 						   memberRef.DeclaringType is TypeSpec typeSpec && typeSpec.TypeSig.RemoveModifiers() is ArraySigBase;
 				}
-				return prefix == Code.Tailcall;
+				return prefix == Code.Constrained || prefix == Code.Tailcall;
 			case Code.Calli:
 				return prefix == Code.Tailcall;
 			case Code.Ldelema:
@@ -696,5 +696,22 @@ namespace ICSharpCode.Decompiler {
 			}
 			return null;
 		}
+
+		#if NETFRAMEWORK
+		public static void EnsureCapacity<T>(this List<T> list, int capacity) {
+			if (list.Capacity >= capacity)
+				return;
+
+			const int ArrayMaxLength = 0X7FFFFFC7;
+
+			int newCapacity = list.Capacity == 0 ? 4 : list.Capacity * 2;
+			if ((uint)newCapacity > ArrayMaxLength)
+				newCapacity = ArrayMaxLength;
+			if (newCapacity < capacity)
+				newCapacity = capacity;
+
+			list.Capacity = newCapacity;
+		}
+		#endif
 	}
 }

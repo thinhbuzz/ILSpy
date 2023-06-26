@@ -26,7 +26,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 	/// <summary>
 	/// Converts extension method calls into infix syntax.
 	/// </summary>
-	public class IntroduceExtensionMethods : IAstTransformPoolObject
+	public sealed class IntroduceExtensionMethods : IAstTransformPoolObject
 	{
 		readonly StringBuilder stringBuilder;
 

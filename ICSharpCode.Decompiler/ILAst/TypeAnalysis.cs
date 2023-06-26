@@ -393,12 +393,14 @@ namespace ICSharpCode.Decompiler.ILAst {
 							if (expr.Code == ILCode.CallReadOnlySetter && expr.Arguments.Count == 2 && method.MethodSig.HasThis && parameters.Count == 0) {
 								var resolved = method.ResolveMethodDef();
 								if (resolved is not null && resolved.IsGetter && resolved.DeclaringType is not null) {
-									foreach (var def in resolved.DeclaringType.Properties) {
+									for (int i = 0; i < resolved.DeclaringType.Properties.Count; i++) {
+										var def = resolved.DeclaringType.Properties[i];
 										if (def.GetMethod != resolved)
 											continue;
 										if (def.PropertySig?.RetType is null)
 											continue;
-										InferTypeForExpression(expr.Arguments[1], SubstituteTypeArgs(def.PropertySig.RetType, method: method));
+										InferTypeForExpression(expr.Arguments[1],
+											SubstituteTypeArgs(def.PropertySig.RetType, method: method));
 										break;
 									}
 								}

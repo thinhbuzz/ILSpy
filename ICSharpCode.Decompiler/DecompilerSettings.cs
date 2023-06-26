@@ -568,6 +568,17 @@ namespace ICSharpCode.Decompiler {
 		}
 		bool emitCalliAsInvocationExpression = false;
 
+		public bool InsertParenthesesForReadability {
+			get { return insertParenthesesForReadability; }
+			set {
+				if (insertParenthesesForReadability != value) {
+					insertParenthesesForReadability = value;
+					OnPropertyChanged(nameof(InsertParenthesesForReadability));
+				}
+			}
+		}
+		bool insertParenthesesForReadability = true;
+
 		CSharpFormattingOptions csharpFormattingOptions;
 
 		public CSharpFormattingOptions CSharpFormattingOptions {
@@ -652,6 +663,7 @@ namespace ICSharpCode.Decompiler {
 			if (RemoveNewDelegateClass != other.RemoveNewDelegateClass) return false;
 			if (HexadecimalNumbers != other.HexadecimalNumbers) return false;
 			if (EmitCalliAsInvocationExpression != other.EmitCalliAsInvocationExpression) return false;
+			if (InsertParenthesesForReadability != other.InsertParenthesesForReadability) return false;
 			if (!CSharpFormattingOptions.Equals(other.CSharpFormattingOptions)) return false;
 
 			return true;
@@ -699,6 +711,7 @@ namespace ICSharpCode.Decompiler {
 				h ^= RemoveNewDelegateClass			? 0 : 0x00000001U;
 				h ^= HexadecimalNumbers				? 0 : 0x00000002U;
 				h ^= EmitCalliAsInvocationExpression ? 0 : 0x00000004U;
+				h ^= InsertParenthesesForReadability ? 0 : 0x00000008U;
 
 				for (int i = 0; i < decompilationObjects.Length; i++)
 					h ^= (uint)decompilationObjects[i] << (i * 8);
@@ -754,6 +767,7 @@ namespace ICSharpCode.Decompiler {
 			other.RemoveNewDelegateClass = this.RemoveNewDelegateClass;
 			other.HexadecimalNumbers = this.HexadecimalNumbers;
 			other.EmitCalliAsInvocationExpression = this.EmitCalliAsInvocationExpression;
+			other.InsertParenthesesForReadability = this.InsertParenthesesForReadability;
 			if (!this.CSharpFormattingOptions.Equals(other.CSharpFormattingOptions)) {
 				this.CSharpFormattingOptions.CopyTo(other.CSharpFormattingOptions);
 				other.OnPropertyChanged(nameof(other.CSharpFormattingOptions));

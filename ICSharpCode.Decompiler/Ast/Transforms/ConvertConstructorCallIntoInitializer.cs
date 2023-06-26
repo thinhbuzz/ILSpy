@@ -30,7 +30,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 	/// <summary>
 	/// If the first element of a constructor is a chained constructor call, convert it into a constructor initializer.
 	/// </summary>
-	public class ConvertConstructorCallIntoInitializer : DepthFirstAstVisitor<object, object>, IAstTransformPoolObject
+	public sealed class ConvertConstructorCallIntoInitializer : DepthFirstAstVisitor<object, object>, IAstTransformPoolObject
 	{
 		DecompilerContext context;
 

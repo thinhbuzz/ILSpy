@@ -362,11 +362,12 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			blocks.Reverse(); // go from parent blocks to child blocks
 			DefiniteAssignmentAnalysis daa = new DefiniteAssignmentAnalysis(blocks[0], context.CancellationToken);
 			declarationPoint = null;
-			foreach (BlockStatement block in blocks) {
-				if (!DeclareVariables.FindDeclarationPoint(daa, varDecl, block, out declarationPoint, context.CancellationToken)) {
+			for (int i = 0; i < blocks.Count; i++) {
+				if (!DeclareVariables.FindDeclarationPoint(daa, varDecl, blocks[i], out declarationPoint, context.CancellationToken)) {
 					return false;
 				}
 			}
+
 			return true;
 		}
 
@@ -1140,12 +1141,13 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			foreach (SwitchSection section in sw.SwitchSections) {
 				List<CaseLabel> labels = section.CaseLabels.ToList();
 				section.CaseLabels.Clear();
-				foreach (CaseLabel label in labels) {
-					PrimitiveExpression expr = label.Expression as PrimitiveExpression;
+				for (int i = 0; i < labels.Count; i++) {
+					PrimitiveExpression expr = labels[i].Expression as PrimitiveExpression;
 					if (expr == null || !(expr.Value is int))
 						continue;
 					int val = (int)expr.Value;
-					foreach (var pair in dict) {
+					for (int j = 0; j < dict.Count; j++) {
+						var pair = dict[j];
 						if (pair.Value == val)
 							section.CaseLabels.Add(new CaseLabel { Expression = new PrimitiveExpression(pair.Key) });
 					}
@@ -1479,7 +1481,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			var combineMethod = m.Get<AstNode>("delegateCombine").Single().Parent.Annotation<IMethod>();
 			if (combineMethod == null || combineMethod.Name != (isAddAccessor ? "Combine" : "Remove"))
 				return false;
-			return combineMethod.DeclaringType != null && combineMethod.DeclaringType.FullName == "System.Delegate";
+			return combineMethod.DeclaringType != null && FullNameFactory.FullName(combineMethod.DeclaringType, false, null, stringBuilder.Clear()) == "System.Delegate";
 		}
 
 		EventDeclaration TransformAutomaticEvents(CustomEventDeclaration ev)

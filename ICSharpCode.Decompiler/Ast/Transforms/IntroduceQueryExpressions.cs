@@ -28,7 +28,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 	/// Decompiles query expressions.
 	/// Based on C# 4.0 spec, §7.16.2 Query expression translation
 	/// </summary>
-	public class IntroduceQueryExpressions : IAstTransformPoolObject
+	public sealed class IntroduceQueryExpressions : IAstTransformPoolObject
 	{
 		DecompilerContext context;
 
