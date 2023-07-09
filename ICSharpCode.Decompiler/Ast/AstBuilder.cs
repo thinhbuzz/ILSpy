@@ -720,6 +720,89 @@ namespace ICSharpCode.Decompiler.Ast {
 			} else if (type is ModifierSig modifierSig) {
 				typeIndex++;
 				return ConvertType(modifierSig.Next, typeAttributes, ref typeIndex, options, depth, sb);
+			} else if (type is FnPtrSig fnPtrSig) {
+				var mSig = fnPtrSig.MethodSig;
+
+				var returnType = mSig.GetRetType().RemovePinned();
+				var customCallConvs = new List<ITypeDefOrRef>();
+				while (returnType is ModifierSig modReturn) {
+					if (modReturn.Modifier.Name.StartsWith("CallConv", StringComparison.Ordinal) && modReturn.Modifier.Namespace == "System.Runtime.CompilerServices"){
+						returnType = modReturn.Next.RemovePinned();
+						customCallConvs.Add(modReturn.Modifier);
+					}
+					else
+						break;
+				}
+
+				var astType = new FunctionPointerAstType();
+
+				if (mSig.IsUnmanaged) {
+					astType.HasUnmanagedCallingConvention = true;
+				}
+				else if (!mSig.IsDefault) {
+					string callconvName = (mSig.CallingConvention & CallingConvention.Mask) switch {
+						CallingConvention.C => "Cdecl",
+						CallingConvention.StdCall => "Stdcall",
+						CallingConvention.ThisCall => "Thiscall",
+						CallingConvention.FastCall => "Fastcall",
+						CallingConvention.VarArg => "Varargs",
+						_ => mSig.CallingConvention.ToString()
+					};
+					astType.HasUnmanagedCallingConvention = true;
+					astType.CallingConventions.Add(new PrimitiveType(callconvName));
+				}
+
+				foreach (var customCallConv in customCallConvs) {
+					AstType callConvSyntax;
+					if (customCallConv.Name.StartsWith("CallConv", StringComparison.Ordinal) && customCallConv.Name.Length > 8) {
+						callConvSyntax = new PrimitiveType(customCallConv.Name.Substring(8));
+					}
+					else {
+						int _ = 0;
+						callConvSyntax = ConvertType(customCallConv, null, ref _, options, depth, sb);
+					}
+					astType.CallingConventions.Add(callConvSyntax);
+				}
+
+				typeIndex++;
+				astType.ReturnType = ConvertType(mSig.GetRetType(), typeAttributes, ref typeIndex, options, depth, sb);
+
+				for (int i = 0; i < mSig.Params.Count; i++) {
+					var originalParamType = mSig.Params[i].RemovePinned();
+					var paramType = originalParamType;
+					var kind = ParameterModifier.None;
+					if (paramType is CModReqdSig modreq) {
+						sb.Clear();
+						string modifier = FullNameFactory.FullName(modreq.Modifier, false, null, sb);
+						if (modifier == "System.Runtime.InteropServices.InAttribute") {
+							kind = ParameterModifier.In;
+							paramType = modreq.Next;
+						}
+						else if (modifier == "System.Runtime.InteropServices.OutAttribute") {
+							kind = ParameterModifier.Out;
+							paramType = modreq.Next;
+						}
+					}
+					if (paramType is ByRefSig) {
+						if (kind == ParameterModifier.None)
+							kind = ParameterModifier.Ref;
+					}
+					else {
+						kind = ParameterModifier.None;
+					}
+
+					typeIndex++;
+					var paramDecl = new ParameterDeclaration {
+						Type = ConvertType(originalParamType, typeAttributes, ref typeIndex, options, depth, sb),
+						ParameterModifier = kind
+					};
+					if (paramType is ByRefSig && kind != ParameterModifier.None)
+						UndoRefSpecifier(paramDecl.Type);
+
+					astType.Parameters.Add(paramDecl);
+				}
+
+				return astType;
 			} else
 				return ConvertType(type.ToTypeDefOrRef(), typeAttributes, ref typeIndex, options, depth, sb);
 		}
@@ -730,7 +813,7 @@ namespace ICSharpCode.Decompiler.Ast {
 				return AstType.Null;
 
 			var ts = type as TypeSpec;
-			if (ts != null && !(ts.TypeSig is FnPtrSig))
+			if (ts != null && !(ts.TypeSig is FnPtrSig fnPtrSig && fnPtrSig.MethodSig is null))
 				return ConvertType(ts.TypeSig, typeAttributes, ref typeIndex, options, depth, sb);
 
 			if (type.DeclaringType != null && (options & ConvertTypeOptions.DoNotIncludeEnclosingType) == 0) {

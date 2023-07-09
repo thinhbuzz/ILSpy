@@ -78,6 +78,8 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			return !type.IsPrimitive;
 		}
 
+		public override bool VisitFunctionPointerType(FunctionPointerAstType functionPointerType, object data) => true;
+
 		public override bool VisitComposedType(ComposedType composedType, object data)
 		{
 			if (composedType.PointerRank > 0)

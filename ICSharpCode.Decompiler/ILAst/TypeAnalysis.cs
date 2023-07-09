@@ -680,7 +680,10 @@ namespace ICSharpCode.Decompiler.ILAst {
 					return typeSystem.String;
 				case ILCode.Ldftn:
 				case ILCode.Ldvirtftn:
-					return typeSystem.IntPtr;
+					var fn = expr.Operand as IMethod;
+					if (fn?.MethodSig is null)
+						return typeSystem.IntPtr;
+					return new FnPtrSig(fn.MethodSig);
 				case ILCode.Ldc_I4:
 					if (expectedType.GetElementType() == ElementType.Boolean && ((int)expr.Operand == 0 || (int)expr.Operand == 1))
 						return typeSystem.Boolean;

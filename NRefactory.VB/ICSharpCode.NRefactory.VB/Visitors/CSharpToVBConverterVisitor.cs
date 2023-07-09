@@ -2353,6 +2353,9 @@ namespace ICSharpCode.NRefactory.VB.Visitors {
 			return EndNode(memberType, type);
 		}
 
+		public AstNode VisitFunctionPointerType(CSharp.FunctionPointerAstType functionPointerType, object data) =>
+			new SimpleType(Identifier.Create(BoxedTextColor.Type, "method"));
+
 		public AstNode VisitComposedType(CSharp.ComposedType composedType, object data)
 		{
 			AstType type = new ComposedType();
