@@ -543,7 +543,8 @@ namespace ICSharpCode.Decompiler.Disassembler {
 						if (sa.AttributeType != null && sa.AttributeType.Scope == sa.AttributeType.Module) {
 							output.Write("class", BoxedTextColor.Keyword);
 							output.Write(" ", BoxedTextColor.Text);
-							output.Write(DisassemblerHelpers.Escape(GetAssemblyQualifiedName(sa.AttributeType)), BoxedTextColor.Text);
+							sb.Clear();
+							output.Write(DisassemblerHelpers.Escape(FullNameFactory.AssemblyQualifiedName(sa.AttributeType, null, sb)), BoxedTextColor.Text);
 						} else {
 							sa.AttributeType.WriteTo(output, sb, ILNameSyntax.TypeName);
 						}
@@ -603,7 +604,8 @@ namespace ICSharpCode.Decompiler.Disassembler {
 				if (type.Scope != type.Module) {
 					output.Write("class", BoxedTextColor.Keyword);
 					output.Write(" ", BoxedTextColor.Text);
-					output.Write(DisassemblerHelpers.Escape(GetAssemblyQualifiedName(type)), BoxedTextColor.Text);
+					sb.Clear();
+					output.Write(DisassemblerHelpers.Escape(FullNameFactory.AssemblyQualifiedName(type, null, sb)), BoxedTextColor.Text);
 				} else {
 					type.WriteTo(output, sb, ILNameSyntax.TypeName);
 				}
@@ -626,22 +628,6 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			}
 		}
 
-		string GetAssemblyQualifiedName(IType type)
-		{
-			IAssembly anr = type.Scope as IAssembly;
-			if (anr is null) {
-				if (type.Scope is ModuleDef md) {
-					anr = md.Assembly;
-				}
-			}
-			sb.Clear();
-			FullNameFactory.FullNameSB(type, false, null, sb);
-			if (anr is not null) {
-				sb.Append(", ");
-				sb.Append(anr.FullName);
-			}
-			return sb.ToString();
-		}
 		#endregion
 
 		#region WriteMarshalInfo

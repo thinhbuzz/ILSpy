@@ -416,7 +416,7 @@ namespace ICSharpCode.Decompiler.Ast {
 							return CleanUpVariableName(methodRef.Name.Substring(3));
 						}
 					}
-					MethodDef methodDef = methodRef.Resolve();
+					MethodDef methodDef = methodRef.ResolveMethodDef();
 					if (methodDef != null) {
 						var p = methodDef.Parameters.ElementAtOrDefault(i + (parent.Code == ILCode.Newobj ? 1 : 0));
 						if (p != null && !string.IsNullOrEmpty(p.Name))

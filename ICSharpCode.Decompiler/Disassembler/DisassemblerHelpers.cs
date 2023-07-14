@@ -372,11 +372,12 @@ namespace ICSharpCode.Decompiler.Disassembler {
 			if (string.IsNullOrEmpty(identifier))
 				return false;
 
-			if (char.IsDigit(identifier[0]))
+			char c = identifier[0];
+			if (char.IsDigit(c))
 				return false;
 
 			// As a special case, .ctor and .cctor are valid despite starting with a dot
-			if (identifier[0] == '.')
+			if (c == '.')
 				return identifier == ".ctor" || identifier == ".cctor";
 
 			if (identifier.Contains(".."))

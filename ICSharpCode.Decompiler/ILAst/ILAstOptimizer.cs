@@ -1644,7 +1644,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					expr.Operand = null;
 					expr.Prefixes = null;
 				} else {
-					MethodDef methodDef = method.Resolve();
+					MethodDef methodDef = method.ResolveMethodDef();
 					if (methodDef?.IsGetter ?? method.Name.StartsWith("get_"))
 						expr.Code = (expr.Code == ILCode.Call) ? ILCode.CallGetter : ILCode.CallvirtGetter;
 					else if (methodDef?.IsSetter ?? method.Name.StartsWith("set_"))

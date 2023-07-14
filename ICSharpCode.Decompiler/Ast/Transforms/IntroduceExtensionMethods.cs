@@ -48,7 +48,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				MemberReferenceExpression mre = invocation.Target as MemberReferenceExpression;
 				IMethod methodReference = invocation.Annotation<IMethod>();
 				if (mre != null && mre.Target is TypeReferenceExpression && methodReference != null && invocation.Arguments.Any()) {
-					MethodDef d = methodReference.Resolve();
+					MethodDef d = methodReference.ResolveMethodDef();
 					if (d != null) {
 						if (d.IsDefined(systemRuntimeCompilerServicesString, extensionAttributeString)) {
 							var firstArgument = invocation.Arguments.First();

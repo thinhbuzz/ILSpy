@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -222,14 +222,6 @@ namespace ICSharpCode.Decompiler {
 				return null;
 		}
 
-		public static FieldDef ResolveFieldWithinSameModule(this MemberRef field)
-		{
-			if (field != null && field.DeclaringType != null && field.DeclaringType.Scope == field.Module)
-				return field.ResolveField();
-			else
-				return null;
-		}
-
 		public static FieldDef ResolveFieldWithinSameModule(this IField field)
 		{
 			if (field != null && field.DeclaringType != null && field.DeclaringType.Scope == field.Module)
@@ -246,29 +238,6 @@ namespace ICSharpCode.Decompiler {
 				return method is MethodDef ? (MethodDef)method : ((MemberRef)method).ResolveMethod();
 			else
 				return null;
-		}
-
-		public static MethodDef Resolve(this IMethod method)
-		{
-			if (method is MethodSpec)
-				method = ((MethodSpec)method).Method;
-			if (method is MemberRef)
-				return ((MemberRef)method).ResolveMethod();
-			else
-				return (MethodDef)method;
-		}
-
-		public static FieldDef Resolve(this IField field)
-		{
-			if (field is MemberRef)
-				return ((MemberRef)field).ResolveField();
-			else
-				return (FieldDef)field;
-		}
-
-		public static TypeDef Resolve(this IType type)
-		{
-			return type == null ? null : type.GetScopeTypeDefOrRef().ResolveTypeDef();
 		}
 
 		public static bool IsCompilerGenerated(this IHasCustomAttribute provider)
@@ -350,50 +319,6 @@ namespace ICSharpCode.Decompiler {
 			return false;
 		}
 
-		public static string GetDefaultMemberName(this TypeDef type)
-		{
-			if (type != null) {
-				foreach (CustomAttribute ca in type.CustomAttributes.FindAll("System.Reflection.DefaultMemberAttribute")) {
-					if (ca.Constructor != null && ca.Constructor.FullName == @"System.Void System.Reflection.DefaultMemberAttribute::.ctor(System.String)" &&
-					    ca.ConstructorArguments.Count == 1) {
-						var value = ca.ConstructorArguments[0].Value;
-						var memberName = (value as UTF8String)?.String ?? value as string;
-						if (memberName is not null) {
-							return memberName;
-						}
-					}
-				}
-			}
-			return null;
-		}
-
-		public static bool IsIndexer(this PropertyDef property)
-		{
-			if (property != null && property.PropertySig.GetParamCount() > 0) {
-				var accessor = property.GetMethod ?? property.SetMethod;
-				PropertyDef basePropDef = property;
-				if (accessor != null && accessor.HasOverrides) {
-					// if the property is explicitly implementing an interface, look up the property in the interface:
-					MethodDef baseAccessor = accessor.Overrides.First().MethodDeclaration.Resolve();
-					if (baseAccessor != null) {
-						for (int i = 0; i < baseAccessor.DeclaringType.Properties.Count; i++) {
-							var baseProp = baseAccessor.DeclaringType.Properties[i];
-							if (baseProp.GetMethod == baseAccessor || baseProp.SetMethod == baseAccessor) {
-								basePropDef = baseProp;
-								break;
-							}
-						}
-					} else
-						return false;
-				}
-				var defaultMemberName = basePropDef.DeclaringType.GetDefaultMemberName();
-				if (defaultMemberName == basePropDef.Name) {
-					return true;
-				}
-			}
-			return false;
-		}
-
 		public static Instruction GetPrevious(this CilBody body, Instruction instr)
 		{
 			int index = body.Instructions.IndexOf(instr);
@@ -422,19 +347,6 @@ namespace ICSharpCode.Decompiler {
 			if (methodSig.ParamsAfterSentinel is not null)
 				return methodSig.Params.Concat(methodSig.ParamsAfterSentinel).ToList();
 			return methodSig.Params;
-		}
-
-		public static ITypeDefOrRef GetTypeDefOrRef(this TypeSig type)
-		{
-			type = type.RemovePinnedAndModifiers();
-			if (type == null)
-				return null;
-			if (type.IsGenericInstanceType)
-				return ((GenericInstSig)type).GenericType?.TypeDefOrRef;
-			else if (type.IsTypeDefOrRef)
-				return ((TypeDefOrRefSig)type).TypeDefOrRef;
-			else
-				return null;
 		}
 
 		public static bool IsSystemBoolean(this ITypeDefOrRef type)

@@ -277,7 +277,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					return false;
 			}
 
-			stateMachineType = stateMachineVar.Type.GetTypeDefOrRef().ResolveWithinSameModule();
+			stateMachineType = stateMachineVar.Type.GetScopeTypeDefOrRef().ResolveWithinSameModule();
 			builderType = startMethod.DeclaringType.ResolveTypeDef();
 			if (stateMachineType == null)
 				return false;

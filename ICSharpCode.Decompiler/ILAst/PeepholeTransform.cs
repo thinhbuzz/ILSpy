@@ -835,8 +835,8 @@ namespace ICSharpCode.Decompiler.ILAst {
 				return false;
 			if (!TypeAnalysis.IsSameType(getter.DeclaringType, setter.DeclaringType))
 				return false;
-			MethodDef getterDef = getter.Resolve();
-			MethodDef setterDef = setter.Resolve();
+			MethodDef getterDef = getter.ResolveMethodDef();
+			MethodDef setterDef = setter.ResolveMethodDef();
 			if (getterDef == null || setterDef == null)
 				return false;
 			for (int i = 0; i < getterDef.DeclaringType.Properties.Count; i++) {

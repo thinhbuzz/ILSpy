@@ -995,7 +995,7 @@ namespace ICSharpCode.Decompiler.Ast {
 								return ace;
 							}
 						}
-						MethodDef ctor = ((IMethod)operand).Resolve();
+						MethodDef ctor = ((IMethod)operand).ResolveMethodDef();
 						if (declaringType.IsAnonymousType() && ctor != null) {
 							AnonymousTypeCreateExpression atce = new AnonymousTypeCreateExpression();
 							if (CanInferAnonymousTypePropertyNamesFromArguments(args, ctor.Parameters)) {
@@ -1207,7 +1207,7 @@ namespace ICSharpCode.Decompiler.Ast {
 		AstNode TransformCall(bool isVirtual, ILExpression byteCode, List<Ast.Expression> args, MethodSemanticsAttributes? forceSemAttr = null)
 		{
 			IMethod method = (IMethod)byteCode.Operand;
-			MethodDef methodDef = method.Resolve();
+			MethodDef methodDef = method.ResolveMethodDef();
 			Ast.Expression target;
 			List<Ast.Expression> methodArgs = new List<Ast.Expression>(args);
 			if (method.MethodSig != null && method.MethodSig.HasThis) {
@@ -1411,7 +1411,7 @@ namespace ICSharpCode.Decompiler.Ast {
 
 		static void AdjustArgumentsForMethodCall(IMethod method, List<Expression> methodArgs)
 		{
-			MethodDef methodDef = method.Resolve();
+			MethodDef methodDef = method.ResolveMethodDef();
 			if (methodDef == null)
 				return;
 			int skip = methodDef.Parameters.GetParametersSkip();

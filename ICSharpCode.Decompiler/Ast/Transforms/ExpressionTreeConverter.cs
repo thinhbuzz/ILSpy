@@ -444,7 +444,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 					}
 				}
 			}
-			MethodDef methodDef = mr.Resolve();
+			MethodDef methodDef = mr.ResolveMethodDef();
 			if (methodDef != null) {
 				if (methodDef.IsGetter) {
 					PropertyDef indexer = AstMethodBodyBuilder.GetIndexer(methodDef);
@@ -612,7 +612,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				oce.Arguments.AddRange(arguments);
 			}
 			if (invocation.Arguments.Count >= 3 && declaringType.IsAnonymousType()) {
-				MethodDef resolvedCtor = ctor.Resolve();
+				MethodDef resolvedCtor = ctor.ResolveMethodDef();
 				if (resolvedCtor == null)
 					return null;
 				int skip = resolvedCtor.Parameters.GetParametersSkip();

@@ -218,7 +218,7 @@ namespace ICSharpCode.Decompiler.Ast {
 
 			// Add a ref to the method if it's a delegate call
 			if (!addRef && node is InvocationExpression && memberRef is IMethod) {
-				var md = (memberRef as IMethod).Resolve();
+				var md = (memberRef as IMethod).ResolveMethodDef();
 				if (md != null && md.DeclaringType != null && md.DeclaringType.IsDelegate)
 					addRef = true;
 			}

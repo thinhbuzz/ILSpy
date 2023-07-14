@@ -329,7 +329,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 					case ILCode.Ldsfld:
 					case ILCode.Stsfld:
 						// allow inlining field access only if it's a readonly field
-						FieldDef f = ((IField)inlinedExpression.Operand).Resolve();
+						FieldDef f = ((IField)inlinedExpression.Operand).ResolveFieldDef();
 						if (!(f != null && f.IsInitOnly))
 							return false;
 						break;
