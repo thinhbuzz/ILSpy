@@ -142,6 +142,8 @@ namespace ICSharpCode.Decompiler {
 				return prefix == Code.Tailcall;
 			case Code.Ldelema:
 				return prefix == Code.Readonly;
+			case Code.Ldftn:
+				return prefix == Code.Constrained;
 			default:
 				return false;
 			}
