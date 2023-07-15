@@ -61,17 +61,6 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			return null;
 		}
 
-		static bool CheckType(ITypeDefOrRef tdr, UTF8String expNs, UTF8String expName)
-		{
-			// PERF: Don't allocate a System.String by calling FullName etc.
-			var tr = tdr as TypeRef;
-			if (tr != null)
-				return tr.Name == expName && tr.Namespace == expNs;
-			var td = tdr as TypeDef;
-			if (td != null)
-				return td.Name == expName && td.Namespace == expNs;
-			return false;
-		}
 		static readonly UTF8String systemString = new UTF8String("System");
 		static readonly UTF8String typeString = new UTF8String("Type");
 		static readonly UTF8String decimalString = new UTF8String("Decimal");
@@ -93,7 +82,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			bool isPartOfLdtoken = invocationExpression.Parent.Annotation<LdTokenAnnotation>() is not null;
 
 			// Reduce "String.Concat(a, b)" to "a + b"
-			if (methodRef.Name == concatString && methodRef.DeclaringType != null && arguments.Length >= 2 && CheckType(methodRef.DeclaringType, systemString, stringString) && !isPartOfLdtoken)
+			if (methodRef.Name == concatString && methodRef.DeclaringType != null && arguments.Length >= 2 && methodRef.DeclaringType.Compare(systemString, stringString) && !isPartOfLdtoken)
 			{
 				invocationExpression.Arguments.Clear(); // detach arguments from invocationExpression
 				Expression expr = arguments[0];
@@ -107,7 +96,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				return;
 			}
 
-			if (methodRef.Name == createInstanceString && CheckType(methodRef.DeclaringType, systemString, activatorString) &&
+			if (methodRef.Name == createInstanceString && methodRef.DeclaringType.Compare(systemString, activatorString) &&
 				arguments.Length == 0 && methodRef is MethodSpec spec && methodRef.NumberOfGenericParameters > 0 &&
 				spec.GenericInstMethodSig.GenericArguments[0] is GenericSig genSig &&
 				genSig.GenericParam.HasDefaultConstructorConstraint && !isPartOfLdtoken) {
@@ -116,8 +105,8 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 						.GetAllRecursiveILSpans()));
 			}
 
-			bool isSupportedType = CheckType(methodRef.DeclaringType, systemString, typeString) ||
-									   CheckType(methodRef.DeclaringType, systemReflectionString, fieldInfoString);
+			bool isSupportedType = methodRef.DeclaringType.Compare(systemString, typeString) ||
+								   methodRef.DeclaringType.Compare(systemReflectionString, fieldInfoString);
 			switch (isSupportedType ? methodRef.Name.String : string.Empty) {
 				case "GetTypeFromHandle":
 					if (arguments.Length == 1 && methodRef.FullName == "System.Type System.Type::GetTypeFromHandle(System.RuntimeTypeHandle)") {
@@ -175,7 +164,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				if (uop == UnaryOperatorType.Increment || uop == UnaryOperatorType.Decrement) {
 					// `op_Increment(a)` is not equivalent to `++a`,
 					// because it doesn't assign the incremented value to a.
-					if (CheckType(methodRef.DeclaringType, systemString, decimalString)) {
+					if (methodRef.DeclaringType.Compare(systemString, decimalString)) {
 						// Legacy csc optimizes "d + 1m" to "op_Increment(d)",
 						// so reverse that optimization here:
 						invocationExpression.ReplaceWith(

@@ -42,10 +42,10 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			// Remove double negation
 			// !!a
 			if (unary.Operator == UnaryOperatorType.Not &&
-			    unary.Expression is UnaryOperatorExpression &&
-			    (unary.Expression as UnaryOperatorExpression).Operator == UnaryOperatorType.Not)
+			    unary.Expression is UnaryOperatorExpression expression &&
+			    expression.Operator == UnaryOperatorType.Not)
 			{
-				AstNode newNode = (unary.Expression as UnaryOperatorExpression).Expression;
+				AstNode newNode = expression.Expression;
 				unary.ReplaceWith(newNode.WithAnnotation(unary.GetAllILSpans()));
 				return newNode.AcceptVisitor(this, data);
 			}

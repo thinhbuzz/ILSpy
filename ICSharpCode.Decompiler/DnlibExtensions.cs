@@ -356,14 +356,7 @@ namespace ICSharpCode.Decompiler {
 			if (!type.DefinitionAssembly.IsCorLib())
 				return false;
 
-			var tr = type as TypeRef;
-			if (tr != null)
-				return tr.Namespace == systemString && tr.Name == booleanString;
-			var td = type as TypeDef;
-			if (td != null)
-				return td.Namespace == systemString && td.Name == booleanString;
-
-			return false;
+			return type.Compare(systemString, booleanString);
 		}
 		static readonly UTF8String systemString = new UTF8String("System");
 		static readonly UTF8String booleanString = new UTF8String("Boolean");
@@ -377,14 +370,7 @@ namespace ICSharpCode.Decompiler {
 			if (!type.DefinitionAssembly.IsCorLib())
 				return false;
 
-			var tr = type as TypeRef;
-			if (tr != null)
-				return tr.Namespace == systemString && tr.Name == objectString;
-			var td = type as TypeDef;
-			if (td != null)
-				return td.Namespace == systemString && td.Name == objectString;
-
-			return false;
+			return type.Compare(systemString, objectString);
 		}
 
 		public static IEnumerable<Parameter> GetParameters(this PropertyDef property)
@@ -527,34 +513,28 @@ namespace ICSharpCode.Decompiler {
 		public static bool IsValueType(TypeSig ts) => ts?.IsValueType ?? false;
 
 		static string GetNamespaceInternal(this ITypeDefOrRef tdr) {
-			var tr = tdr as TypeRef;
-			if (tr != null)
+			if (tdr is TypeRef tr)
 				return tr.Namespace;
-			var td = tdr as TypeDef;
-			if (td != null)
+			if (tdr is TypeDef td)
 				return td.Namespace;
 			return tdr.Namespace;
 		}
 
 		public static string GetNamespace(this IType type, StringBuilder sb) {
-			var td = type as TypeDef;
-			if (td != null)
+			if (type is TypeDef td)
 				return td.Namespace;
-			var tr = type as TypeRef;
-			if (tr != null)
+			if (type is TypeRef tr)
 				return tr.Namespace;
-			sb.Length = 0;
+			sb.Clear();
 			return FullNameFactory.Namespace(type, false, sb);
 		}
 
 		public static string GetName(this IType type, StringBuilder sb) {
-			var td = type as TypeDef;
-			if (td != null)
+			if (type is TypeDef td)
 				return td.Name;
-			var tr = type as TypeRef;
-			if (tr != null)
+			if (type is TypeRef tr)
 				return tr.Name;
-			sb.Length = 0;
+			sb.Clear();
 			return FullNameFactory.Name(type, false, sb);
 		}
 
@@ -577,24 +557,12 @@ namespace ICSharpCode.Decompiler {
 		}
 
 		public static bool HasIsReadOnlyAttribute(IHasCustomAttribute hca) {
-			if (hca == null)
-				return false;
-			for (int i = 0; i < hca.CustomAttributes.Count; i++) {
-				if (hca.CustomAttributes[i].AttributeType.Compare(systemRuntimeCompilerServicesString, isReadOnlyAttributeString))
-					return true;
-			}
-			return false;
+			return hca.IsDefined(systemRuntimeCompilerServicesString, isReadOnlyAttributeString);
 		}
 		static readonly UTF8String isReadOnlyAttributeString = new UTF8String("IsReadOnlyAttribute");
 
 		public static bool HasIsByRefLikeAttribute(IHasCustomAttribute hca) {
-			if (hca == null)
-				return false;
-			for (int i = 0; i < hca.CustomAttributes.Count; i++) {
-				if (hca.CustomAttributes[i].AttributeType.Compare(systemRuntimeCompilerServicesString, isByRefLikeAttributeString))
-					return true;
-			}
-			return false;
+			return hca.IsDefined(systemRuntimeCompilerServicesString, isByRefLikeAttributeString);
 		}
 		static readonly UTF8String isByRefLikeAttributeString = new UTF8String("IsByRefLikeAttribute");
 

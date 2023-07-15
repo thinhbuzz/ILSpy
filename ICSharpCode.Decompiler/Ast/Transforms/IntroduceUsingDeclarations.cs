@@ -268,7 +268,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			public FindRequiredImports(IntroduceUsingDeclarations transform)
 			{
 				this.transform = transform;
-				this.currentNamespace = transform.context.CurrentType != null ? transform.context.CurrentType.Namespace.String : string.Empty;
+				this.currentNamespace = UTF8String.ToSystemStringOrEmpty(transform.context.CurrentType?.Namespace);
 			}
 
 			bool IsParentOfCurrentNamespace(StringBuilder sb)
@@ -324,7 +324,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			foreach (TypeDef type in types) {
 				if (!type.IsPublic && !internalsVisible(type.Module.Assembly))
 					continue;
-				string ns = type.Namespace;
+				string ns = UTF8String.ToSystemStringOrEmpty(type.Namespace);
 				if (!dict.TryGetValue(ns, out var list))
 					dict.Add(ns, list = new List<TypeDef>());
 				list.Add(type);
@@ -358,7 +358,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			public FullyQualifyAmbiguousTypeNamesVisitor(IntroduceUsingDeclarations transform)
 			{
 				this.transform = transform;
-				this.currentNamespace = transform.context.CurrentType != null ? transform.context.CurrentType.Namespace.String : string.Empty;
+				this.currentNamespace = UTF8String.ToSystemStringOrEmpty(transform.context.CurrentType?.Namespace);
 			}
 
 			public override object VisitNamespaceDeclaration(NamespaceDeclaration namespaceDeclaration, object data)
@@ -449,7 +449,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			{
 				if (m == null)
 					return false;
-				switch (m.Attributes & MethodAttributes.MemberAccessMask) {
+				switch (m.Access) {
 					case MethodAttributes.FamANDAssem:
 					case MethodAttributes.Assembly:
 						if (m.Module is null)
@@ -472,7 +472,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			{
 				if (f == null)
 					return false;
-				switch (f.Attributes & FieldAttributes.FieldAccessMask) {
+				switch (f.Access) {
 					case FieldAttributes.FamANDAssem:
 					case FieldAttributes.Assembly:
 						if (f.Module is null)
@@ -495,7 +495,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			{
 				if (t == null)
 					return false;
-				switch (t.Attributes & TypeAttributes.VisibilityMask) {
+				switch (t.Visibility) {
 					case TypeAttributes.NotPublic:
 					case TypeAttributes.NestedAssembly:
 					case TypeAttributes.NestedFamANDAssem:
@@ -525,18 +525,18 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				// Fully qualify any ambiguous type names.
 				if (tr == null)
 					return null;
-				var nss = GetNamespace(tr).ToString();
-				if (IsAmbiguous(nss, null, GetName(tr))) {
+				var sb = transform.stringBuilder;
+				var nss = tr.GetNamespace(sb);
+				if (IsAmbiguous(nss, tr.GetName(sb))) {
 					AstType ns;
 					if (string.IsNullOrEmpty(nss)) {
 						ns = new SimpleType("global").WithAnnotation(BoxedTextColor.Keyword);
 					} else {
-						var sb = transform.stringBuilder;
 						string[] parts = nss.Split('.');
 						var nsAsm = tr.DefinitionAssembly;
 						sb.Clear();
 						sb.Append(parts[0]);
-						if (IsAmbiguous(string.Empty, parts[0], null)) {
+						if (IsAmbiguous(string.Empty, parts[0])) {
 							// conflict between namespace and type name/member name
 							SimpleType simpleType2;
 							ns = new MemberType { Target = simpleType2 = new SimpleType("global").WithAnnotation(BoxedTextColor.Keyword), IsDoubleColon = true, MemberNameToken = Identifier.Create(parts[0]).WithAnnotation(BoxedTextColor.Namespace) }.WithAnnotation(BoxedTextColor.Namespace);
@@ -573,24 +573,24 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				return null;
 			}
 
-			bool IsAmbiguous(string ns, string name, StringBuilder sbName)
+			bool IsAmbiguous(string ns, string name)
 			{
 				if (transform.context.Settings.FullyQualifyAllTypes)
 					return true;
 				// If the type name conflicts with an inner class/type parameter, we need to fully-qualify it:
-				if (currentMemberTypes != null && currentMemberTypes.Contains(name ??= sbName.ToString()))
+				if (currentMemberTypes != null && currentMemberTypes.Contains(name))
 					return true;
 				// If the type name conflicts with a field/property etc. on the current class, we need to fully-qualify it,
 				// if we're inside an expression.
 				if (isWithinTypeReferenceExpression && currentMembers != null) {
-					name ??= sbName.ToString();
 					if (currentMembers.TryGetValue(name, out var mr)) {
 						// However, in the special case where the member is a field or property with the same type
 						// as is requested, then we can use the short name (if it's not otherwise ambiguous)
 						PropertyDef prop = mr as PropertyDef;
 						FieldDef field = mr as FieldDef;
-						if (!(prop != null && GetNamespace(prop.PropertySig.GetRetType()).CheckEquals(ns) && GetName(prop.PropertySig.GetRetType()).CheckEquals(name))
-							&& !(field != null && field.FieldType != null && GetNamespace(field.FieldType).CheckEquals(ns) && GetName(field.FieldType).CheckEquals(name)))
+						var sb = transform.stringBuilder;
+						if (!(prop != null && prop.PropertySig.GetRetType().GetNamespace(sb) == ns && prop.PropertySig.GetRetType().GetName(sb) == name)
+							&& !(field != null && field.FieldType != null && field.FieldType.GetNamespace(sb) == ns && field.FieldType.GetName(sb) == name))
 							return true;
 					}
 				}
@@ -598,23 +598,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				// then we can use the short name even if we imported type with same name from another namespace.
 				if (ns == currentNamespace && !string.IsNullOrEmpty(ns))
 					return false;
-				return transform.ambiguousTypeNames.Contains(name ?? sbName.ToString());
-			}
-
-			StringBuilder GetNamespace(IType type)
-			{
-				this.transform.stringBuilder.Clear();
-				if (type == null)
-					return this.transform.stringBuilder;
-				return FullNameFactory.NamespaceSB(type, false, this.transform.stringBuilder);
-			}
-
-			StringBuilder GetName(IType type)
-			{
-				this.transform.stringBuilder.Clear();
-				if (type == null)
-					return this.transform.stringBuilder;
-				return FullNameFactory.NameSB(type, false, this.transform.stringBuilder);
+				return transform.ambiguousTypeNames.Contains(name);
 			}
 		}
 	}

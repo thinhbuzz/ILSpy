@@ -429,14 +429,12 @@ namespace ICSharpCode.Decompiler.Ast {
 			return null;
 		}
 
-		static readonly UTF8String systemString = new UTF8String("System");
-		static readonly UTF8String nullableString = new UTF8String("Nullable`1");
 		string GetNameByType(TypeSig type)
 		{
-			type = type.RemoveModifiers();
+			type = type.RemovePinnedAndModifiers();
 
 			GenericInstSig git = type as GenericInstSig;
-			if (git != null && git.GenericType != null && git.GenericArguments.Count == 1 && git.GenericType.TypeDefOrRef.Compare(systemString, nullableString)) {
+			if (git != null && git.GenericType != null && git.GenericArguments.Count == 1 && git.GenericType.IsSystemNullable()) {
 				type = ((GenericInstSig)type).GenericArguments[0];
 			}
 
