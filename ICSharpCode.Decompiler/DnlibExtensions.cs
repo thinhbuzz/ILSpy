@@ -1,4 +1,4 @@
-// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
+﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -214,30 +214,51 @@ namespace ICSharpCode.Decompiler {
 			return string.Format("IL_{0:X4}", offset);
 		}
 
-		public static TypeDef ResolveWithinSameModule(this ITypeDefOrRef type)
-		{
-			if (type != null && type.Scope == type.Module)
+		public static TypeDef ResolveWithinSameModule(this ITypeDefOrRef type) {
+			if (type is null)
+				return null;
+			if (type is TypeDef typeDef)
+				return typeDef;
+
+			var scope = type.Scope;
+			if (scope is null || scope == type.Module)
 				return type.ResolveTypeDef();
-			else
-				return null;
+			return null;
 		}
 
-		public static FieldDef ResolveFieldWithinSameModule(this IField field)
-		{
-			if (field != null && field.DeclaringType != null && field.DeclaringType.Scope == field.Module)
-				return field is FieldDef ? (FieldDef)field : ((MemberRef)field).ResolveField();
-			else
-				return null;
+		public static FieldDef ResolveFieldWithinSameModule(this IField field) {
+			if (field is FieldDef fieldDef)
+				return fieldDef;
+
+			if (field is MemberRef memberRef && memberRef.IsFieldRef) {
+				var declType = memberRef.DeclaringType;
+				if (declType is null)
+					return null;
+				var scope = declType.Scope;
+				if (scope is null || scope == memberRef.Module)
+					return memberRef.ResolveField();
+			}
+
+			return null;
 		}
 
-		public static MethodDef ResolveMethodWithinSameModule(this IMethod method)
-		{
-			if (method is MethodSpec)
-				method = ((MethodSpec)method).Method;
-			if (method != null && method.DeclaringType != null && method.DeclaringType.Scope == method.Module)
-				return method is MethodDef ? (MethodDef)method : ((MemberRef)method).ResolveMethod();
-			else
-				return null;
+		public static MethodDef ResolveMethodWithinSameModule(this IMethod method) {
+			if (method is MethodSpec spec)
+				method = spec.Method;
+
+			if (method is MethodDef mDef)
+				return mDef;
+
+			if (method is MemberRef memberRef && memberRef.IsMethodRef) {
+				var declType = memberRef.DeclaringType;
+				if (declType is null)
+					return null;
+				var scope = declType.Scope;
+				if (scope is null || scope == memberRef.Module)
+					return memberRef.ResolveMethod();
+			}
+
+			return null;
 		}
 
 		public static bool IsCompilerGenerated(this IHasCustomAttribute provider)
