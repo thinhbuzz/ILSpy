@@ -55,6 +55,7 @@ namespace ICSharpCode.Decompiler.ILAst
 					}
 					body[pos] = newStloc;
 					body.RemoveAt(initArrayPos);
+					return true;
 				}
 				// Put in a limit so that we don't consume too much memory if the code allocates a huge array
 				// and populates it extremely sparsly. However, 255 "null" elements in a row actually occur in the Mono C# compiler!
