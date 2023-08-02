@@ -755,7 +755,7 @@ namespace ICSharpCode.Decompiler.Ast {
 				foreach (var customCallConv in customCallConvs) {
 					AstType callConvSyntax;
 					if (customCallConv.Name.StartsWith("CallConv", StringComparison.Ordinal) && customCallConv.Name.Length > 8) {
-						callConvSyntax = new PrimitiveType(customCallConv.Name.Substring(8));
+						callConvSyntax = new PrimitiveType(customCallConv.Name.Substring(8)).WithAnnotation(customCallConv);
 					}
 					else {
 						int _ = 0;
