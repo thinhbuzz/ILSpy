@@ -59,6 +59,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 		}
 
 		readonly List<string> currentlyUsedVariableNames = new List<string>();
+		readonly List<string> currentlyUsedParameterNames = new List<string>();
 		readonly StringBuilder stringBuilder;
 		readonly AutoPropertyProvider autoPropertyProvider;
 
@@ -342,9 +343,11 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			Debug.Assert(currentlyUsedVariableNames.Count == 0);
 			try {
 				currentlyUsedVariableNames.AddRange(methodDeclaration.Parameters.Select(p => p.Name));
+				currentlyUsedParameterNames.AddRange(methodDeclaration.Parameters.Select(p => p.Name));
 				return base.VisitMethodDeclaration(methodDeclaration, data);
 			} finally {
 				currentlyUsedVariableNames.Clear();
+				currentlyUsedParameterNames.Clear();
 			}
 		}
 
@@ -353,9 +356,11 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			Debug.Assert(currentlyUsedVariableNames.Count == 0);
 			try {
 				currentlyUsedVariableNames.AddRange(operatorDeclaration.Parameters.Select(p => p.Name));
+				currentlyUsedParameterNames.AddRange(operatorDeclaration.Parameters.Select(p => p.Name));
 				return base.VisitOperatorDeclaration(operatorDeclaration, data);
 			} finally {
 				currentlyUsedVariableNames.Clear();
+				currentlyUsedParameterNames.Clear();
 			}
 		}
 
@@ -364,9 +369,11 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			Debug.Assert(currentlyUsedVariableNames.Count == 0);
 			try {
 				currentlyUsedVariableNames.AddRange(constructorDeclaration.Parameters.Select(p => p.Name));
+				currentlyUsedParameterNames.AddRange(constructorDeclaration.Parameters.Select(p => p.Name));
 				return base.VisitConstructorDeclaration(constructorDeclaration, data);
 			} finally {
 				currentlyUsedVariableNames.Clear();
+				currentlyUsedParameterNames.Clear();
 			}
 		}
 
@@ -375,9 +382,11 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 			Debug.Assert(currentlyUsedVariableNames.Count == 0);
 			try {
 				currentlyUsedVariableNames.AddRange(indexerDeclaration.Parameters.Select(p => p.Name));
+				currentlyUsedParameterNames.AddRange(indexerDeclaration.Parameters.Select(p => p.Name));
 				return base.VisitIndexerDeclaration(indexerDeclaration, data);
 			} finally {
 				currentlyUsedVariableNames.Clear();
+				currentlyUsedParameterNames.Clear();
 			}
 		}
 
@@ -385,8 +394,10 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 		{
 			Debug.Assert(currentlyUsedVariableNames.Count == 0);
 			try {
-				if (accessor.Role != PropertyDeclaration.GetterRole)
+				if (accessor.Role != PropertyDeclaration.GetterRole) {
+					currentlyUsedParameterNames.Add("value");
 					currentlyUsedVariableNames.Add("value");
+				}
 				return base.VisitAccessor(accessor, data);
 			} finally {
 				currentlyUsedVariableNames.Clear();
@@ -589,7 +600,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 		void EnsureVariableNameIsAvailable(AstNode currentNode, string name)
 		{
 			int pos = currentlyUsedVariableNames.IndexOf(name);
-			if (pos < 0) {
+			if (pos < 0 || currentlyUsedParameterNames.Contains(name)) {
 				// name is still available
 				return;
 			}
