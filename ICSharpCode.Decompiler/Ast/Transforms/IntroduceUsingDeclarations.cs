@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -598,7 +598,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 				// then we can use the short name even if we imported type with same name from another namespace.
 				if (ns == currentNamespace && !string.IsNullOrEmpty(ns))
 					return false;
-				return transform.ambiguousTypeNames.Contains(name);
+				return transform.ambiguousTypeNames.Contains(name) || transform.importedOrDeclaredNamespaces.Contains(name);
 			}
 		}
 	}
