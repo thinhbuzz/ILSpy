@@ -23,6 +23,7 @@ using ICSharpCode.NRefactory.Utils;
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
 using System.Diagnostics;
+using System.Text;
 using dnSpy.Contracts.Decompiler;
 
 namespace ICSharpCode.Decompiler.ILAst {
@@ -102,6 +103,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		readonly List<KeyValuePair<ILExpression, ILExpression>> Optimize_List_ILExpressionx2;
 		bool hasFilters;
 		public string CompilerName;
+		StringBuilder sb;
 
 		public ILAstOptimizer()
 		{
@@ -118,6 +120,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			this.Optimize_Dict_Local_ILVariable = new Dictionary<Local, ILVariable>();
 			this.Optimize_Dict_ILLabel_ILNode = new Dictionary<ILLabel, ILNode>();
 			this.Optimize_List_ILExpressionx2 = new List<KeyValuePair<ILExpression, ILExpression>>();
+			this.sb = new StringBuilder();
 		}
 
 		public void Reset()
@@ -142,6 +145,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			readOnlyPropTempLocalNameCounter = 0;
 			tmpLocalCounter = 0;
 			CompilerName = null;
+			sb.Clear();
 		}
 
 		TypeAnalysis GetTypeAnalysis() {

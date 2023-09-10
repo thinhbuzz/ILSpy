@@ -324,7 +324,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 
 		public override object VisitInvocationExpression(InvocationExpression invocationExpression, object data)
 		{
-			if (context.Settings.ExpressionTrees && ExpressionTreeConverter.CouldBeExpressionTree(invocationExpression)) {
+			if (context.Settings.ExpressionTrees && ExpressionTreeConverter.CouldBeExpressionTree(invocationExpression, this.stringBuilder)) {
 				Expression converted = ExpressionTreeConverter.TryConvert(context, invocationExpression, this.stringBuilder);
 				if (converted != null) {
 					//TODO: Do we need to preserve ILSpans or is it taken care of by TryConvert?

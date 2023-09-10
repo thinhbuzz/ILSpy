@@ -150,7 +150,7 @@ namespace ICSharpCode.Decompiler.ILAst
 			if (body.ElementAtOrDefault(pos).Match(ILCode.Call, out methodRef, out methodArg1, out methodArg2) &&
 				methodRef.Name == nameInitializeArray &&
 				methodRef.DeclaringType != null &&
-			    methodRef.DeclaringType.FullName == "System.Runtime.CompilerServices.RuntimeHelpers" &&
+				FullNameFactory.FullName(methodRef.DeclaringType, false, null, sb.Clear()) == "System.Runtime.CompilerServices.RuntimeHelpers" &&
 			    methodArg1.Match(ILCode.Ldloc, out v2) &&
 			    array == v2 &&
 			    methodArg2.Match(ILCode.Ldtoken, out fieldRef))

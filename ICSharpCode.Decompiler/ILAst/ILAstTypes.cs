@@ -738,8 +738,12 @@ namespace ICSharpCode.Decompiler.ILAst {
 					if (this.InferredType != null) {
 						output.Write(":", BoxedTextColor.Punctuation);
 						this.InferredType.WriteTo(output, sb, ILNameSyntax.ShortTypeName);
-						if (this.ExpectedType != null && this.ExpectedType.FullName != this.InferredType.FullName)
-							WriteExpectedType(output, sb);
+						if (this.ExpectedType is not null) {
+							var expectedTypeFullName = FullNameFactory.FullName(ExpectedType, false, null, sb.Clear());
+							var inferredTypeFullName = FullNameFactory.FullName(InferredType, false, null, sb.Clear());
+							if (expectedTypeFullName != inferredTypeFullName)
+								WriteExpectedType(output, sb);
+						}
 					}
 					UpdateDebugInfo(builder, startLoc, output.NextPosition, this.GetSelfAndChildrenRecursiveILSpans());
 					return;
@@ -759,8 +763,12 @@ namespace ICSharpCode.Decompiler.ILAst {
 			if (this.InferredType != null) {
 				output.Write(":", BoxedTextColor.Punctuation);
 				this.InferredType.WriteTo(output, sb, ILNameSyntax.ShortTypeName);
-				if (this.ExpectedType != null && this.ExpectedType.FullName != this.InferredType.FullName)
-					WriteExpectedType(output, sb);
+				if (this.ExpectedType is not null) {
+					var expectedTypeFullName = FullNameFactory.FullName(ExpectedType, false, null, sb.Clear());
+					var inferredTypeFullName = FullNameFactory.FullName(InferredType, false, null, sb.Clear());
+					if (expectedTypeFullName != inferredTypeFullName)
+						WriteExpectedType(output, sb);
+				}
 			} else if (this.ExpectedType != null)
 				WriteExpectedType(output, sb);
 			var parenStart = output.NextPosition;

@@ -616,5 +616,23 @@ namespace ICSharpCode.Decompiler {
 			list.Capacity = newCapacity;
 		}
 		#endif
+
+		public static string FullName(this IMethod method, StringBuilder sb) {
+			var methodDef = method as MethodDef;
+			var methodSpec = method as MethodSpec;
+			if (methodSpec is not null)
+				method = methodSpec.Method;
+			var memberRef = method as MemberRef;
+
+			string declaringType;
+			if (memberRef is not null && memberRef.Class is ModuleRef modRef)
+				declaringType = $"[module:{modRef}]<Module>";
+			else
+				declaringType = FullNameFactory.FullName(method.DeclaringType, false, null, sb.Clear());
+
+			var typeGenArgs = ((memberRef?.Class as TypeSpec)?.TypeSig as GenericInstSig)?.GenericArguments;
+			var methodGenArgs = methodSpec?.GenericInstMethodSig?.GenericArguments;
+			return FullNameFactory.MethodFullName(declaringType, method.Name, method.MethodSig, typeGenArgs, methodGenArgs, methodDef, sb.Clear());
+		}
 	}
 }

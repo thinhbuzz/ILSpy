@@ -1848,11 +1848,13 @@ namespace ICSharpCode.Decompiler.Ast {
 			constantAttribute = null;
 			if (hc.Constant != null)
 				return true;
+			StringBuilder sb = null;
 			for (int i = 0; i < hc.CustomAttributes.Count; i++) {
 				var ca = hc.CustomAttributes[i];
 				var type = ca.AttributeType;
 				while (type != null) {
-					var fullName = type.FullName;
+					sb = sb is null ? new StringBuilder() : sb.Clear();
+					var fullName = FullNameFactory.FullName(type, false, null, sb);
 					if (fullName == "System.Runtime.CompilerServices.CustomConstantAttribute" ||
 						fullName == "System.Runtime.CompilerServices.DecimalConstantAttribute") {
 						constantAttribute = ca;
@@ -2152,7 +2154,7 @@ namespace ICSharpCode.Decompiler.Ast {
 			}
 			if (!sort)
 				return cas;
-			return cas.OrderBy(a => { sb.Clear(); return FullNameFactory.FullName(a.AttributeType, false, null, sb); });
+			return cas.OrderBy(a => FullNameFactory.FullName(a.AttributeType, false, null, sb.Clear()));
 		}
 
 		static bool IsTypeForwardedToAttribute(CustomAttribute ca) => IsTypeForwardedToAttribute(ca, out _);
@@ -2174,31 +2176,14 @@ namespace ICSharpCode.Decompiler.Ast {
 		static int CompareExportedTypes(ITypeDefOrRef x, ITypeDefOrRef y) {
 			var xasm = x.DefinitionAssembly;
 			var yasm = y.DefinitionAssembly;
-			int c = StringComparer.OrdinalIgnoreCase.Compare(xasm.FullNameToken, yasm.FullNameToken);
-			if (c != 0) return c;
-			c = StringComparer.OrdinalIgnoreCase.Compare(GetName(x), GetName(y));
-			if (c != 0) return c;
-			return x.MDToken.CompareTo(y.MDToken);
-		}
-
-		static string GetName(ITypeDefOrRef type) {
-			if (!(type.DeclaringType is ExportedType declType))
-				return type.Name;
-			if (!(declType.DeclaringType is ExportedType declType2))
-				return declType.Name + "." + type.Name;
-			var declTypes = new List<ITypeDefOrRef>();
-			var t = type;
-			while (!(t is null)) {
-				declTypes.Add(t);
-				t = t.DeclaringType;
-			}
 			var sb = new StringBuilder();
-			for (int i = declTypes.Count - 1; i >= 0; i--) {
-				if (i != declTypes.Count - 1)
-					sb.Append('.');
-				sb.Append(declTypes[i].Name.String);
-			}
-			return sb.ToString();
+			int c = StringComparer.OrdinalIgnoreCase.Compare(FullNameFactory.AssemblyFullName(xasm, true, sb), FullNameFactory.AssemblyFullName(yasm, true, sb.Clear()));
+			if (c != 0)
+				return c;
+			c = StringComparer.OrdinalIgnoreCase.Compare(x.Name, y.Name);
+			if (c != 0)
+				return c;
+			return x.MDToken.CompareTo(y.MDToken);
 		}
 
 		[Flags]
@@ -2324,7 +2309,9 @@ namespace ICSharpCode.Decompiler.Ast {
 						if (isAssembly && attribute.Annotation<CustomAttribute>() is CustomAttribute ca && IsTypeForwardedToAttribute(ca, out var exportedType)) {
 							if (lastAssembly == null || !AssemblyNameComparer.CompareAll.Equals(exportedType.DefinitionAssembly, lastAssembly)) {
 								lastAssembly = exportedType.DefinitionAssembly;
-								var cmt = new Comment(" " + lastAssembly.FullNameToken);
+								sb.Clear();
+								sb.Append(' ');
+								var cmt = new Comment(FullNameFactory.AssemblyFullNameSB(lastAssembly, true, sb).ToString());
 								attributedNode.AddChild(cmt, Roles.Comment);
 							}
 						}

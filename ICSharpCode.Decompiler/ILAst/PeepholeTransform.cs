@@ -1161,9 +1161,10 @@ namespace ICSharpCode.Decompiler.ILAst {
 				return false;
 			if (!(assignedExpr.Arguments[1].Match(ILCode.Call, out calledMethod) || assignedExpr.Arguments[1].Match(ILCode.CallGetter, out calledMethod)))
 				return false;
-			if (!(calledMethod.Name == "get_OffsetToStringData" && calledMethod.DeclaringType != null && calledMethod.DeclaringType.FullName == "System.Runtime.CompilerServices.RuntimeHelpers"))
+			if (calledMethod.Name != "get_OffsetToStringData")
 				return false;
-
+			if (calledMethod.DeclaringType is null || FullNameFactory.FullName(calledMethod.DeclaringType, false, null, sb.Clear()) != "System.Runtime.CompilerServices.RuntimeHelpers")
+				return false;
 			ILVariable pointerVar;
 			if (body[pos + 2].Match(ILCode.Stloc, out pointerVar, out assignedExpr) && assignedExpr.MatchLdloc(var2)) {
 				pos += 3;
@@ -1312,7 +1313,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			ILExpression lambdaBodyExpr, parameterArray;
 			if (!(expr.Match(ILCode.Call, out mr, out lambdaBodyExpr, out parameterArray) && mr.Name == "Lambda"))
 				return false;
-			if (!(parameterArray.Code == ILCode.InitArray && mr.DeclaringType != null && mr.DeclaringType.FullName == "System.Linq.Expressions.Expression"))
+			if (!(parameterArray.Code == ILCode.InitArray && mr.DeclaringType != null && FullNameFactory.FullName(mr.DeclaringType, false, null, sb.Clear()) == "System.Linq.Expressions.Expression"))
 				return false;
 			int firstParameterPos = pos - parameterArray.Arguments.Count;
 			if (firstParameterPos < 0)
@@ -1349,19 +1350,19 @@ namespace ICSharpCode.Decompiler.ILAst {
 				return false;
 			if (v.GeneratedByDecompiler || v.IsParameter || v.IsPinned)
 				return false;
-			if (v.Type == null || v.Type.FullName != "System.Linq.Expressions.ParameterExpression")
+			if (v.Type == null || FullNameFactory.FullName(v.Type, false, null, sb.Clear()) != "System.Linq.Expressions.ParameterExpression")
 				return false;
 			IMethod parameterMethod;
 			ILExpression typeArg, nameArg;
 			if (!init.Match(ILCode.Call, out parameterMethod, out typeArg, out nameArg))
 				return false;
-			if (!(parameterMethod.Name == "Parameter" && parameterMethod.DeclaringType != null && parameterMethod.DeclaringType.FullName == "System.Linq.Expressions.Expression"))
+			if (!(parameterMethod.Name == "Parameter" && parameterMethod.DeclaringType != null && FullNameFactory.FullName(parameterMethod.DeclaringType, false, null, sb.Clear()) == "System.Linq.Expressions.Expression"))
 				return false;
 			IMethod getTypeFromHandle;
 			ILExpression typeToken;
 			if (!typeArg.Match(ILCode.Call, out getTypeFromHandle, out typeToken))
 				return false;
-			if (!(getTypeFromHandle.Name == "GetTypeFromHandle" && getTypeFromHandle.DeclaringType != null && getTypeFromHandle.DeclaringType.FullName == "System.Type"))
+			if (!(getTypeFromHandle.Name == "GetTypeFromHandle" && getTypeFromHandle.DeclaringType != null && FullNameFactory.FullName(getTypeFromHandle.DeclaringType, false, null, sb.Clear()) == "System.Type"))
 				return false;
 			return typeToken.Code == ILCode.Ldtoken && nameArg.Code == ILCode.Ldstr;
 		}

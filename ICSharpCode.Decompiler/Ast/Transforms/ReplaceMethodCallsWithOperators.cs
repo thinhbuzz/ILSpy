@@ -109,7 +109,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 								   methodRef.DeclaringType.Compare(systemReflectionString, fieldInfoString);
 			switch (isSupportedType ? methodRef.Name.String : string.Empty) {
 				case "GetTypeFromHandle":
-					if (arguments.Length == 1 && methodRef.FullName == "System.Type System.Type::GetTypeFromHandle(System.RuntimeTypeHandle)") {
+					if (arguments.Length == 1 && methodRef.FullName(sb) == "System.Type System.Type::GetTypeFromHandle(System.RuntimeTypeHandle)") {
 						if (typeHandleOnTypeOfPattern.IsMatch(arguments[0])) {
 							invocationExpression.ReplaceWith(((MemberReferenceExpression)arguments[0]).Target
 								.WithAnnotation(invocationExpression.GetAllRecursiveILSpans()).WithAnnotation(builder));
@@ -118,7 +118,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 					}
 					break;
 				case "GetFieldFromHandle":
-					if (arguments.Length == 1 && methodRef.FullName == "System.Reflection.FieldInfo System.Reflection.FieldInfo::GetFieldFromHandle(System.RuntimeFieldHandle)") {
+					if (arguments.Length == 1 && methodRef.FullName(sb) == "System.Reflection.FieldInfo System.Reflection.FieldInfo::GetFieldFromHandle(System.RuntimeFieldHandle)") {
 						MemberReferenceExpression mre = arguments[0] as MemberReferenceExpression;
 						if (mre != null && mre.MemberName == "FieldHandle" && mre.Target.Annotation<LdTokenAnnotation>() != null) {
 							invocationExpression.ReplaceWith(mre.Target
@@ -126,7 +126,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 							return;
 						}
 					}
-					else if (arguments.Length == 2 && methodRef.FullName == "System.Reflection.FieldInfo System.Reflection.FieldInfo::GetFieldFromHandle(System.RuntimeFieldHandle,System.RuntimeTypeHandle)") {
+					else if (arguments.Length == 2 && methodRef.FullName(sb) == "System.Reflection.FieldInfo System.Reflection.FieldInfo::GetFieldFromHandle(System.RuntimeFieldHandle,System.RuntimeTypeHandle)") {
 						MemberReferenceExpression mre1 = arguments[0] as MemberReferenceExpression;
 						MemberReferenceExpression mre2 = arguments[1] as MemberReferenceExpression;
 						if (mre1 != null && mre1.MemberName == "FieldHandle" && mre1.Target.Annotation<LdTokenAnnotation>() != null) {

@@ -34,11 +34,11 @@ namespace ICSharpCode.Decompiler.Ast.Transforms {
 	public sealed class ExpressionTreeConverter
 	{
 		#region static TryConvert method
-		public static bool CouldBeExpressionTree(InvocationExpression expr)
+		public static bool CouldBeExpressionTree(InvocationExpression expr, StringBuilder sb)
 		{
 			if (expr != null && expr.Arguments.Count == 2) {
 				IMethod mr = expr.Annotation<IMethod>();
-				return mr != null && mr.Name == "Lambda" && mr.DeclaringType != null && mr.DeclaringType.FullName == "System.Linq.Expressions.Expression";
+				return mr != null && mr.Name == "Lambda" && mr.DeclaringType != null && FullNameFactory.FullName(mr.DeclaringType, false, null, sb.Clear()) == "System.Linq.Expressions.Expression";
 			}
 			return false;
 		}
