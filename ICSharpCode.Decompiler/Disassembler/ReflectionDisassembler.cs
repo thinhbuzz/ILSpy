@@ -1952,7 +1952,7 @@ namespace ICSharpCode.Decompiler.Disassembler {
 
 			output.Write(".module", BoxedTextColor.ILDirective);
 			output.Write(" ", BoxedTextColor.Text);
-			output.WriteLine(module.Name, BoxedTextColor.Text);
+			output.WriteLine(DisassemblerHelpers.Escape(module.Name), BoxedTextColor.Text);
 			if (module.Mvid.HasValue)
 				output.WriteLine(string.Format("// MVID: {0}", module.Mvid.Value.ToString("B").ToUpperInvariant()), BoxedTextColor.Comment);
 
