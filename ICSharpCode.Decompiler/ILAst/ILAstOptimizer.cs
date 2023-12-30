@@ -32,6 +32,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 		RemoveVisualBasicCompilerCode,
 		RemoveRedundantCode,
 		ReduceBranchInstructionSet,
+		ReplaceSpecialArrayMethods,
 		InlineVariables,
 		ConvertFieldAccessesToPropertyMethodCalls,
 		CopyPropagation,
@@ -227,6 +228,9 @@ namespace ICSharpCode.Decompiler.ILAst {
 					ReduceBranchInstructionSet(blockList[i]);
 				// ReduceBranchInstructionSet runs before inlining because the non-aggressive inlining heuristic
 				// looks at which type of instruction consumes the inlined variable.
+
+				if (abortBeforeStep == ILAstOptimizationStep.ReplaceSpecialArrayMethods) return;
+				ReplaceSpecialArrayMethods(method);
 
 				if (abortBeforeStep == ILAstOptimizationStep.InlineVariables) return;
 				// Works better after simple goto removal because of the following debug pattern: stloc X; br Next; Next:; ldloc X
@@ -1581,6 +1585,37 @@ namespace ICSharpCode.Decompiler.ILAst {
 					block.Body[i] = new ILExpression(ILCode.Brtrue, expr.Operand, newExpr);
 					if (context.CalculateILSpans)
 						newExpr.ILSpans.AddRange(expr.ILSpans);
+				}
+			}
+		}
+
+		void ReplaceSpecialArrayMethods(ILBlock method) {
+			foreach (var expr in method.GetSelfAndChildrenRecursive(Optimize_List_ILExpression)) {
+				if (expr.Operand is not MemberRef memberRef || !memberRef.IsMethodRef)
+					continue;
+				if (memberRef.DeclaringType is not TypeSpec ts ||
+					ts.TypeSig.RemovePinnedAndModifiers() is not ArraySigBase arraySigBase)
+					continue;
+				// ILAst opcodes for array access do not support multi dimensional arrays
+				if (arraySigBase.Rank != 1)
+					continue;
+				if (expr.Code == ILCode.Newobj) {
+					expr.Code = ILCode.Newarr;
+					expr.Operand = arraySigBase.Next.RemovePinnedAndModifiers().ToTypeDefOrRef();
+				}
+				else if (expr.Code == ILCode.Call) {
+					if (memberRef.Name == "Get") {
+						expr.Code = ILCode.Ldelem;
+						expr.Operand = arraySigBase.Next.RemovePinnedAndModifiers().ToTypeDefOrRef();
+					}
+					else if (memberRef.Name == "Set") {
+						expr.Code = ILCode.Stelem;
+						expr.Operand = arraySigBase.Next.RemovePinnedAndModifiers().ToTypeDefOrRef();
+					}
+					else if (memberRef.Name == "Address") {
+						expr.Code = ILCode.Ldelema;
+						expr.Operand = arraySigBase.Next.RemovePinnedAndModifiers().ToTypeDefOrRef();
+					}
 				}
 			}
 		}
