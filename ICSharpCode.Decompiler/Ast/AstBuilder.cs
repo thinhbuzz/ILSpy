@@ -503,7 +503,7 @@ namespace ICSharpCode.Decompiler.Ast {
 				int parentGenericCount = typeDef.DeclaringType.GenericParameters.Count;
 				int genericParametersCount = genericParameters.Count;
 
-				var newGenericParameters = new List<GenericParam>(genericParametersCount - parentGenericCount);
+				var newGenericParameters = new List<GenericParam>(Math.Max(0, genericParametersCount - parentGenericCount));
 				for (int i = parentGenericCount; i < genericParametersCount; i++)
 					newGenericParameters.Add(genericParameters[i]);
 
