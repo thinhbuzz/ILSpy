@@ -101,7 +101,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 			public object   Operand;
 			public int      PopCount;   // -1 means pop all
 			public int      PushCount;
-			public string   Name { get { return "IL_" + this.Offset.ToString("X2"); } }
+			public string   Name { get { return "IL_" + this.Offset.ToString("X4"); } }
 			public ByteCode Next;
 			public Instruction[]    Prefixes;        // Non-null only if needed
 			public StackSlot[]      StackBefore;     // Unique per bytecode; not shared
@@ -137,12 +137,12 @@ namespace ICSharpCode.Decompiler.ILAst {
 				if (this.Operand != null) {
 					sb.Append(' ');
 					if (this.Operand is Instruction) {
-						sb.Append("IL_" + ((Instruction)this.Operand).Offset.ToString("X2"));
+						sb.Append("IL_" + ((Instruction)this.Operand).Offset.ToString("X4"));
 					} else if (this.Operand is IList<Instruction>) {
 						foreach(Instruction inst in (IList<Instruction>)this.Operand) {
 							if (inst == null)
 								continue;
-							sb.Append("IL_" + inst.Offset.ToString("X2"));
+							sb.Append("IL_" + inst.Offset.ToString("X4"));
 							sb.Append(' ');
 						}
 					} else if (this.Operand is ILLabel) {
