@@ -130,6 +130,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 		List<ILNode> FindLoops(HashSet<ControlFlowNode> scope, ControlFlowNode entryPoint, bool excludeEntryPoint)
 		{
+			RuntimeHelpers.EnsureSufficientExecutionStack();
 			List<ILNode> result = new List<ILNode>();
 
 			// Do not modify entry data
@@ -241,6 +242,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 		List<ILNode> FindConditions(HashSet<ControlFlowNode> scope, ControlFlowNode entryNode)
 		{
+			RuntimeHelpers.EnsureSufficientExecutionStack();
 			List<ILNode> result = new List<ILNode>();
 
 			// Do not modify entry data
@@ -439,7 +441,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 		static HashSet<ControlFlowNode> FindDominatedNodes(HashSet<ControlFlowNode> scope, ControlFlowNode head)
 		{
-			StackOverflow.Prevent();
+			RuntimeHelpers.EnsureSufficientExecutionStack();
 			HashSet<ControlFlowNode> agenda = new HashSet<ControlFlowNode>();
 			HashSet<ControlFlowNode> result = new HashSet<ControlFlowNode>();
 			agenda.Add(head);
@@ -460,6 +462,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 		static HashSet<ControlFlowNode> FindLoopContent(HashSet<ControlFlowNode> scope, ControlFlowNode head)
 		{
+			RuntimeHelpers.EnsureSufficientExecutionStack();
 			HashSet<ControlFlowNode> agenda = new HashSet<ControlFlowNode>();
 			for (int i = 0; i < head.Incoming.Count; i++) {
 				var p = head.Incoming[i].Source;
