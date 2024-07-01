@@ -278,6 +278,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 		void RunInference(ILExpression expr)
 		{
+			RuntimeHelpers.EnsureSufficientExecutionStack();
 			bool anyArgumentIsMissingExpectedType = expr.Arguments.Any(a => a.ExpectedType == null);
 			if (expr.InferredType == null || anyArgumentIsMissingExpectedType)
 				InferTypeForExpression(expr, expr.ExpectedType, forceInferChildren: anyArgumentIsMissingExpectedType);

@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -130,6 +130,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 		List<ILNode> FindLoops(HashSet<ControlFlowNode> scope, ControlFlowNode entryPoint, bool excludeEntryPoint)
 		{
+			RuntimeHelpers.EnsureSufficientExecutionStack();
 			List<ILNode> result = new List<ILNode>();
 
 			// Do not modify entry data
@@ -241,6 +242,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 		List<ILNode> FindConditions(HashSet<ControlFlowNode> scope, ControlFlowNode entryNode)
 		{
+			RuntimeHelpers.EnsureSufficientExecutionStack();
 			List<ILNode> result = new List<ILNode>();
 
 			// Do not modify entry data
@@ -460,6 +462,7 @@ namespace ICSharpCode.Decompiler.ILAst {
 
 		static HashSet<ControlFlowNode> FindLoopContent(HashSet<ControlFlowNode> scope, ControlFlowNode head)
 		{
+			RuntimeHelpers.EnsureSufficientExecutionStack();
 			HashSet<ControlFlowNode> agenda = new HashSet<ControlFlowNode>();
 			for (int i = 0; i < head.Incoming.Count; i++) {
 				var p = head.Incoming[i].Source;
